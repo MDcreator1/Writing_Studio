@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lekhak Manch — Story/Novel Project Editor</title>
+  <link rel="stylesheet" href="assets/shared/css/00-base.css?v=20260610-project-library">
+  <link rel="stylesheet" href="assets/shared/css/01-find-modals.css?v=20260608-story-info-edit-hover-icon">
+  <link rel="stylesheet"
+    href="assets/pages/story-novel-project-editor/css/00-editor-layout.css?v=20260610-plain-text-editor">
+  <link rel="stylesheet"
+    href="assets/pages/story-novel-project-editor/css/01-floating-tools.css?v=20260610-review-dock-panel">
+  <link rel="stylesheet"
+    href="assets/pages/story-novel-project-editor/css/02-side-panels.css?v=20260610-ai-connection-floating">
+  <link rel="stylesheet"
+    href="assets/pages/story-novel-project-editor/css/03-focus-responsive.css?v=20260609-dock-row-layout">
+  <link rel="stylesheet" href="assets/shared/css/99-theme-overrides.css?v=20260608-theme-option-previews">
+</head>
+
+<body data-page="workspace">
+  <div class="app-loader lm-id-appLoader" id="appLoader" hidden aria-live="polite" aria-busy="true">
+    <div class="app-loader-card">
+      <div class="app-loader-mark" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+      <div class="app-loader-text lm-id-appLoaderText" id="appLoaderText">Working...</div>
+    </div>
+  </div>
+
+  <!-- Top bar -->
+  <div id="top-bar" class="lm-id-top-bar app-top-bar">
+    <h1>
+      <a class="brand-home-link" href="home.html" aria-label="Go to home">
+        <span class="brand-mark">LM</span><span id="brandName" class="lm-id-brandName">Lekhak Manch</span>
+      </a>
+    </h1>
+
+    <div class="tb-group topbar-actions">
+      <button type="button" id="projectDetailsBtn" class="tb-icon lm-id-projectDetailsBtn"
+        onclick="window.location.href='project-details.html'" title="Project Details" aria-label="Project Details">
+        <span data-lm-icon="projectDetailsDefault"></span>
+        <span data-lm-icon="projectDetailsHover"></span>
+      </button>
+
+      <button class="tb-icon story-library-btn lm-id-storyLibraryBtn" id="storyLibraryBtn" type="button" title="Stories"
+        aria-label="Stories" aria-expanded="false">
+        <span data-lm-icon="storyLibraryDefault"></span>
+        <span data-lm-icon="storyLibraryHover"></span>
+      </button>
+      <div class="story-library-panel lm-id-storyLibraryPanel" id="storyLibraryPanel" hidden>
+        <div class="story-library-kicker lm-id-storyLibraryTitle" id="storyLibraryTitle">Stories / Novels</div>
+        <button class="story-library-action lm-id-newStoryBtn" id="newStoryBtn" type="button">New Story / Novel</button>
+        <button class="story-library-action lm-id-openExistingStoriesBtn" id="openExistingStoriesBtn"
+          type="button">Recent Stories / Novels</button>
+        <div class="story-library-list lm-id-storyLibraryList" id="storyLibraryList" hidden></div>
+      </div>
+      <button class="tb-icon theme-menu-btn lm-id-darkBtn" id="darkBtn" type="button" onclick="toggleThemePanel(event)"
+        title="Theme" aria-label="Choose theme" aria-expanded="false" aria-controls="themeModePanel">
+        <span data-lm-icon="themeModeDefault"></span>
+        <span data-lm-icon="themeModeHover"></span>
+      </button>
+      <div class="theme-mode-panel lm-id-themeModePanel" id="themeModePanel" hidden>
+        <button class="theme-mode-option lm-id-themeLightBtn" id="themeLightBtn" type="button"
+          onclick="selectThemeMode('light')">Light</button>
+        <button class="theme-mode-option lm-id-themeGreyBtn" id="themeGreyBtn" type="button"
+          onclick="selectThemeMode('grey')">Grey</button>
+        <button class="theme-mode-option theme-mode-more-btn lm-id-themeMoreBtn" id="themeMoreBtn" type="button"
+          onclick="toggleMoreThemeOptions(event)" aria-expanded="false" aria-controls="themeMoreOptions">
+          <span>More themes</span><span class="theme-mode-more-arrow" aria-hidden="true">›</span>
+        </button>
+        <div class="theme-mode-more-options lm-id-themeMoreOptions" id="themeMoreOptions" hidden>
+          <button class="theme-mode-option lm-id-themeDarkBtn" id="themeDarkBtn" type="button"
+            onclick="selectThemeMode('dark')">Dark</button>
+          <button class="theme-mode-option lm-id-themePurpleBtn" id="themePurpleBtn" type="button"
+            onclick="selectThemeMode('purple')">Purple</button>
+          <button class="theme-mode-option lm-id-themeSunsetBtn" id="themeSunsetBtn" type="button"
+            onclick="selectThemeMode('sunset')">Sunset</button>
+          <button class="theme-mode-option lm-id-themeForestBtn" id="themeForestBtn" type="button"
+            onclick="selectThemeMode('forest')">Forest</button>
+        </div>
+      </div>
+      <!-- 
+      <button class="tb-icon lm-id-exportBtn" id="exportBtn" type="button" onclick="exportTxt()"
+        title="Export .txt">⇩</button> -->
+
+    </div>
+  </div>
+
+  <!-- Main layout -->
+  <div id="main" class="lm-id-main">
+
+    <div id="chapter-panel" class="lm-id-chapter-panel">
+      <div id="story-summary" class="story-summary lm-id-story-summary">
+        <button class="story-summary-menu-btn lm-id-storySummaryMenuBtn" id="storySummaryMenuBtn" type="button"
+          aria-label="Story Information" aria-expanded="false" title="Story Information">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="story-summary-menu-panel lm-id-storySummaryMenuPanel" id="storySummaryMenuPanel" hidden>
+          <button type="button" id="storySummaryMenuDetailsBtn" class="lm-id-storySummaryMenuDetailsBtn">Story
+            Information</button>
+          <button type="button" id="storySummaryMenuProjectDetailsBtn" class="lm-id-storySummaryMenuProjectDetailsBtn"
+            onclick="window.location.href='project-details.html'">Project Details</button>
+          <button class="story-summary-delete-action lm-id-storySummaryMenuDeleteBtn" type="button"
+            id="storySummaryMenuDeleteBtn">Delete Story</button>
+          <div class="story-summary-delete-confirm lm-id-storySummaryDeleteConfirm" id="storySummaryDeleteConfirm"
+            hidden>
+            <strong id="storySummaryDeleteConfirmTitle" class="lm-id-storySummaryDeleteConfirmTitle">Delete this
+              story?</strong>
+            <p id="storySummaryDeleteConfirmBody" class="lm-id-storySummaryDeleteConfirmBody">This will permanently
+              remove this story folder from the workspace.</p>
+            <div class="story-summary-delete-actions">
+              <button type="button" id="storySummaryDeleteCancelBtn"
+                class="lm-id-storySummaryDeleteCancelBtn">Cancel</button>
+              <button class="danger lm-id-storySummaryDeleteConfirmBtn" type="button"
+                id="storySummaryDeleteConfirmBtn">Delete</button>
+            </div>
+          </div>
+        </div>
+        <div class="story-summary-top" onclick="window.location.href='project-details.html'">
+          <span class="story-summary-save-dot lm-id-storySummarySaveDot" id="storySummarySaveDot"
+            aria-hidden="true"></span>
+          <div class="story-summary-kicker lm-id-storytype" id="storytype">Story Project</div>
+          <span class="story-summary-language lm-id-storyLanguageBadge" id="storyLanguageBadge">English</span>
+        </div>
+        <div class="story-summary-title lm-id-storySummaryTitle" id="storySummaryTitle"
+          onclick="window.location.href='project-details.html'">
+          Untitled Story
+        </div>
+        <div class="story-summary-meta lm-id-Writername" id="Writername" onclick="window.location.href='project-details.html'">Writer</div>
+      </div>
+      <div class="draft-action-row">
+        <button class="add-chap lm-id-addChapterBtn" id="addChapterBtn" type="button" onclick="addChapter()">+ New
+          Chapter</button>
+      </div>
+      <div class="draft-box lm-id-draftBox" id="draftBox" hidden></div>
+      <div class="parts-heading lm-id-partsHeading" id="partsHeading">Parts</div>
+      <div id="chapter-list" class="lm-id-chapter-list"></div>
+      <div class="raw-chapter-section lm-id-rawChapterSection" id="rawChapterSection" hidden></div>
+      <div class="chapter-actions chapter-actions-bottom">
+        <button class="panel-mini-btn trash-toggle-btn lm-id-trashToggleBtn" id="trashToggleBtn" type="button"
+          onclick="setDraftTrashMode(true)" hidden>Trash</button>
+        <button class="panel-mini-btn lm-id-addPartBtn" id="addPartBtn" type="button" onclick="addPart()">+ New
+          Part</button>
+      </div>
+    </div>
+    <div class="part-details-panel lm-id-partDetailsPanel" id="partDetailsPanel" hidden></div>
+    <div class="chapter-details-panel lm-id-chapterDetailsPanel" id="chapterDetailsPanel" hidden></div>
+    <div class="draft-details-panel lm-id-draftDetailsPanel" id="draftDetailsPanel" hidden></div>
+
+    <div id="editor-area" class="lm-id-editor-area">
+      <div id="editor-info-panel" class="lm-id-editor-info-panel">
+        <div class="editor-info-title">
+          <span class="editor-info-kicker lm-id-chapterNumberBadge" id="chapterNumberBadge">01</span>
+          <button class="chapter-title-btn lm-id-cur-chap" id="cur-chap" type="button"
+            onclick="beginChapterTitleEdit()">
+            Chapter 1
+          </button>
+          <input class="chapter-title-input lm-id-chapterTitleInput" id="chapterTitleInput" type="text" hidden
+            autocomplete="off" onkeydown="handleChapterTitleKey(event)" onblur="commitChapterTitleEdit()">
+        </div>
+        <div class="editor-info-meta">
+          <span id="save-status" class="lm-id-save-status" data-status-key="save" aria-live="polite"
+            aria-label="Saved"></span>
+          <div id="stat-bar" class="lm-id-stat-bar">
+            <span class="stat-pill" data-status-key="characters"><span class="sval lm-id-cc" id="cc">0</span><span
+                class="slbl lm-id-ccLbl" id="ccLbl">characters</span></span>
+            <span class="stat-pill" data-status-key="words"><span class="sval lm-id-wc" id="wc">0</span><span
+                class="slbl lm-id-wcLbl" id="wcLbl">words</span></span>
+            <span class="stat-pill" data-status-key="sentences"><span class="sval lm-id-sc" id="sc">0</span><span
+                class="slbl lm-id-scLbl" id="scLbl">sentences</span></span>
+            <span class="stat-pill" data-status-key="paragraphs"><span class="sval lm-id-pc" id="pc">0</span><span
+                class="slbl lm-id-pcLbl" id="pcLbl">paragraphs</span></span>
+            <span class="stat-pill" data-status-key="readingTime"><span class="sval lm-id-rt" id="rt">1</span><span
+                class="slbl lm-id-rtLbl" id="rtLbl">min</span></span>
+          </div>
+        </div>
+        <button class="editor-save-btn lm-id-saveBtn" id="saveBtn" type="button" onclick="manualSave()" title="Save"
+          data-lm-shortcut="Ctrl+S" aria-label="Save Chapter">
+          <span data-lm-icon="saveOutline"></span>
+          <span data-lm-icon="saveFilled"></span>
+        </button>
+        <button class="editor-promote-draft-btn lm-id-promoteDraftBtn" id="promoteDraftBtn" type="button"
+          onclick="promoteActiveDraftToChapter()" title="Save as Chapter" aria-label="Save draft as chapter">
+          <span data-lm-icon="promoteDraft"></span>
+        </button>
+        <button class="editor-chapter-edit-btn lm-id-chapterEditBtn" id="chapterEditBtn" type="button"
+          onclick="unlockChapterEditing()" title="Edit Chapter" aria-label="Edit chapter">
+          <span data-lm-icon="chapterEdit"></span>
+        </button>
+        <button class="editor-settings-btn lm-id-editorSettingsBtn" id="editorSettingsBtn" type="button"
+          aria-expanded="false" aria-controls="editorSettingsPanel" title="Editor settings"
+          aria-label="Editor settings">
+          <span data-lm-icon="settings"></span>
+        </button>
+        <div class="editor-settings-panel lm-id-editorSettingsPanel" id="editorSettingsPanel" hidden>
+          <div class="editor-settings-title lm-id-editorSettingsTitle" id="editorSettingsTitle">Editor Settings</div>
+          <button class="editor-setting-row lm-id-autosaveToggleBtn" id="autosaveToggleBtn" type="button">
+            <span id="autosaveSettingLabel" class="lm-id-autosaveSettingLabel">Autosave</span>
+            <span class="setting-state lm-id-autosaveSettingState" id="autosaveSettingState">On</span>
+          </button>
+          <button class="editor-setting-row lm-id-editorAutoScrollModeToggleBtn" id="editorAutoScrollModeToggleBtn"
+            type="button" aria-expanded="false" aria-controls="editorAutoScrollModeSelectorPanel">
+            <span id="editorAutoScrollModeLabel" class="lm-id-editorAutoScrollModeLabel">Auto scroll mode</span>
+            <span class="setting-state lm-id-editorAutoScrollModeState" id="editorAutoScrollModeState">Depth</span>
+          </button>
+          <div class="status-selector-panel editor-setting-options-panel lm-id-editorAutoScrollModeSelectorPanel"
+            id="editorAutoScrollModeSelectorPanel" hidden>
+            <button class="status-option-row editor-setting-option-row" type="button"
+              data-editor-auto-scroll-mode="depth">
+              <span id="editorAutoScrollModeDepthLabel" class="lm-id-editorAutoScrollModeDepthLabel">Depth marker</span>
+              <span class="setting-state lm-id-editorAutoScrollModeDepthState"
+                id="editorAutoScrollModeDepthState">On</span>
+            </button>
+            <button class="status-option-row editor-setting-option-row" type="button"
+              data-editor-auto-scroll-mode="band">
+              <span id="editorAutoScrollModeBandLabel" class="lm-id-editorAutoScrollModeBandLabel">Top / bottom
+                loop</span>
+              <span class="setting-state lm-id-editorAutoScrollModeBandState"
+                id="editorAutoScrollModeBandState">Off</span>
+            </button>
+            <button class="status-option-row editor-setting-option-row" id="editorAutoScrollEmptyOnlyToggleBtn"
+              type="button" data-editor-auto-scroll-empty-only="true">
+              <span id="editorAutoScrollEmptyOnlyLabel" class="lm-id-editorAutoScrollEmptyOnlyLabel">Paragraph
+                Follow</span>
+              <span class="setting-state lm-id-editorAutoScrollEmptyOnlyState"
+                id="editorAutoScrollEmptyOnlyState">On</span>
+            </button>
+            <div class="editor-setting-range-row editor-focus-speed-row lm-id-editorAutoScrollFocusSpeedRow">
+              <label class="editor-focus-speed-pill lm-id-editorAutoScrollFocusSpeedPill"
+                id="editorAutoScrollFocusSpeedPill" for="editorAutoScrollFocusSpeedRange">
+                <span class="editor-focus-speed-fill" aria-hidden="true"></span>
+                <span class="editor-focus-speed-label lm-id-editorAutoScrollFocusSpeedPillLabel"
+                  id="editorAutoScrollFocusSpeedPillLabel">Scrolling Speed</span>
+                <input id="editorAutoScrollFocusSpeedRange"
+                  class="editor-setting-range editor-focus-speed-range lm-id-editorAutoScrollFocusSpeedRange"
+                  type="range" min="0" max="100" step="1" value="50" aria-label="Scrolling Speed">
+              </label>
+              <button class="setting-state editor-setting-range-value lm-id-editorAutoScrollFocusSpeedValue"
+                id="editorAutoScrollFocusSpeedValue" type="button" aria-label="Edit scrolling speed">0.3 s</button>
+            </div>
+          </div>
+          <button class="editor-setting-row lm-id-findSettingsToggleBtn" id="findSettingsToggleBtn" type="button"
+            aria-expanded="false" aria-controls="findSettingsSelectorPanel">
+            <span id="findSettingsLabel" class="lm-id-findSettingsLabel">Find settings</span>
+            <span class="setting-state lm-id-findSettingsState" id="findSettingsState">Deep</span>
+          </button>
+          <div class="status-selector-panel editor-setting-options-panel lm-id-findSettingsSelectorPanel"
+            id="findSettingsSelectorPanel" hidden>
+            <button class="status-option-row editor-setting-option-row" type="button" data-find-mode="safe">
+              <span id="findModeSafeLabel" class="lm-id-findModeSafeLabel">Safe find</span>
+              <span class="setting-state lm-id-findModeSafeState" id="findModeSafeState">Off</span>
+            </button>
+            <button class="status-option-row editor-setting-option-row" type="button" data-find-mode="raw">
+              <span id="findModeRawLabel" class="lm-id-findModeRawLabel">Raw find</span>
+              <span class="setting-state lm-id-findModeRawState" id="findModeRawState">Off</span>
+            </button>
+            <button class="status-option-row editor-setting-option-row" type="button" data-find-mode="deep">
+              <span id="findModeDeepLabel" class="lm-id-findModeDeepLabel">Deep find</span>
+              <span class="setting-state lm-id-findModeDeepState" id="findModeDeepState">On</span>
+            </button>
+          </div>
+          <button class="editor-setting-row lm-id-replaceSettingsToggleBtn" id="replaceSettingsToggleBtn" type="button"
+            aria-expanded="false" aria-controls="replaceSettingsSelectorPanel">
+            <span id="replaceSettingsLabel" class="lm-id-replaceSettingsLabel">Replace settings</span>
+            <span class="setting-state lm-id-replaceSettingsState" id="replaceSettingsState">All</span>
+          </button>
+          <div class="status-selector-panel editor-setting-options-panel lm-id-replaceSettingsSelectorPanel"
+            id="replaceSettingsSelectorPanel" hidden>
+            <button class="status-option-row editor-setting-option-row" type="button" data-editor-replace-scope="after">
+              <span id="replaceScopeAfterLabel" class="lm-id-replaceScopeAfterLabel">Replace only after matches</span>
+              <span class="setting-state lm-id-replaceScopeAfterState" id="replaceScopeAfterState">Off</span>
+            </button>
+            <button class="status-option-row editor-setting-option-row" type="button"
+              data-editor-replace-scope="before">
+              <span id="replaceScopeBeforeLabel" class="lm-id-replaceScopeBeforeLabel">Replace only pre matches</span>
+              <span class="setting-state lm-id-replaceScopeBeforeState" id="replaceScopeBeforeState">Off</span>
+            </button>
+            <button class="status-option-row editor-setting-option-row" type="button" data-editor-replace-scope="all">
+              <span id="replaceScopeAllLabel" class="lm-id-replaceScopeAllLabel">Replace all matches</span>
+              <span class="setting-state lm-id-replaceScopeAllState" id="replaceScopeAllState">On</span>
+            </button>
+          </div>
+          <button class="editor-setting-row lm-id-statusVisibilityToggleBtn" id="statusVisibilityToggleBtn"
+            type="button" aria-expanded="false" aria-controls="statusSelectorPanel">
+            <span id="statusVisibilityLabel" class="lm-id-statusVisibilityLabel">Show statuses</span>
+            <span class="setting-state lm-id-statusVisibilityState" id="statusVisibilityState">On</span>
+          </button>
+          <div class="status-selector-panel lm-id-statusSelectorPanel" id="statusSelectorPanel" hidden>
+            <button class="status-option-row" type="button" data-status-option="save">
+              <span id="statusOptionSaveLabel" class="lm-id-statusOptionSaveLabel">Save status</span>
+              <span class="setting-state lm-id-statusOptionSaveState" id="statusOptionSaveState">On</span>
+            </button>
+            <button class="status-option-row" type="button" data-status-option="characters">
+              <span id="statusOptionCharactersLabel" class="lm-id-statusOptionCharactersLabel">Characters</span>
+              <span class="setting-state lm-id-statusOptionCharactersState" id="statusOptionCharactersState">On</span>
+            </button>
+            <button class="status-option-row" type="button" data-status-option="words">
+              <span id="statusOptionWordsLabel" class="lm-id-statusOptionWordsLabel">Words</span>
+              <span class="setting-state lm-id-statusOptionWordsState" id="statusOptionWordsState">On</span>
+            </button>
+            <button class="status-option-row" type="button" data-status-option="sentences">
+              <span id="statusOptionSentencesLabel" class="lm-id-statusOptionSentencesLabel">Sentences</span>
+              <span class="setting-state lm-id-statusOptionSentencesState" id="statusOptionSentencesState">On</span>
+            </button>
+            <button class="status-option-row" type="button" data-status-option="paragraphs">
+              <span id="statusOptionParagraphsLabel" class="lm-id-statusOptionParagraphsLabel">Paragraphs</span>
+              <span class="setting-state lm-id-statusOptionParagraphsState" id="statusOptionParagraphsState">On</span>
+            </button>
+            <button class="status-option-row" type="button" data-status-option="readingTime">
+              <span id="statusOptionReadingTimeLabel" class="lm-id-statusOptionReadingTimeLabel">Reading time</span>
+              <span class="setting-state lm-id-statusOptionReadingTimeState" id="statusOptionReadingTimeState">On</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div id="editor-wrap" class="lm-id-editor-wrap">
+        <button class="editor-focus-btn lm-id-focBtn" id="focBtn" type="button" onclick="toggleFocus()"
+          title="Focus mode" data-lm-shortcut="F10">
+          <span data-lm-icon="focusCorners"></span>
+        </button>
+        <div id="editor" class="lm-id-editor" contenteditable="true"
+          data-placeholder="Start writing here... your story is waiting." oninput="handleEditorContentInput(event)"
+          onkeyup="updateStats()">
+          <p><br></p>
+        </div>
+        <button id="editorAutoScrollDepthMarker"
+          class="editor-auto-scroll-depth-marker lm-id-editorAutoScrollDepthMarker" type="button" role="slider"
+          title="Auto scroll depth" aria-label="Adjust auto scroll depth" hidden>
+          <span data-lm-icon="autoScrollDepthArrow"></span>
+        </button>
+        <button id="editorAutoScrollTopMarker"
+          class="editor-auto-scroll-depth-marker editor-auto-scroll-band-marker is-band-top lm-id-editorAutoScrollTopMarker"
+          type="button" role="slider" data-auto-scroll-band-marker="top" title="Auto scroll top marker"
+          aria-label="Adjust auto scroll top marker" hidden>
+          <span data-lm-icon="autoScrollBandTopArrow"></span>
+        </button>
+        <button id="editorAutoScrollBottomMarker"
+          class="editor-auto-scroll-depth-marker editor-auto-scroll-band-marker is-band-bottom lm-id-editorAutoScrollBottomMarker"
+          type="button" role="slider" data-auto-scroll-band-marker="bottom" title="Auto scroll bottom marker"
+          aria-label="Adjust auto scroll bottom marker" hidden>
+          <span data-lm-icon="autoScrollBandBottomArrow"></span>
+        </button>
+        <div id="find-marker-rail" class="find-marker-rail lm-id-find-marker-rail" hidden aria-hidden="true"></div>
+        <div id="editor-scroll-thumb" class="editor-scroll-thumb lm-id-editor-scroll-thumb" hidden aria-hidden="true">
+        </div>
+        <div id="selectionOccurrenceBadge" class="selection-occurrence-badge lm-id-selectionOccurrenceBadge" hidden
+          aria-live="polite"></div>
+        <div id="focus-stats" class="lm-id-focus-stats" aria-live="polite" hidden>
+          <span class="stat-pill" data-status-key="words"><span class="sval lm-id-focusWc" id="focusWc">0</span><span
+              class="slbl lm-id-focusWcLbl" id="focusWcLbl">words</span></span>
+          <span class="stat-pill" data-status-key="characters"><span class="sval lm-id-focusCc"
+              id="focusCc">0</span><span class="slbl lm-id-focusCcLbl" id="focusCcLbl">characters</span></span>
+          <span class="stat-pill" data-status-key="paragraphs"><span class="sval lm-id-focusPc"
+              id="focusPc">0</span><span class="slbl lm-id-focusPcLbl" id="focusPcLbl">paragraphs</span></span>
+          <span class="stat-pill" data-status-key="sentences"><span class="sval lm-id-focusSc"
+              id="focusSc">0</span><span class="slbl lm-id-focusScLbl" id="focusScLbl">sentences</span></span>
+          <span class="stat-pill" data-status-key="readingTime"><span class="sval lm-id-focusRt"
+              id="focusRt">1</span><span class="slbl lm-id-focusRtLbl" id="focusRtLbl">min</span></span>
+        </div>
+      </div>
+      <div id="find-bar" class="lm-id-find-bar" hidden onkeydown="handleFindPanelKey(event)">
+        <div class="find-primary-row">
+          <div class="find-input-wrap">
+            <span class="find-input-icon">
+              <span data-lm-icon="search"></span>
+            </span>
+            <input type="text" id="findInp" class="lm-id-findInp" placeholder="Find..." oninput="doFind()">
+            <span class="match-count lm-id-matchCount" id="matchCount"></span>
+            <div class="find-input-nav">
+              <button class="fr-icon-btn find-nav-up lm-id-prevMatchBtn" id="prevMatchBtn" type="button"
+                onclick="prevMatch()" title="Previous (↑)" aria-label="Previous match">
+                <span data-lm-icon="chevronLeft" data-lm-icon-class="find-nav-icon find-nav-icon-up"></span>
+              </button>
+              <button class="fr-icon-btn find-nav-down lm-id-nextMatchBtn" id="nextMatchBtn" type="button"
+                onclick="nextMatch()" title="Next (↓)" aria-label="Next match">
+                <span data-lm-icon="chevronRight" data-lm-icon-class="find-nav-icon find-nav-icon-down"></span>
+              </button>
+            </div>
+          </div>
+          <div class="find-icon-actions">
+            <button class="fr-icon-btn replace-toggle-btn lm-id-replaceToggleBtn" id="replaceToggleBtn"
+              onclick="toggleReplacePanel()" data-lm-shortcut="Ctrl+H" aria-expanded="false" title="Show Replace">
+              <span data-lm-icon="replaceToggle"></span>
+            </button>
+            <button class="fr-icon-btn close-find-btn lm-id-closeFindBtn" id="closeFindBtn" onclick="toggleFind()"
+              title="Close" data-lm-shortcut="Esc">
+              <span data-lm-icon="closeCompact"></span>
+            </button>
+          </div>
+        </div>
+        <div class="replace-section lm-id-replaceSection" id="replaceSection">
+          <div class="find-input-wrap replace-input-wrap">
+            <span class="replace-input-icon">
+              <span data-lm-icon="replaceAction"></span>
+            </span>
+            <input type="text" id="replInp" class="lm-id-replInp" placeholder="Replace...">
+          </div>
+          <button class="fr-btn fr-icon-action-btn lm-id-replaceOneBtn" id="replaceOneBtn" type="button"
+            onclick="replaceOne()" title="Replace One" aria-label="Replace One">
+            <svg class="replace-one-action-svg" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <circle cx="10" cy="10" r="2.2982457" />
+              <path
+                d="m 18.5,10.75 c 0,-0.9999996 -1.5,-0.9999996 -1.5,0 0,1.656854 -1.343146,3 -3,3 H 3.434 L 4.557,12.502 C 5.2564046,11.757931 4.1106133,10.725279 3.443,11.498 l -2.25,2.5 C 0.9261495,14.294452 0.9380132,14.747907 1.22,15.03 l 2.25,2.25 c 0.7062416,0.658083 1.7180828,-0.353758 1.06,-1.06 L 3.56,15.25 H 14 c 2.485281,0 4.5,-2.014719 4.5,-4.5 z" />
+              <path
+                d="m 1.0004287,9.2500002 c 0,0.9999998 1.5000002,0.9999998 1.5000002,0 0,-1.6568541 1.343146,-3.0000001 3,-3.0000001 H 16.066428 l -1.123,1.248 c -0.699404,0.744069 0.446387,1.7767213 1.114,1.004 l 2.25,-2.5 c 0.26685,-0.296452 0.254987,-0.749907 -0.027,-1.032 l -2.25,-2.25 c -0.706242,-0.658083 -1.718083,0.353758 -1.06,1.06 l 0.97,0.97 H 5.5004289 c -2.485281,0 -4.5000002,2.014719 -4.5000002,4.5000001 z" />
+            </svg>
+          </button>
+          <button class="fr-btn fr-icon-action-btn lm-id-replaceAllBtn" id="replaceAllBtn" type="button"
+            onclick="replaceAll()" title="Replace All" aria-label="Replace All">
+            <svg class="replace-all-action-svg" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <path opacity="0.5"
+                d="m 5.4999998,6.1250002 a 0.75,0.75 0 0 1 0.75,-0.75 H 11.75 a 0.75,0.75 0 0 1 0,1.5 H 6.2499998 a 0.75,0.75 0 0 1 -0.75,-0.75 z m 2.75,6.9999998 a 0.75,0.75 0 0 0 0,1.5 H 13.75 a 0.75,0.75 0 0 0 0,-1.5 z" />
+              <g transform="translate(-0.74978598,-0.49311585)">
+                <path
+                  d="m 19.499572,11.243116 c 0,-1 -1.5,-1 -1.5,0 0,1.656854 -1.343146,3 -3,3 H 4.4335719 l 1.123,-1.248 c 0.6994041,-0.744069 -0.4463867,-1.776721 -1.114,-1.004 l -2.25,2.5 c -0.2668505,0.296452 -0.2549868,0.749907 0.027,1.032 l 2.25,2.25 c 0.7062416,0.658083 1.7180831,-0.353758 1.06,-1.06 l -0.97,-0.97 H 14.999572 c 2.485281,0 4.5,-2.014719 4.5,-4.5 z" />
+                <path
+                  d="m 2.0000006,9.7431158 c 0,1.0000002 1.5000002,1.0000002 1.5000002,0 0,-1.6568541 1.343146,-3.0000001 3.0000002,-3.0000001 H 17.066 l -1.123,1.248 c -0.699404,0.744069 0.446387,1.7767213 1.114,1.004 l 2.25,-2.5 c 0.26685,-0.296452 0.254987,-0.749907 -0.027,-1.032 l -2.25,-2.25 c -0.706242,-0.658083 -1.718083,0.353758 -1.06,1.06 l 0.97,0.97 H 6.500001 c -2.4852812,0 -4.5000004,2.014719 -4.5000004,4.5000001 z" />
+              </g>
+              <g transform="translate(-1.3983917,-0.47660828)">
+                <circle cx="8.0497074" cy="10.476608" r="0.75" />
+                <circle cx="10.648392" cy="10.476608" r="1.0789474" />
+                <circle cx="13.997076" cy="10.476608" r="1.5" />
+              </g>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div id="floating-tools" class="is-collapsed lm-id-floating-tools">
+        <div class="tool-dock-actions">
+          <button class="dock-drag-handle lm-id-toolDockDragHandle" id="toolDockDragHandle" type="button"
+            title="Drag tools" aria-label="Drag tools">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+          <button class="dock-action-btn lm-id-toolDockToggle" id="toolDockToggle" type="button"
+            onclick="toggleToolDock()" aria-expanded="false" title="Writing tools">
+            <span class="dock-action-icon">
+              <span data-lm-icon="tools"></span>
+            </span>
+          </button>
+          <button class="dock-action-btn lm-id-findBtn" id="findBtn" type="button" onclick="toggleFind()"
+            aria-expanded="false" data-lm-shortcut="Ctrl+F / Ctrl+H" title="Find / Replace">
+            <span class="dock-action-icon">
+              <span data-lm-icon="search"></span>
+            </span>
+          </button>
+        </div>
+        <div class="tool-dock-panel" aria-label="Writing tools">
+          <div class="tool-dock-mode-panel tool-dock-edit-panel" data-tool-dock-mode-panel="edit">
+            <div class="tool-dock-main-row">
+              <div class="tool-section">
+                <button class="tool-btn lm-id-boldBtn" id="boldBtn" type="button" onclick="fmt('bold')"
+                  data-format-command="bold" title="Bold" aria-pressed="false" data-lm-shortcut="Ctrl+B">
+                  <span data-lm-icon="bold"></span>
+                </button>
+                <button class="tool-btn lm-id-italicBtn" id="italicBtn" type="button" onclick="fmt('italic')"
+                  data-format-command="italic" aria-pressed="false" title="Italic" data-lm-shortcut="Ctrl+I">
+                  <span data-lm-icon="italic"></span>
+                </button>
+                <button class="tool-btn lm-id-underlineBtn" id="underlineBtn" type="button" onclick="fmt('underline')"
+                  data-format-command="underline" aria-pressed="false" title="Underline" data-lm-shortcut="Ctrl+U">
+                  <span data-lm-icon="underline"></span>
+                </button>
+              </div>
+              <div class="tool-section">
+                <button class="tool-btn lm-id-aL" id="aL" type="button" onclick="align('left')"
+                  data-align-command="left" title="Align left">
+                  <span data-lm-icon="alignLeft"></span>
+                </button>
+                <button class="tool-btn lm-id-aC" id="aC" type="button" onclick="align('center')"
+                  data-align-command="center" title="Align center">
+                  <span data-lm-icon="alignCenter"></span>
+                </button>
+                <button class="tool-btn lm-id-aR" id="aR" type="button" onclick="align('right')"
+                  data-align-command="right" title="Align right">
+                  <span data-lm-icon="alignRight"></span>
+                </button>
+                <button class="tool-btn active lm-id-aJ" id="aJ" type="button" onclick="align('justify')"
+                  data-align-command="justify" title="Justify">
+                  <span data-lm-icon="alignJustify"></span>
+                </button>
+              </div>
+              <div class="tool-section tool-section-spacing">
+                <div class="dock-spacing-control dock-custom-select" title="Line spacing">
+                  <span class="dock-spacing-icon">
+                    <span data-lm-icon="paragraphGap"></span>
+                  </span>
+                  <select class="dock-spacing-select dock-native-select lm-id-lineSpacingSel" id="lineSpacingSel"
+                    onchange="changeLineSpacing()" aria-label="Line spacing" tabindex="-1">
+                    <option value="" selected>None</option>
+                    <option value="1.6">1.6</option>
+                    <option value="1.8">1.8</option>
+                    <option value="1.92">1.9</option>
+                    <option value="2.1">2.1</option>
+                    <option value="2.3">2.3</option>
+                  </select>
+                  <button class="dock-select-trigger dock-spacing-trigger" type="button"
+                    onclick="toggleDockSelect('lineSpacingSel')" aria-expanded="false" aria-haspopup="listbox"
+                    title="Line spacing">
+                    <span class="dock-select-value lm-id-lineSpacingSelLabel" id="lineSpacingSelLabel">None</span>
+                    <span class="dock-select-caret"><span data-lm-icon="collapseChevron"
+                        data-lm-icon-class="dock-select-caret-svg lm-chevron-down"></span></span>
+                  </button>
+                  <div class="dock-select-menu dock-spacing-menu lm-id-lineSpacingSelMenu" id="lineSpacingSelMenu"
+                    role="listbox" hidden>
+                    <button class="dock-select-option" type="button" data-value="1.6"
+                      onclick="selectDockOption('lineSpacingSel', this.dataset.value)">1.6</button>
+                    <button class="dock-select-option" type="button" data-value="1.8"
+                      onclick="selectDockOption('lineSpacingSel', this.dataset.value)">1.8</button>
+                    <button class="dock-select-option" type="button" data-value="1.92"
+                      onclick="selectDockOption('lineSpacingSel', this.dataset.value)">1.9</button>
+                    <button class="dock-select-option" type="button" data-value="2.1"
+                      onclick="selectDockOption('lineSpacingSel', this.dataset.value)">2.1</button>
+                    <button class="dock-select-option" type="button" data-value="2.3"
+                      onclick="selectDockOption('lineSpacingSel', this.dataset.value)">2.3</button>
+                  </div>
+                </div>
+                <div class="dock-spacing-control dock-custom-select" title="Paragraph gap">
+                  <span class="dock-spacing-icon">
+                    <span data-lm-icon="paragraphMargin"></span>
+                  </span>
+                  <select class="dock-spacing-select dock-native-select lm-id-paragraphGapSel" id="paragraphGapSel"
+                    onchange="changeParagraphGap()" aria-label="Paragraph gap" tabindex="-1">
+                    <option value="" selected>None</option>
+                    <option value="0">0</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                  </select>
+                  <button class="dock-select-trigger dock-spacing-trigger" type="button"
+                    onclick="toggleDockSelect('paragraphGapSel')" aria-expanded="false" aria-haspopup="listbox"
+                    title="Paragraph gap">
+                    <span class="dock-select-value lm-id-paragraphGapSelLabel" id="paragraphGapSelLabel">None</span>
+                    <span class="dock-select-caret"><span data-lm-icon="collapseChevron"
+                        data-lm-icon-class="dock-select-caret-svg lm-chevron-down"></span></span>
+                  </button>
+                  <div class="dock-select-menu dock-spacing-menu lm-id-paragraphGapSelMenu" id="paragraphGapSelMenu"
+                    role="listbox" hidden>
+                    <button class="dock-select-option" type="button" data-value="0"
+                      onclick="selectDockOption('paragraphGapSel', this.dataset.value)">0</button>
+                    <button class="dock-select-option" type="button" data-value="1"
+                      onclick="selectDockOption('paragraphGapSel', this.dataset.value)">1</button>
+                    <button class="dock-select-option" type="button" data-value="2"
+                      onclick="selectDockOption('paragraphGapSel', this.dataset.value)">2</button>
+                    <button class="dock-select-option" type="button" data-value="3"
+                      onclick="selectDockOption('paragraphGapSel', this.dataset.value)">3</button>
+                  </div>
+                </div>
+              </div>
+              <div class="tool-section tool-section-font-toggle">
+                <button class="tool-btn font-tools-toggle lm-id-fontToolsToggle" id="fontToolsToggle" type="button"
+                  onclick="toggleFontTools()" aria-expanded="false" title="Font style and size">
+                  <span class="font-tools-icon">
+                    <span data-lm-icon="fontTools"></span>
+                  </span>
+                </button>
+              </div>
+            </div>
+            <div class="tool-section tool-section-wide font-tools-section lm-id-fontToolsSection" id="fontToolsSection"
+              hidden>
+              <div class="dock-custom-select dock-font-control">
+                <select class="dock-font-select dock-native-select lm-id-fontSel" id="fontSel" onchange="changeFont()"
+                  aria-label="Font family" tabindex="-1">
+                  <option value="'Lora',serif">Lora (Default)</option>
+                  <option value="'Times New Roman',serif">Times New Roman (EN)</option>
+                  <option value="Kokila,serif" id="kokilaOption" class="lm-id-kokilaOption">Kokila (Hindi)</option>
+                  <option value="'Playfair Display',serif">Playfair Display</option>
+                  <option value="'Georgia',serif">Georgia</option>
+                  <option value="'Courier New',monospace">Courier New</option>
+                </select>
+                <button class="dock-select-trigger dock-font-trigger" type="button"
+                  onclick="toggleDockSelect('fontSel')" aria-expanded="false" aria-haspopup="listbox"
+                  title="Font family">
+                  <span class="dock-select-value lm-id-fontSelLabel" id="fontSelLabel">Lora (Default)</span>
+                  <span class="dock-select-caret"><span data-lm-icon="collapseChevron"
+                      data-lm-icon-class="dock-select-caret-svg lm-chevron-down"></span></span>
+                </button>
+                <div class="dock-select-menu dock-font-menu lm-id-fontSelMenu" id="fontSelMenu" role="listbox" hidden>
+                  <button class="dock-select-option" type="button" data-value="'Lora',serif"
+                    onclick="selectDockOption('fontSel', this.dataset.value)">Lora (Default)</button>
+                  <button class="dock-select-option" type="button" data-value="'Times New Roman',serif"
+                    onclick="selectDockOption('fontSel', this.dataset.value)">Times New Roman (EN)</button>
+                  <button class="dock-select-option" type="button" data-value="Kokila,serif"
+                    onclick="selectDockOption('fontSel', this.dataset.value)">Kokila (Hindi)</button>
+                  <button class="dock-select-option" type="button" data-value="'Playfair Display',serif"
+                    onclick="selectDockOption('fontSel', this.dataset.value)">Playfair Display</button>
+                  <button class="dock-select-option" type="button" data-value="'Georgia',serif"
+                    onclick="selectDockOption('fontSel', this.dataset.value)">Georgia</button>
+                  <button class="dock-select-option" type="button" data-value="'Courier New',monospace"
+                    onclick="selectDockOption('fontSel', this.dataset.value)">Courier New</button>
+                </div>
+              </div>
+              <div class="dock-fsize-control" title="Font Size">
+                <input type="number" class="dock-fsize-inp lm-id-fsize" id="fsize" value="16" min="10" max="36"
+                  onchange="changeFontSize()" aria-label="Font Size">
+                <div class="dock-fsize-stepper" aria-label="Font size controls">
+                  <button class="dock-fsize-step" type="button" onclick="adjustDockFontSize(1)"
+                    aria-label="Increase font size"><span data-lm-icon="collapseChevron"
+                      data-lm-icon-class="step-chevron-svg lm-chevron-up"></span></button>
+                  <button class="dock-fsize-step" type="button" onclick="adjustDockFontSize(-1)"
+                    aria-label="Decrease font size"><span data-lm-icon="collapseChevron"
+                      data-lm-icon-class="step-chevron-svg lm-chevron-down"></span></button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tool-dock-mode-panel tool-dock-review-panel" data-tool-dock-mode-panel="review" hidden>
+            <div class="tool-dock-main-row tool-dock-review-row">
+              <div class="tool-section tool-section-spacing tool-section-review-spacing">
+                <div class="dock-spacing-control dock-custom-select" title="Paragraph margin">
+                  <span class="dock-spacing-icon">P</span>
+                  <select class="dock-spacing-select dock-native-select lm-id-paragraphMarginSel"
+                    id="paragraphMarginSel" onchange="changeParagraphMargin()" aria-label="Paragraph margin"
+                    tabindex="-1">
+                    <option value="" selected>None</option>
+                    <option value="0">0</option>
+                    <option value="8">8px</option>
+                    <option value="16">16px</option>
+                    <option value="24">24px</option>
+                  </select>
+                  <div class="dock-select-trigger dock-spacing-trigger" role="button" tabindex="0"
+                    onclick="toggleDockSelectFromTrigger(event, 'paragraphMarginSel')"
+                    onkeydown="handleDockSelectTriggerKey(event, 'paragraphMarginSel')" aria-expanded="false"
+                    aria-haspopup="listbox" title="Paragraph margin">
+                    <span class="dock-select-value dock-editable-value lm-id-paragraphMarginSelLabel"
+                      id="paragraphMarginSelLabel" contenteditable="true" inputmode="numeric" spellcheck="false"
+                      role="textbox" aria-label="Custom paragraph margin" onpointerdown="event.stopPropagation()"
+                      onclick="event.stopPropagation()" onfocus="selectParagraphMarginLabelText()"
+                      onblur="commitParagraphMarginLabelEdit()"
+                      onkeydown="handleParagraphMarginLabelKey(event)">None</span>
+                    <span class="dock-select-caret"><span data-lm-icon="collapseChevron"
+                        data-lm-icon-class="dock-select-caret-svg lm-chevron-down"></span></span>
+                  </div>
+                  <div class="dock-select-menu dock-spacing-menu lm-id-paragraphMarginSelMenu"
+                    id="paragraphMarginSelMenu" role="listbox" hidden>
+                    <button class="dock-select-option" type="button" data-value="0"
+                      onclick="selectDockOption('paragraphMarginSel', this.dataset.value)">0</button>
+                    <button class="dock-select-option" type="button" data-value="8"
+                      onclick="selectDockOption('paragraphMarginSel', this.dataset.value)">8px</button>
+                    <button class="dock-select-option" type="button" data-value="16"
+                      onclick="selectDockOption('paragraphMarginSel', this.dataset.value)">16px</button>
+                    <button class="dock-select-option" type="button" data-value="24"
+                      onclick="selectDockOption('paragraphMarginSel', this.dataset.value)">24px</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="note-panel" class="lm-id-note-panel">
+      <div id="note-header" class="lm-id-note-header note-header">
+        <div class="note-mode-actions">
+          <button class="note-mode-btn active lm-id-namingTabBtn" id="namingTabBtn" type="button"
+            onclick="switchSidePanel('naming')">
+            Naming
+          </button>
+          <button class="note-mode-btn lm-id-factsTabBtn" id="factsTabBtn" type="button"
+            onclick="switchSidePanel('facts')">
+            Facts
+          </button>
+          <button class="note-mode-btn note-ai-btn lm-id-aiBtn" id="aiBtn" type="button" onclick="switchSidePanel('ai')"
+            title="AI Assistant">AI</button>
+        </div>
+      </div>
+
+      <div id="tab-tags" class="side-workspace naming-workspace lm-id-tab-tags">
+        <div class="naming-intro">
+          <span class="naming-kicker">Story Memory</span>
+          <small id="namingPanelHint" class="lm-id-namingPanelHint">Categories are story-wide; names are shown for the
+            active chapter.</small>
+        </div>
+        <div class="naming-categories lm-id-tag-display" id="tag-display"></div>
+        <div class="add-category-form">
+          <div class="add-category-actions">
+            <button class="add-tag-btn lm-id-addCategoryBtn" id="addCategoryBtn" type="button"
+              onclick="toggleCategoryInputPanel(this)">+
+              Category</button>
+            <button class="category-manager-btn category-action-panel-anchor lm-id-categoryManagerBtn"
+              id="categoryManagerBtn" type="button" onclick="openCategoryManagerPanel(this)" title="Category settings"
+              aria-label="Category settings">
+              <span data-lm-icon="categorySettingsPanel"></span>
+            </button>
+          </div>
+          <div class="category-input-panel lm-id-categoryInputPanel" id="categoryInputPanel" hidden>
+            <div class="category-input-head">
+              <div>
+                <span class="name-panel-kicker lm-id-categoryInputKicker" id="categoryInputKicker">Category</span>
+              </div>
+              <button class="name-panel-close category-panel-close" type="button"
+                onclick="setCategoryInputPanel(false)">
+                <span data-lm-icon="close"></span>
+              </button>
+            </div>
+            <input type="text" id="newNamingCategoryInp" class="lm-id-newNamingCategoryInp"
+              placeholder="Add category..." onkeydown="handleCategoryInputKey(event)">
+            <textarea id="newNamingCategoryInfoInp" class="lm-id-newNamingCategoryInfoInp"
+              placeholder="What should this category remember?" onkeydown="handleCategoryInputKey(event)"></textarea>
+            <div class="category-input-actions">
+              <button class="panel-mini-btn lm-id-categoryInputCancelBtn" id="categoryInputCancelBtn" type="button"
+                onclick="setCategoryInputPanel(false)">Cancel</button>
+              <button class="add-tag-btn lm-id-categoryInputSaveBtn" id="categoryInputSaveBtn" type="button"
+                onclick="addNamingCategory()">Save Category</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-notes" class="side-workspace facts-workspace lm-id-tab-notes" hidden>
+        <div class="facts-search-wrap">
+          <input type="text" id="factSearchInp" class="lm-id-factSearchInp" placeholder="Search facts by keyword..."
+            oninput="updateFactSearch()">
+          <button class="fact-open-compose-btn lm-id-openFactComposerBtn" id="openFactComposerBtn" type="button"
+            onclick="openFactComposer(this)">+ Add Fact</button>
+        </div>
+        <div class="chapter-notes fact-list lm-id-facts-display" id="facts-display"></div>
+        <div class="fact-list-actions lm-id-factListActions" id="factListActions"></div>
+        <div class="fact-compose-popover lm-id-factComposerPanel" id="factComposerPanel" hidden>
+          <div class="fact-compose-head">
+            <div>
+              <span class="name-panel-kicker">Story Fact</span>
+            </div>
+            <button class="name-panel-close" type="button" onclick="closeFactComposer()">
+              <span data-lm-icon="close"></span>
+            </button>
+          </div>
+          <label class="fact-chapter-field">
+            <select id="factChapterSel" class="lm-id-factChapterSel"></select>
+          </label>
+          <input type="text" id="factKeywordInp" class="lm-id-factKeywordInp" placeholder="Fact keyword..."
+            onkeydown="handleFactInputKey(event)">
+          <textarea id="factDescriptionInp" class="lm-id-factDescriptionInp"
+            placeholder="Write the full fact description..." onkeydown="handleFactInputKey(event)"></textarea>
+          <button class="add-note-btn lm-id-addFactBtn" id="addFactBtn" type="button" onclick="addFact()">+ Add
+            Fact</button>
+        </div>
+      </div>
+
+      <div class="name-detail-popover lm-id-nameDetailPanel" id="nameDetailPanel" hidden>
+        <div class="name-detail-title-row">
+          <h4 id="nameDetailTitle" class="lm-id-nameDetailTitle">Name</h4>
+          <div class="name-detail-usage lm-id-nameDetailUsage" id="nameDetailUsage" title="In active chapter">0</div>
+          <button class="name-panel-close name-detail-close" type="button" onclick="closeNameDetailPanel()">
+            <span data-lm-icon="close"></span>
+          </button>
+        </div>
+        <div class="name-detail-description-wrap">
+          <p id="nameDetailDescription" class="lm-id-nameDetailDescription">Description</p>
+          <button class="name-detail-edit-btn" type="button"
+            onclick="event.stopPropagation(); openNameDetailEditPanel(this)" title="Edit name">
+            <span data-lm-icon="edit"></span>
+          </button>
+        </div>
+        <div class="name-detail-footer">
+          <div class="name-detail-edited-at lm-id-nameDetailEditedAt" id="nameDetailEditedAt" hidden></div>
+          <button class="name-detail-delete-btn" type="button"
+            onclick="event.stopPropagation(); openNameDeleteReminder()" title="Delete name" aria-label="Delete name">
+            <span data-lm-icon="delete"></span>
+          </button>
+        </div>
+        <div class="name-delete-reminder lm-id-nameDeleteReminder" id="nameDeleteReminder" hidden>
+          <strong id="nameDeleteReminderTitle" class="lm-id-nameDeleteReminderTitle">Delete this name?</strong>
+          <p id="nameDeleteReminderBody" class="lm-id-nameDeleteReminderBody">Are you sure you want to permanently
+            delete this name and its description?</p>
+          <div class="name-delete-reminder-actions">
+            <button class="name-delete-cancel-btn lm-id-nameDeleteCancelBtn" id="nameDeleteCancelBtn" type="button"
+              onclick="closeNameDeleteReminder()">Cancel</button>
+            <button class="name-delete-confirm-btn lm-id-nameDeleteConfirmBtn" id="nameDeleteConfirmBtn" type="button"
+              onclick="deleteActiveNamingEntry()">Delete</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="naming-entry-panel lm-id-namingEntryPanel" id="namingEntryPanel" hidden>
+        <div class="naming-entry-head">
+          <div>
+            <span class="name-panel-kicker lm-id-namingEntryCategory" id="namingEntryCategory">Category</span>
+            <h4 id="namingEntryTitle" class="lm-id-namingEntryTitle">Add Name</h4>
+          </div>
+          <button class="name-panel-close" type="button" onclick="closeNamingEntryPanel()">
+            <span data-lm-icon="close"></span>
+          </button>
+        </div>
+        <input type="text" id="namingNameInp" class="lm-id-namingNameInp" placeholder="Name">
+        <textarea id="namingDescriptionInp" class="lm-id-namingDescriptionInp"
+          placeholder="Description / details"></textarea>
+        <button class="add-tag-btn lm-id-namingSaveBtn" id="namingSaveBtn" type="button"
+          onclick="saveNamingEntry()">Save Name</button>
+      </div>
+
+      <div class="category-action-panel lm-id-categoryActionPanel" id="categoryActionPanel" hidden></div>
+
+      <div id="ai-panel" class="side-workspace ai-workspace lm-id-ai-panel" hidden>
+        <div class="ai-mode-switch" role="tablist" aria-label="AI panel mode">
+          <button id="aiNormalModeBtn" class="ai-mode-btn is-active" type="button" role="tab" aria-selected="true"
+            aria-controls="ai-normal-mode-panel" onclick="setAIMode('normal')">Normal</button>
+          <button id="aiToolModeBtn" class="ai-mode-btn" type="button" role="tab" aria-selected="false"
+            aria-controls="ai-tool-mode-panel" onclick="setAIMode('tool')">Choose AI Tool</button>
+        </div>
+        <div id="ai-normal-mode-panel" class="ai-mode-panel ai-manual-board-panel">
+          <div class="ai-manual-board">
+            <div class="ai-manual-board-head">
+              <span id="aiManualBoardKicker" class="ai-manual-board-kicker">Manual AI Board</span>
+              <strong id="aiManualBoardTitle">Your custom AI space</strong>
+            </div>
+            <div id="ai-normal-messages" class="ai-normal-messages lm-id-ai-normal-messages"></div>
+            <textarea id="ai-manual-board-input" class="ai-manual-board-input"
+              placeholder="Write or paste your manual AI board setup here..."
+              onkeydown="handleAINormalInputKey(event)"></textarea>
+            <div class="ai-normal-actions">
+              <button id="aiManualSaveBtn" class="ai-secondary-btn ai-manual-save-btn" type="button"
+                onclick="saveAIManualBoard()">Save</button>
+              <button id="aiNormalSendBtn" class="ai-primary-btn ai-normal-send-btn" type="button"
+                onclick="sendAINormalMessage()">Send</button>
+            </div>
+          </div>
+        </div>
+        <div id="ai-tool-mode-panel" class="ai-mode-panel" hidden>
+          <div class="ai-provider-desk">
+            <div class="ai-provider-row">
+              <label class="ai-provider-field">
+                <span id="aiProviderLabel">AI Tool</span>
+                <select id="ai-provider-select" class="lm-id-ai-provider-select"
+                  onchange="selectAIProvider(this.value)"></select>
+              </label>
+              <button id="aiConnectionToggle" class="ai-secondary-btn" type="button"
+                onclick="toggleAIConnectionPanel()">
+                Connect
+              </button>
+            </div>
+            <div id="ai-account-summary" class="ai-account-summary"></div>
+            <div id="ai-connection-panel" class="ai-connection-panel lm-id-ai-connection-panel" hidden>
+              <label>
+                <span id="aiAccountNameLabel">Account</span>
+                <input id="ai-account-name" type="text" placeholder="Account name or email">
+              </label>
+              <label>
+                <span id="aiAuthModeLabel">Connection</span>
+                <select id="ai-auth-mode">
+                  <option value="bridge">Local API bridge</option>
+                  <option value="oauth">OAuth bridge</option>
+                  <option value="manual">Manual / saved login note</option>
+                </select>
+              </label>
+              <label>
+                <span id="aiBridgeUrlLabel">Bridge URL</span>
+                <input id="ai-bridge-url" type="url" placeholder="http://localhost:8787/ai/chat">
+              </label>
+              <label>
+                <span id="aiTokenLabel">Token / key</span>
+                <input id="ai-api-token" type="password" autocomplete="off" placeholder="Optional, stored locally">
+              </label>
+              <p id="aiConnectionNote" class="ai-connection-note">
+                Use an official API or OAuth bridge for real account access. Password login is not stored here.
+              </p>
+              <div class="ai-connection-actions">
+                <button id="aiSaveConnectionBtn" class="ai-primary-btn" type="button" onclick="saveAIConnection()">Save
+                  Connection</button>
+                <button id="aiDisconnectBtn" class="ai-secondary-btn" type="button"
+                  onclick="disconnectAIProvider()">Disconnect</button>
+              </div>
+            </div>
+            <div class="ai-thread-row">
+              <button id="aiNewChatBtn" class="ai-secondary-btn" type="button" onclick="createAIThread()">New
+                Chat</button>
+              <select id="ai-thread-select" class="lm-id-ai-thread-select"
+                onchange="selectAIThread(this.value)"></select>
+              <button id="aiDeleteChatBtn" class="ai-icon-btn" type="button" onclick="deleteActiveAIThread()"
+                title="Delete chat" aria-label="Delete chat">
+                <span data-lm-icon="delete"></span>
+              </button>
+            </div>
+          </div>
+          <div id="ai-messages" class="lm-id-ai-messages">
+            <div class="ai-msg ai-bot lm-id-aiIntro" id="aiIntro">
+              Hello! I am your writing assistant. Choose a quick prompt below or type your own request.
+            </div>
+          </div>
+          <div id="ai-input-area" class="lm-id-ai-input-area">
+            <select id="ai-prompt-select" class="lm-id-ai-prompt-select" onchange="fillPrompt()"></select>
+            <textarea id="ai-input" class="lm-id-ai-input" placeholder="Ask AI something... (Enter = send)"></textarea>
+            <button id="ai-send" class="lm-id-ai-send" onclick="sendAI()">Send</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="side-panel-save-line" class="lm-id-side-panel-save-line" aria-live="polite" aria-label="Saved"></div>
+
+    </div>
+
+  </div>
+
+  <!-- Focus mode overlay -->
+  <div id="focus-overlay" class="lm-id-focus-overlay">
+    <div id="focusWidthControl" class="focus-width-control lm-id-focusWidthControl"
+      aria-label="Focus editor width control">
+      <input id="focusWidthRange" class="focus-width-range lm-id-focusWidthRange" type="range" min="0" max="100"
+        step="1" value="67" aria-label="Focus editor width">
+      <span id="focusWidthPercent" class="focus-width-percent lm-id-focusWidthPercent">67%</span>
+    </div>
+  </div>
+
+  <div id="project-gate" class="project-gate lm-id-project-gate">
+    <div class="project-gate-card">
+      <div class="project-gate-icon">📁</div>
+      <h2 id="projectGateTitle" class="lm-id-projectGateTitle">Choose a workspace folder</h2>
+      <p id="projectGateBody" class="lm-id-projectGateBody">
+        Select an empty local folder. Lekhak Manch will keep it empty until you create or open a story.
+      </p>
+      <button id="projectSelectBtn" class="lm-id-projectSelectBtn" type="button"
+        onclick="selectLocalProjectFolder()">Choose Folder</button>
+      <p class="project-gate-note lm-id-projectGateNote" id="projectGateNote">
+        Your browser will ask permission once. After that this project can reopen automatically.
+      </p>
+    </div>
+  </div>
+
+  <div id="chapter-edit-recovery-modal" class="chapter-edit-recovery-modal lm-id-chapter-edit-recovery-modal"
+    aria-hidden="true" onclick="handleChapterEditRecoveryBackdrop(event)">
+    <div class="chapter-edit-recovery-card" role="dialog" aria-modal="true" aria-labelledby="chapterEditRecoveryTitle">
+      <div class="chapter-edit-recovery-top">
+        <div class="chapter-edit-recovery-icon">
+          <span data-lm-icon="chapterEditRecovery"></span>
+        </div>
+        <span class="chapter-edit-recovery-kicker lm-id-chapterEditRecoveryKicker"
+          id="chapterEditRecoveryKicker">Recovery</span>
+      </div>
+      <div>
+        <h2 id="chapterEditRecoveryTitle" class="lm-id-chapterEditRecoveryTitle">Unsaved chapter edit found</h2>
+        <p id="chapterEditRecoveryBody" class="lm-id-chapterEditRecoveryBody">
+          A temporary edit draft exists for this chapter. Do you want to continue with those recent changes?
+        </p>
+      </div>
+      <div class="chapter-edit-recovery-actions">
+        <button class="chapter-edit-recovery-secondary lm-id-chapterEditRecoveryDiscardBtn"
+          id="chapterEditRecoveryDiscardBtn" type="button" onclick="discardChapterEditRecovery()">Discard
+          Changes</button>
+        <button class="chapter-edit-recovery-primary lm-id-chapterEditRecoveryUseBtn" id="chapterEditRecoveryUseBtn"
+          type="button" onclick="useChapterEditRecovery()">Use Recent Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="story-info-modal" class="story-info-modal lm-id-story-info-modal">
+    <div class="story-info-card">
+      <div class="story-info-head">
+        <div class="story-info-title-row">
+          <h2 id="storyInfoTitle" class="lm-id-storyInfoTitle">Information</h2>
+          <button class="story-info-edit-btn lm-id-storyInfoEditBtn" id="storyInfoEditBtn" type="button"
+            onclick="beginStoryInfoEdit()" title="Edit details" aria-label="Edit details">
+            <span class="story-info-edit-icon story-info-edit-icon-default" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="512" height="512">
+                <path
+                  d="M21,11.5V15H18a3,3,0,0,0-3,3v3H4.5A1.5,1.5,0,0,1,3,19.5V4.5A1.5,1.5,0,0,1,4.5,3h9A1.5,1.5,0,0,0,15,1.5h0A1.5,1.5,0,0,0,13.5,0h-9A4.5,4.5,0,0,0,0,4.5v15A4.5,4.5,0,0,0,4.5,24H16.484a4.5,4.5,0,0,0,3.181-1.317l3.017-3.017A4.5,4.5,0,0,0,24,16.485V11.5A1.5,1.5,0,0,0,22.5,10h0A1.5,1.5,0,0,0,21,11.5Z" />
+                <path
+                  d="M17.793,1.793l-12.5,12.5A1,1,0,0,0,5,15v3a1,1,0,0,0,1,1H9a1,1,0,0,0,.707-.293L22.038,6.376a3.379,3.379,0,0,0,.952-3.17A3.118,3.118,0,0,0,17.793,1.793Z" />
+              </svg>
+            </span>
+            <span class="story-info-edit-icon story-info-edit-icon-hover" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="512" height="512">
+                <path
+                  d="M18,19v4.7a4.968,4.968,0,0,0,1.879-1.164l2.656-2.658A4.954,4.954,0,0,0,23.7,18H19A1,1,0,0,0,18,19Z" />
+                <path
+                  d="M7.172,13.828A4,4,0,0,0,6,16.657V18H7.343a4,4,0,0,0,2.829-1.172L21.5,5.5a2.121,2.121,0,0,0-3-3Z" />
+                <path
+                  d="M24,4.952a4.087,4.087,0,0,1-1.08,1.962L11.586,18.243A5.961,5.961,0,0,1,7.343,20H6a2,2,0,0,1-2-2V16.657a5.957,5.957,0,0,1,1.758-4.242L17.086,1.086A4.078,4.078,0,0,1,19.037,0c-.013,0-.024,0-.037,0H5A5.006,5.006,0,0,0,0,5V19a5.006,5.006,0,0,0,5,5H16V19a3,3,0,0,1,3-3h5V5C24,4.984,24,4.969,24,4.952Z" />
+              </svg>
+            </span>
+          </button>
+        </div>
+        <div class="story-info-head-actions">
+          <span class="story-info-time lm-id-storyInfoTime" id="storyInfoTime" hidden></span>
+          <button class="story-info-close" type="button" onclick="closeStoryInfoModal()">
+            <span data-lm-icon="close"></span>
+          </button>
+        </div>
+      </div>
+
+      <div class="story-info-grid">
+        <label>
+          <span id="storyTitleLabel" class="lm-id-storyTitleLabel">Title</span>
+          <strong class="story-info-value lm-id-storyTitleValue" id="storyTitleValue"></strong>
+          <input type="text" id="storyTitleInp" class="lm-id-storyTitleInp" oninput="markStoryInfoEdited()">
+        </label>
+        <label>
+          <span id="storyAuthorLabel" class="lm-id-storyAuthorLabel">Author</span>
+          <strong class="story-info-value lm-id-storyAuthorValue" id="storyAuthorValue"></strong>
+          <input type="text" id="storyAuthorInp" class="lm-id-storyAuthorInp" oninput="markStoryInfoEdited()">
+        </label>
+        <label>
+          <span id="storyTypeLabel" class="lm-id-storyTypeLabel">Type</span>
+          <strong class="story-info-value lm-id-storyTypeValue" id="storyTypeValue"></strong>
+          <select id="storyTypeInp" class="lm-id-storyTypeInp" onchange="markStoryInfoEdited()">
+            <option value="novel">Novel</option>
+            <option value="story">Story</option>
+          </select>
+        </label>
+        <label>
+          <span id="storyLanguageLabel" class="lm-id-storyLanguageLabel">Language</span>
+          <strong class="story-info-value lm-id-storyLanguageValue" id="storyLanguageValue"></strong>
+          <select id="storyLanguageInp" class="lm-id-storyLanguageInp" onchange="markStoryInfoEdited()">
+            <option value="hi">Hindi</option>
+            <option value="en">English</option>
+          </select>
+        </label>
+      </div>
+
+      <label class="story-info-wide">
+        <span id="storySynopsisLabel" class="lm-id-storySynopsisLabel">Synopsis / Notes</span>
+        <div class="story-info-notes-value lm-id-storySynopsisValue" id="storySynopsisValue"></div>
+        <textarea id="storySynopsisInp" class="lm-id-storySynopsisInp" oninput="markStoryInfoEdited()"></textarea>
+      </label>
+
+      <div class="story-info-actions">
+        <button class="story-info-primary lm-id-storyInfoSaveBtn" id="storyInfoSaveBtn" type="button"
+          onclick="saveStoryInfo()" hidden>Save
+          Info</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/shared/js/00-icon-registry.js?v=20260608-collapse-chevron-icon"></script>
+  <script src="assets/shared/js/01-shortcut-tooltips.js?v=20260608-file-renames"></script>
+  <script src="assets/shared/js/02-floating-panel-focus-return.js?v=20260608-file-renames"></script>
+  <script src="assets/shared/js/03-theme-controller.js?v=20260608-file-renames"></script>
+  <script src="assets/shared/js/04-state-normalize.js?v=20260611-fact-description-history"></script>
+  <script src="assets/shared/js/05-floating-panel-positions.js?v=20260610-ai-connection-floating"></script>
+  <script src="assets/shared/js/06-project-storage.js?v=20260611-story-wide-name-mention-validation"></script>
+  <script
+    src="assets/pages/story-novel-project-editor/js/00-hindi-unicode-input.js?v=20260610-review-dock-panel"></script>
+  <script
+    src="assets/pages/story-novel-project-editor/js/01-editor-core.js?v=20260613-auto-scroll-caret-resume"></script>
+  <script
+    src="assets/pages/story-novel-project-editor/js/02-find-replace-ai-tools.js?v=20260611-replace-all-close-focus"></script>
+  <script
+    src="assets/pages/story-novel-project-editor/js/03-side-panels-naming-facts.js?v=20260611-fact-description-history"></script>
+  <script src="assets/pages/story-novel-project-editor/js/04-editor-boot.js?v=20260608-file-renames"></script>
+</body>
+
+</html>
