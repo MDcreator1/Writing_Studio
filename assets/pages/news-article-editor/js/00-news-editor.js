@@ -7,6 +7,7 @@
   let newsToolDockOpen = false;
   let newsFontToolsOpen = false;
   let newsToolDockDragState = null;
+  let newsAutoScrollSuspended = false;
 
   const statusLabels = {
     draft: 'Draft',
@@ -1005,8 +1006,30 @@
   function bindEditorInputEvents(root) {
     root.querySelectorAll('textarea, input, [contenteditable="true"]').forEach(element => {
       element.addEventListener('input', () => {
+        // यदि पेस्ट की वजह से ऑटो-स्क्रॉल सस्पेंडेड है, तो इसे स्किप करें
+        if (!newsAutoScrollSuspended) {
+          // यहाँ सिस्टम का मुख्य ऑटो-स्क्रॉल फंक्शन कॉल करें
+          if (typeof scheduleEditorCaretAutoScroll === 'function') {
+            scheduleEditorCaretAutoScroll();
+          }
+        }
         updateNewsStats();
         scheduleNewsSave();
+      });
+
+      element.addEventListener('paste', () => {
+        // पेस्ट करते ही स्क्रॉलिंग को अस्थायी रूप से रोकें
+        newsAutoScrollSuspended = true;
+      });
+
+      element.addEventListener('mousedown', () => {
+        // कहीं भी क्लिक करने पर ऑटो-स्क्रॉल फिर से चालू करें
+        newsAutoScrollSuspended = false;
+      });
+
+      element.addEventListener('keydown', () => {
+        // टाइपिंग शुरू करने या नेविगेशन कीज़ (Up/Down/Left/Right) दबाने पर स्क्रॉल चालू करें
+        newsAutoScrollSuspended = false;
       });
     });
   }

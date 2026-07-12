@@ -178,7 +178,7 @@
   box-shadow: none;
 }
 
-#rawChapterSection > .raw-chapters-toggle-btn {
+#rawChapterSection>.raw-chapters-toggle-btn {
   grid-column: 2;
   grid-row: 1;
   align-self: stretch;
@@ -188,23 +188,23 @@
   z-index: 1;
 }
 
-#rawChapterSection:has(.raw-chapters-toggle-btn[aria-expanded="true"]) > .raw-chapters-toggle-btn {
+#rawChapterSection:has(.raw-chapters-toggle-btn[aria-expanded="true"])>.raw-chapters-toggle-btn {
   padding-left: 15px;
   padding-right: 7px;
 }
 
-#rawChapterSection > .raw-chapters-toggle-btn .parts-collapse-label {
+#rawChapterSection>.raw-chapters-toggle-btn .parts-collapse-label {
   flex: 1 1 auto;
 }
 
-#rawChapterSection:hover > .raw-chapters-toggle-btn[aria-expanded="false"] .part-chevron,
-#rawChapterSection > .raw-chapters-toggle-btn[aria-expanded="false"]:hover .part-chevron,
-#rawChapterSection > .raw-chapters-toggle-btn[aria-expanded="false"]:focus-visible .part-chevron {
+#rawChapterSection:hover>.raw-chapters-toggle-btn[aria-expanded="false"] .part-chevron,
+#rawChapterSection>.raw-chapters-toggle-btn[aria-expanded="false"]:hover .part-chevron,
+#rawChapterSection>.raw-chapters-toggle-btn[aria-expanded="false"]:focus-visible .part-chevron {
   opacity: 1;
   transform: translateX(0) scale(1);
 }
 
-#rawChapterSection > .raw-chapter-list {
+#rawChapterSection>.raw-chapter-list {
   grid-column: 1 / -1;
   grid-row: 2;
   font-size: var(--font-size-base);
@@ -549,7 +549,7 @@
   margin-left: 11px;
 }
 
-.parts-heading > .parts-collapse-toggle-btn {
+.parts-heading>.parts-collapse-toggle-btn {
   grid-column: 2;
   grid-row: 1;
   width: 100%;
@@ -760,8 +760,12 @@
 .lm-id-chapter-panel.is-sidebar-list-expanded.is-draft-box-compact .draft-box {
   flex: 0 0 auto;
   height: var(--draft-compact-height, 190px);
-  max-height: var(--draft-compact-height, 190px);
 }
+
+.lm-id-chapter-panel.is-sidebar-list-expanded.is-draft-box-compact .trash-draft-box {
+  height: auto;
+}
+
 
 .lm-id-chapter-panel.is-sidebar-list-expanded.has-scrollable-sidebar-list .draft-box {
   flex-shrink: 0;
@@ -787,7 +791,7 @@
   min-height: 0;
 }
 
-.lm-id-chapter-panel.is-sidebar-list-expanded .raw-chapter-section.is-expanded{
+.lm-id-chapter-panel.is-sidebar-list-expanded .raw-chapter-section.is-expanded {
   padding-left: 0;
 }
 
@@ -1033,7 +1037,7 @@
   gap: 8px;
 }
 
-.draft-panel-actions > button {
+.draft-panel-actions>button {
   flex: 1 1 0;
   min-width: 0;
 }
@@ -1306,6 +1310,7 @@
   color: var(--accent);
   box-shadow: var(--lm-shadow-action-hover);
 }
+
 .lm-id-trashToggleBtn.panel-mini-btn.trash-toggle-btn {
   position: relative;
   width: auto;
@@ -1362,14 +1367,14 @@
   box-shadow: var(--lm-shadow-accent-soft);
 }
 
-.lm-id-chapter-list .part-section.is-expanded > .part-header {
+.lm-id-chapter-list .part-section.is-expanded>.part-header {
   position: sticky;
   top: 0;
   z-index: 4;
   backdrop-filter: var(--lm-floating-panel-backdrop-filter);
 }
 
-.lm-id-chapter-list .part-section.is-active-part.is-expanded > .part-header:hover {
+.lm-id-chapter-list .part-section.is-active-part.is-expanded>.part-header:hover {
   transform: none;
 }
 
@@ -1581,7 +1586,7 @@
   padding: 4px 5px 4px 10px;
 }
 
-.part-section.is-collapsed > .part-children,
+.part-section.is-collapsed>.part-children,
 .raw-chapter-section.is-collapsed .raw-chapter-list {
   display: none !important;
 }
@@ -1713,7 +1718,7 @@
   margin-bottom: 10px;
 }
 
-.chapter-title-summary > .part-details-kicker {
+.chapter-title-summary>.part-details-kicker {
   margin-bottom: 6px;
 }
 
@@ -1960,6 +1965,7 @@
 .draft-panel-actions .part-save-btn {
   font-size: var(--font-size-md);
 }
+
 .part-save-btn {
   background: var(--lm-bg-action-soft);
   color: var(--accent);
@@ -2084,7 +2090,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding-top:3px;
+  padding-top: 3px;
 }
 
 .add-chap {
@@ -2426,7 +2432,7 @@
 }
 
 .editor-chapter-edit-btn.is-unlocked,
-.editor-settings-btn[aria-expanded="true"]{
+.editor-settings-btn[aria-expanded="true"] {
   background: var(--bg-accent-gradient);
 }
 
@@ -2514,6 +2520,18 @@
   transition: background .16s ease, color .16s ease;
 }
 
+.copy-custom-settings-btn {
+  width: auto;
+  min-height: 36px;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .status-option-row+.status-option-row {
   margin-top: 3px;
 }
@@ -2545,6 +2563,9 @@
   background: var(--trash-ai-border);
   font-size: var(--font-size-sm);
   font-weight: 900;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
 }
 
 .editor-setting-range-row {
@@ -2672,7 +2693,7 @@
   font-weight: 900;
 }
 
-.editor-focus-speed-row > .editor-setting-range-value {
+.editor-focus-speed-row>.editor-setting-range-value {
   flex: 0 0 auto;
   width: auto;
   height: auto;
@@ -2684,12 +2705,12 @@
   cursor: pointer;
 }
 
-.editor-focus-speed-row > button.editor-setting-range-value {
+.editor-focus-speed-row>button.editor-setting-range-value {
   font: inherit;
   line-height: 1;
 }
 
-.editor-focus-speed-row > .editor-focus-speed-value-input {
+.editor-focus-speed-row>.editor-focus-speed-value-input {
   flex: 0 0 auto;
   width: 58px;
   min-width: 58px;
@@ -2786,7 +2807,8 @@
   transition: background .25s ease;
 }
 
-.editor-focus-btn {
+.editor-focus-btn,
+.editor-smart-copy-btn {
   position: absolute;
   top: 28px;
   right: calc(2.5% + 18px);
@@ -2808,8 +2830,54 @@
   transition: transform .16s ease, color .16s ease, border-color .16s ease;
 }
 
+.editor-smart-copy-btn {
+  top: auto;
+  right: auto;
+  bottom: 28px;
+  left: calc(2.5% + 12px);
+  padding: 0;
+}
+
+.editor-smart-copy-btn .smart-copy-svg {
+  display: block;
+  width: var(--svg-size-2xl);
+  height: var(--svg-size-2xl);
+  fill: currentColor;
+  pointer-events: none;
+  transition: transform .22s ease, opacity .18s ease;
+}
+
+.editor-smart-copy-btn.is-smart-copy-copied,
+.editor-smart-copy-btn.is-smart-copy-copied:hover,
+.editor-smart-copy-btn.is-smart-copy-copied:active {
+  color: var(--accent);
+}
+
+.editor-smart-copy-btn.is-smart-copy-copied .smart-copy-svg {
+  animation: smart-copy-fill-pop .42s ease both;
+}
+
+@keyframes smart-copy-fill-pop {
+  0% {
+    transform: scale(.74);
+    opacity: .4;
+  }
+
+  58% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
 .editor-focus-btn:hover,
-.editor-focus-btn.active {
+.editor-focus-btn.active,
+.editor-smart-copy-btn:hover,
+.editor-smart-copy-btn:active {
   transform: translateY(-1px);
   border-color: var(--accent);
   color: var(--ink);
@@ -3190,3 +3258,214 @@ body.focus-mode .lm-id-editor.is-focus-save-saved {
   display: none;
 }
 
+/* ============================================================
+   Review Mode: Margin Setting Row
+   ============================================================ */
+
+/* Wrapper for the five margin option buttons */
+.review-margin-options {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 8px;
+}
+
+/* Each individual margin value button */
+.review-margin-btn {
+  padding: 4px 8px;
+  min-width: 34px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs, 11px);
+  font-weight: 800;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  line-height: 1.4;
+}
+
+.review-margin-btn:hover {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+/* Active / selected state */
+.review-margin-btn.is-active,
+.review-margin-btn[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--lm-border-accent-color, var(--accent));
+  font-weight: 900;
+}
+
+/* ============================================================
+   Smart Paste & Smart Copy Settings Panel
+   ============================================================ */
+
+
+/* Shared toggle row (Smart Paste / Smart Copy header bar) */
+.smart-setting-toggle-row {
+  cursor: default;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Clickable label inside the toggle row */
+.smart-setting-toggle-label {
+  cursor: pointer;
+  flex-grow: 1;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+/* On/Off state button inside the toggle row */
+.smart-setting-state-btn {
+  cursor: pointer;
+  border: none;
+  margin-right: 12px;
+}
+
+/* ── Smart Paste ── */
+
+/* "Apply Styles Globally" container row */
+#applyStylesGloballyContainer {
+  padding: 0;
+  max-height: 36px;
+  display: flex;
+  align-items: center;
+  background: var(--accent-soft, rgba(224, 86, 253, 0.08));
+  border-radius: var(--radius-md);
+  border: none;
+  margin-top: 8px;
+}
+
+/* "Apply Styles Globally" main button */
+#applySmartPasteStylesGloballyBtn {
+  border: none;
+  flex-grow: 1;
+  padding: 10px 12px;
+  margin: 0;
+  text-align: left;
+  background: none;
+  font-weight: bold;
+  color: var(--accent, #e056fd);
+}
+
+
+/* Right divider + auto-apply button wrapper */
+.smart-paste-auto-apply-wrapper {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-left: 1px solid var(--border-color);
+  height: 100%;
+  min-height: 48px;
+}
+
+/* Auto-apply toggle button */
+#autoApplySmartPasteToggleBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 68px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  font-size: var(--font-size-sm);
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+#autoApplySmartPasteToggleBtn[aria-pressed="true"],
+#autoApplySmartPasteToggleBtn.is-active {
+  background: var(--trash-ai-border);
+  color: var(--color-on-accent);
+}
+
+#autoApplySmartPasteToggleBtn[aria-pressed="false"] {
+  color: var(--accent3);
+  background: var(--surface-soft);
+}
+
+/* "Auto" label inside the button */
+.smart-paste-auto-label {
+  font-size: 11px;
+  font-weight: 800;
+  opacity: 0.85;
+}
+
+/* "On / Off" state inside the auto-apply button */
+#autoApplySmartPasteState {
+  font-size: 11px;
+  font-weight: 900;
+}
+
+/* ── Smart Copy ── */
+
+/* Custom Gap row inside copySettingsSelectorPanel */
+#copyParagraphGapsRow {
+  cursor: default;
+  padding: 7px 6px 7px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* "Custom Gap" label */
+#copyParaModeGapLabel {
+  font-weight: 850;
+  font-size: var(--font-size-sm);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+/* Stepper control wrapper */
+#copyParagraphGapsRow .dock-fsize-control {
+  height: 27px;
+  margin-right: 4px;
+}
+
+/* Numeric input inside the stepper */
+#copyParagraphGapsInput {
+  font-size: 16px;
+}
+
+/* Stepper column width */
+#copyParagraphGapsRow .dock-fsize-stepper {
+  width: 14px;
+}
+
+/* Each stepper chevron button height */
+#copyParagraphGapsRow .dock-fsize-step {
+  height: 30px;
+}
+
+/* Chevron icon size */
+#copyParagraphGapsRow .dock-fsize-step span[data-lm-icon] {
+  width: 8px;
+  height: 8px;
+}
+
+/* Custom Gap On/Off toggle button */
+#copyParaModeGapState {
+  cursor: pointer;
+  border: none;
+  font-weight: 900;
+}
+
+/* One Paragraph Copy row */
+#copySettingsSelectorPanel [data-copy-para-mode="single"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}

@@ -1,4 +1,4 @@
-﻿function searchIconSvg() {
+function searchIconSvg() {
   return lmIcon('searchFull');
 }
 
@@ -2859,17 +2859,22 @@ function handleEditorPaste(event) {
   const clipboardData = event.clipboardData;
   if (!clipboardData) return;
   const plainText = clipboardData.getData('text/plain');
+  const html = clipboardData.getData('text/html');
   const editor = document.getElementById('editor');
-  if (editor && isEditorPlainTextMode(editor)) {
+  if (!editor) return;
+
+  if (isEditorPlainTextMode(editor)) {
+    const pasteText = typeof editorTextFromPaste === 'function'
+      ? editorTextFromPaste(plainText, html)
+      : plainText.replace(/\r\n?/g, '\n');
     event.preventDefault();
     editor.focus({ preventScroll: true });
-    if (insertPlainTextAtEditorSelection(editor, plainText.replace(/\r\n?/g, '\n'))) {
+    if (insertPlainTextAtEditorSelection(editor, pasteText)) {
       commitPlainTextEditorManualInput();
     }
     return;
   }
 
-  const html = clipboardData.getData('text/html');
   const pasteHTML = editorHTMLFromPaste(plainText, html);
   if (!pasteHTML) return;
 
@@ -3108,6 +3113,8 @@ async function init() {
     });
   }
   editor.addEventListener('paste', handleEditorPaste);
+  document.getElementById('smartCopyBtn')?.addEventListener('mousedown', event => event.preventDefault());
+  document.addEventListener('copy', handleEditorCopy, true);
   editor.addEventListener('drop', guardLockedEditorMutation);
   editor.addEventListener('wheel', handleEditorManualScrollIntent, { passive: true });
   editor.addEventListener('touchstart', handleEditorManualScrollIntent, { passive: true });
@@ -3213,6 +3220,76 @@ async function init() {
   document.querySelectorAll('[data-status-option]').forEach(statusOptionBtn => {
     statusOptionBtn.addEventListener('click', () => toggleSingleStatusSetting(statusOptionBtn.dataset.statusOption));
   });
+  // Paste & Copy settings
+  document.getElementById('pasteSettingsToggleBtn')?.addEventListener('click', () => { if (typeof togglePasteSettingsPanel === 'function') togglePasteSettingsPanel(); });
+  document.getElementById('pasteSettingsState')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (typeof togglePasteSettings === 'function') togglePasteSettings();
+  });
+  document.getElementById('autoApplySmartPasteToggleBtn')?.addEventListener('click', () => { if (typeof toggleSmartPasteAutoApply === 'function') toggleSmartPasteAutoApply(); });
+  document.getElementById('applySmartPasteStylesGloballyBtn')?.addEventListener('click', () => { if (typeof applySmartPasteStylesGlobally === 'function') applySmartPasteStylesGlobally(); });
+  document.getElementById('copySettingsToggleBtn')?.addEventListener('click', () => { if (typeof toggleCopySettingsPanel === 'function') toggleCopySettingsPanel(); });
+  document.getElementById('copySettingsState')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (typeof toggleCopySettings === 'function') toggleCopySettings();
+  });
+  document.querySelectorAll('[data-copy-para-mode]').forEach(btn => {
+    btn.addEventListener('click', () => { if (typeof setCopyParaMode === 'function') setCopyParaMode(btn.dataset.copyParaMode); });
+  });
+
+  // Collapse Smart Paste / Smart Copy panels when the user clicks anywhere
+  // inside editorSettingsPanel that is outside those sub-panels (same behaviour
+  // as all other mutually-exclusive settings sub-panels).
+  document.getElementById('editorSettingsPanel')?.addEventListener('pointerdown', event => {
+    const pastePanel = document.getElementById('smartPasteOptionsPanel');
+    const copyPanel  = document.getElementById('copySettingsSelectorPanel');
+    const pasteRow   = document.getElementById('pasteSettingsToggleBtn');
+    const copyRow    = document.getElementById('copySettingsToggleBtn');
+
+    const insidePaste = pastePanel?.contains(event.target) || pasteRow?.contains(event.target);
+    const insideCopy  = copyPanel?.contains(event.target)  || copyRow?.contains(event.target);
+
+    let changed = false;
+    if (!insidePaste && typeof isPasteSettingsSelectorOpen !== 'undefined' && isPasteSettingsSelectorOpen) {
+      isPasteSettingsSelectorOpen = false;
+      if (typeof stopSmartPasteTimeTick === 'function') stopSmartPasteTimeTick();
+      changed = true;
+    }
+    if (!insideCopy && typeof isCopySettingsSelectorOpen !== 'undefined' && isCopySettingsSelectorOpen) {
+      isCopySettingsSelectorOpen = false;
+      changed = true;
+    }
+    if (changed) {
+      if (typeof updatePasteSettingsUI === 'function') updatePasteSettingsUI();
+      if (typeof updateCopySettingsUI  === 'function') updateCopySettingsUI();
+      if (typeof updateEditorSettingsUI === 'function') updateEditorSettingsUI();
+    }
+  });
+  (function initPasteCopyRangeListeners() {
+    const smartPasteRangeBindings = [
+      ['smartPasteLineSpacingRange', 'setSmartPasteLineSpacing'],
+      ['smartPasteParagraphGapRange', 'setSmartPasteParagraphGap'],
+      ['smartPasteFontSizeRange', 'setSmartPasteFontSize']
+    ];
+    smartPasteRangeBindings.forEach(([rangeId, setterName]) => {
+      const range = document.getElementById(rangeId);
+      const setter = window[setterName] || (typeof globalThis !== 'undefined' ? globalThis[setterName] : null);
+      if (!range || typeof setter !== 'function') return;
+      range.addEventListener('input', () => setter(range.value));
+      range.addEventListener('change', () => setter(range.value));
+    });
+    const cgRange = document.getElementById('copyParagraphGapsRange');
+    if (cgRange) {
+      cgRange.addEventListener('input', () => {
+        const val = Number(cgRange.value) || 0;
+        if (typeof copyParagraphGaps !== 'undefined') copyParagraphGaps = val;
+        const el = document.getElementById('copyParagraphGapsValue');
+        if (el) el.textContent = String(val);
+        if (typeof syncCopyGapsRangeFill === 'function') syncCopyGapsRangeFill(cgRange);
+      });
+      cgRange.addEventListener('change', () => { if (typeof setCopyParagraphGaps === 'function') setCopyParagraphGaps(cgRange.value); });
+    }
+  })();
   document.getElementById('fsize')?.addEventListener('blur', closeToolDockAfterControlBlur);
   document.getElementById('fontSel')?.addEventListener('blur', closeToolDockAfterControlBlur);
   document.getElementById('lineSpacingSel')?.addEventListener('blur', closeToolDockAfterControlBlur);
@@ -3654,6 +3731,8 @@ function loadFromStorage() {
     isDark = themeMode === 'dark';
     if (typeof applyDark === 'function') applyDark();
     else window.applyLekhakThemeClasses?.(themeMode);
+    if (typeof loadPasteCopySettings === 'function') loadPasteCopySettings();
+    if (typeof scheduleSmartPasteAutoApply === 'function') scheduleSmartPasteAutoApply();
   } catch (e) {
   }
 }
@@ -3925,6 +4004,7 @@ function syncActiveEditorEditState() {
   const titleInput = document.getElementById('chapterTitleInput');
   const saveButton = document.getElementById('saveBtn');
   const focusButton = document.getElementById('focBtn');
+  const smartCopyButton = document.getElementById('smartCopyBtn');
   const toolDockToggle = document.getElementById('toolDockToggle');
   const floatingTools = document.getElementById('floating-tools');
   const editorInfoPanel = document.getElementById('editor-info-panel');
@@ -3962,6 +4042,12 @@ function syncActiveEditorEditState() {
     focusButton.setAttribute('aria-hidden', String(trashMode));
   }
 
+  if (smartCopyButton) {
+    smartCopyButton.hidden = trashMode;
+    smartCopyButton.disabled = trashMode;
+    smartCopyButton.setAttribute('aria-hidden', String(trashMode));
+  }
+
   if (toolDockToggle) {
     toolDockToggle.hidden = trashMode;
     toolDockToggle.disabled = trashMode;
@@ -3988,6 +4074,7 @@ function syncActiveEditorEditState() {
   syncFocusSaveStatusIndicator();
   positionEditorAutoScrollDepthMarker();
   if (typeof syncSidePanelAvailability === 'function') syncSidePanelAvailability();
+  if (typeof updatePasteSettingsUI === 'function') updatePasteSettingsUI();
 }
 
 async function unlockChapterEditing() {
@@ -9373,4 +9460,201 @@ function handleEditorContentInput() {
   }
   updateStats();
   if (!isApplyingEditorHistorySnapshot) scheduleEditorHistorySnapshot('input');
+}
+
+// ── Smart Copy ──────────────────────────────────────────────────────────────
+const SMART_COPY_DEFAULT_ICON = 'smartCopyDefault';
+const SMART_COPY_SUCCESS_ICON = 'smartCopySuccess';
+const SMART_COPY_SUCCESS_RESET_MS = 3500;
+let smartCopyIconResetTimer = null;
+
+function setSmartCopyIcon(iconName = SMART_COPY_DEFAULT_ICON) {
+  const button = document.getElementById('smartCopyBtn');
+  if (!button || typeof window.lmIcon !== 'function') return;
+
+  const isCopied = iconName === SMART_COPY_SUCCESS_ICON;
+  button.innerHTML = window.lmIcon(iconName);
+  button.classList.toggle('is-smart-copy-copied', isCopied);
+}
+
+function showSmartCopySuccess() {
+  clearTimeout(smartCopyIconResetTimer);
+  setSmartCopyIcon(SMART_COPY_SUCCESS_ICON);
+  smartCopyIconResetTimer = setTimeout(() => {
+    smartCopyIconResetTimer = null;
+    setSmartCopyIcon(SMART_COPY_DEFAULT_ICON);
+  }, SMART_COPY_SUCCESS_RESET_MS);
+}
+
+function handleSmartCopySuccess(message = 'Copied!') {
+  showSmartCopySuccess();
+  showSmartCopyToast(message);
+}
+
+function editorSelectionIntersectsEditor(range, editor) {
+  if (!range || !editor) return false;
+  try {
+    if (range.intersectsNode(editor)) return true;
+  } catch (error) {
+    // Fall through to node containment checks.
+  }
+  const startNode = range.startContainer?.nodeType === Node.ELEMENT_NODE
+    ? range.startContainer
+    : range.startContainer?.parentNode;
+  const endNode = range.endContainer?.nodeType === Node.ELEMENT_NODE
+    ? range.endContainer
+    : range.endContainer?.parentNode;
+  return Boolean(startNode && editor.contains(startNode)) || Boolean(endNode && editor.contains(endNode));
+}
+
+function selectedEditorCopyPayload() {
+  const editor = document.getElementById('editor');
+  const selection = window.getSelection?.();
+  if (!editor || !selection || !selection.rangeCount || selection.isCollapsed) return null;
+
+  const range = selection.getRangeAt(0);
+  if (!editorSelectionIntersectsEditor(range, editor)) return null;
+
+  const plainText = selection.toString().replace(/\r\n?/g, '\n').trimEnd();
+  if (!plainText.trim()) return null;
+
+  const holder = document.createElement('div');
+  holder.appendChild(range.cloneContents());
+  holder.querySelectorAll?.('script, style, meta, link').forEach(node => node.remove());
+  unwrapHighlights(holder);
+  normalizeEditorGapMarkers(holder);
+
+  let htmlText = holder.innerHTML.trim();
+  if (!htmlText || !/<[a-z][\s\S]*>/i.test(htmlText)) {
+    htmlText = typeof textToEditorHTML === 'function'
+      ? textToEditorHTML(plainText)
+      : escapeHtml(plainText).replace(/\n/g, '<br>');
+  }
+
+  return { plainText, htmlText };
+}
+
+function writeSmartCopyPayload(payload) {
+  const plainText = payload?.plainText || '';
+  if (!plainText) return false;
+  const htmlText = payload.htmlText || (typeof textToEditorHTML === 'function' ? textToEditorHTML(plainText) : '');
+
+  if (navigator.clipboard && window.ClipboardItem && htmlText) {
+    const blob = new Blob([htmlText], { type: 'text/html' });
+    const blobPlain = new Blob([plainText], { type: 'text/plain' });
+    navigator.clipboard.write([new ClipboardItem({ 'text/html': blob, 'text/plain': blobPlain })])
+      .then(() => handleSmartCopySuccess('Copied!'))
+      .catch(() => fallbackSmartCopy(plainText));
+  } else {
+    fallbackSmartCopy(plainText);
+  }
+  return true;
+}
+
+function writeSelectedEditorCopyEvent(event, payload) {
+  if (!event?.clipboardData || !payload?.plainText) return false;
+  event.preventDefault();
+  event.clipboardData.setData('text/plain', payload.plainText);
+  if (payload.htmlText) event.clipboardData.setData('text/html', payload.htmlText);
+  handleSmartCopySuccess('Copied!');
+  return true;
+}
+
+function handleEditorCopy(event) {
+  if (typeof isCopySettingsEnabled !== 'undefined' && !isCopySettingsEnabled) {
+    return; // browser default copy
+  }
+  const payload = selectedEditorCopyPayload();
+  if (payload) writeSelectedEditorCopyEvent(event, payload);
+}
+
+function doSmartCopy() {
+  const editor = document.getElementById('editor');
+  if (!editor) return;
+
+  const selectedPayload = selectedEditorCopyPayload();
+  if (selectedPayload) {
+    writeSmartCopyPayload(selectedPayload);
+    return;
+  }
+
+  const enabled = typeof isCopySettingsEnabled === 'undefined' || isCopySettingsEnabled;
+  const mode = enabled ? ((typeof copyParaMode !== 'undefined') ? copyParaMode : 'gap') : 'gap';
+
+  // Collect all paragraph text content
+  const paragraphs = Array.from(editor.querySelectorAll('p'))
+    .filter(p => !p.dataset.editorParagraphGap && !p.classList.contains('editor-paragraph-gap-br') && !p.dataset.fileParagraphGap);
+  const plainModeParts = (!paragraphs.length && isEditorPlainTextMode(editor))
+    ? cleanPlainTextEditorValue(editor).split(/\n+/).map(part => part.trim()).filter(Boolean)
+    : [];
+
+  let plainText = '';
+  let htmlText = '';
+
+  if (plainModeParts.length) {
+    if (mode === 'single') {
+      plainText = plainModeParts.join('\n');
+      htmlText = `<p>${plainModeParts.map(part => escapeHtml(part)).join('<br>')}</p>`;
+    } else {
+      const gaps = enabled ? ((typeof copyParagraphGaps !== 'undefined') ? copyParagraphGaps : 1) : 1;
+      const gapHtml = gaps > 0 ? Array(gaps).fill('<p><br></p>').join('\n') : '';
+      const gapPlain = '\n'.repeat(gaps + 1);
+      htmlText = plainModeParts.map(part => `<p>${escapeHtml(part)}</p>`).join(gaps > 0 ? '\n' + gapHtml + '\n' : '\n');
+      plainText = plainModeParts.join(gapPlain);
+    }
+  } else if (mode === 'single') {
+    // Join all paragraph text inside a single <p> separated by <br>
+    const combinedHtml = paragraphs.map(p => p.innerHTML || p.textContent || '').join('<br>');
+    const combinedPlain = paragraphs.map(p => p.textContent || '').join('\n');
+    plainText = combinedPlain;
+    htmlText = `<p>${combinedHtml}</p>`;
+  } else {
+    // Each paragraph as separate <p> with custom empty lines gap between them
+    const gaps = enabled ? ((typeof copyParagraphGaps !== 'undefined') ? copyParagraphGaps : 1) : 1;
+    const plainParts = paragraphs.map(p => p.textContent || '');
+    if (gaps === 0) {
+      htmlText = paragraphs.map(p => p.outerHTML).join('\n');
+      plainText = plainParts.join('\n');
+    } else {
+      const gapHtml = Array(gaps).fill('<p><br></p>').join('\n');
+      const gapPlain = '\n'.repeat(gaps + 1);
+      htmlText = paragraphs.map(p => p.outerHTML).join('\n' + gapHtml + '\n');
+      plainText = plainParts.join(gapPlain);
+    }
+  }
+
+  if (!plainText) return;
+
+  writeSmartCopyPayload({ plainText, htmlText });
+}
+
+function fallbackSmartCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch (e) { /* ignore */ }
+  document.body.removeChild(ta);
+  handleSmartCopySuccess('Copied!');
+}
+
+function showSmartCopyToast(msg) {
+  let toast = document.getElementById('smartCopyToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'smartCopyToast';
+    toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--accent,#6c63ff);color:#fff;padding:8px 20px;border-radius:20px;font-size:14px;font-weight:700;z-index:9999;pointer-events:none;transition:opacity .3s ease;';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.style.opacity = '1';
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => { toast.style.opacity = '0'; }, 1600);
+}
+
+// ── Smart Paste ─────────────────────────────────────────────────────────────
+function handleSmartPaste(event) {
+  handleEditorPaste(event);
 }

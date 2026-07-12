@@ -23,6 +23,21 @@ function textToEditorHTML(value) {
     .join('');
 }
 
+function storageWordCountFromText(value) {
+  const normalizedValue = String(value || '').replace(/\u00a0/g, ' ').trim();
+  return normalizedValue ? normalizedValue.split(/\s+/).length : 0;
+}
+
+function storageWordCountFromEditorHTML(value) {
+  if (typeof htmlToCountableText === 'function' && typeof countWordsFromText === 'function') {
+    return countWordsFromText(htmlToCountableText(value));
+  }
+
+  const root = document.createElement('div');
+  root.innerHTML = String(value || '');
+  return storageWordCountFromText(root.textContent || '');
+}
+
 function splitContinuousPasteText(value) {
   const cleanedText = String(value || '').replace(/\s+/g, ' ').trim();
   if (!cleanedText) return [];
@@ -100,6 +115,74 @@ function pastedHtmlToParagraphs(html) {
   return trimPasteBoundaryGaps(entries);
 }
 
+function editorPasteEntriesFromClipboard(plainText, html) {
+  const htmlParagraphs = pastedHtmlToParagraphs(html);
+  const textParagraphs = pastedTextToParagraphs(plainText);
+  const htmlHasGaps = htmlParagraphs.some(isPasteGapEntry);
+  const textHasGaps = textParagraphs.some(isPasteGapEntry);
+  return htmlParagraphs.length > 1 && (htmlHasGaps || !textHasGaps)
+    ? htmlParagraphs
+    : textParagraphs;
+}
+
+function normalizeSmartPasteLineSpacing(value) {
+  const max = typeof SMART_PASTE_LINE_SPACING_MAX === 'number' ? SMART_PASTE_LINE_SPACING_MAX : 3;
+  return Math.max(0, Math.min(max, Math.round(Number(value) * 10) / 10));
+}
+
+function normalizeSmartPasteParagraphGap(value) {
+  const max = typeof SMART_PASTE_PARAGRAPH_GAP_MAX === 'number' ? SMART_PASTE_PARAGRAPH_GAP_MAX : 3;
+  return Math.max(0, Math.min(max, Math.round(Number(value) || 0)));
+}
+
+function normalizeSmartPasteFontSize(value) {
+  const max = typeof SMART_PASTE_FONT_SIZE_MAX === 'number' ? SMART_PASTE_FONT_SIZE_MAX : 36;
+  return Math.max(0, Math.min(max, Math.round(Number(value) || 0)));
+}
+
+function isSmartPasteFormattingEnabled() {
+  return typeof isPasteSettingsEnabled !== 'undefined' && Boolean(isPasteSettingsEnabled);
+}
+
+function smartPasteTextEntries(entries) {
+  return trimPasteBoundaryGaps(entries)
+    .filter(entry => !isPasteGapEntry(entry))
+    .map(entry => typeof entry === 'string' ? entry : entry?.text)
+    .map(value => String(value || '').replace(/\u00a0/g, ' ').trim())
+    .filter(Boolean);
+}
+
+function smartPasteParagraphStyleAttribute() {
+  const styles = [];
+  const fontSize = normalizeSmartPasteFontSize(typeof smartPasteFontSize === 'undefined' ? 0 : smartPasteFontSize);
+  const lineSpacing = normalizeSmartPasteLineSpacing(typeof smartPasteLineSpacing === 'undefined' ? 0 : smartPasteLineSpacing);
+  if (fontSize > 0) styles.push(`font-size:${fontSize}px`);
+  if (lineSpacing > 0) styles.push(`line-height:${lineSpacing}`);
+  return styles.length ? ` style="${styles.join(';')}"` : '';
+}
+
+function smartPasteGapHTML(gapCount) {
+  const safeGap = normalizeSmartPasteParagraphGap(gapCount);
+  return Array.from({ length: safeGap }, () => editorFileGapHTML()).join('');
+}
+
+function smartPasteEntriesToEditorHTML(entries) {
+  const textEntries = smartPasteTextEntries(entries);
+  if (!textEntries.length) return '';
+  const styleAttr = smartPasteParagraphStyleAttribute();
+  const separator = smartPasteGapHTML(typeof smartPasteParagraphGap === 'undefined' ? 0 : smartPasteParagraphGap);
+  return textEntries
+    .map(textValue => `<p${styleAttr}>${escapeHtml(textValue).replace(/\n/g, '<br>')}</p>`)
+    .join(separator);
+}
+
+function smartPasteEntriesToPlainText(entries, fallbackText = '') {
+  const textEntries = smartPasteTextEntries(entries);
+  if (!textEntries.length) return String(fallbackText || '').replace(/\r\n?/g, '\n');
+  const gap = normalizeSmartPasteParagraphGap(typeof smartPasteParagraphGap === 'undefined' ? 0 : smartPasteParagraphGap);
+  return textEntries.join('\n'.repeat(gap + 1));
+}
+
 function paragraphsToEditorHTML(entries) {
   return (Array.isArray(entries) ? entries : [])
     .map(entry => {
@@ -112,14 +195,17 @@ function paragraphsToEditorHTML(entries) {
 }
 
 function editorHTMLFromPaste(plainText, html) {
-  const htmlParagraphs = pastedHtmlToParagraphs(html);
-  const textParagraphs = pastedTextToParagraphs(plainText);
-  const htmlHasGaps = htmlParagraphs.some(isPasteGapEntry);
-  const textHasGaps = textParagraphs.some(isPasteGapEntry);
-  const paragraphs = htmlParagraphs.length > 1 && (htmlHasGaps || !textHasGaps)
-    ? htmlParagraphs
-    : textParagraphs;
-  return paragraphsToEditorHTML(paragraphs);
+  const paragraphs = editorPasteEntriesFromClipboard(plainText, html);
+  return isSmartPasteFormattingEnabled()
+    ? smartPasteEntriesToEditorHTML(paragraphs)
+    : paragraphsToEditorHTML(paragraphs);
+}
+
+function editorTextFromPaste(plainText, html) {
+  const paragraphs = editorPasteEntriesFromClipboard(plainText, html);
+  return isSmartPasteFormattingEnabled()
+    ? smartPasteEntriesToPlainText(paragraphs, plainText)
+    : String(plainText || '').replace(/\r\n?/g, '\n');
 }
 
 function normalizeProjectManifest(manifest = {}) {
@@ -2168,6 +2254,7 @@ async function chapterEditDraftFileMatchesSavedChapter(index = curChap) {
 async function saveCurrentProject() {
   if (!hasActiveStory()) return;
   if (isTrashDraftActive()) return;
+  if (typeof flushEditorInputStatsUpdate === 'function') flushEditorInputStatsUpdate();
   if (typeof flushEditorHistorySnapshot === 'function') flushEditorHistorySnapshot('save');
   if (
     !isDraftActive() &&
@@ -2312,12 +2399,17 @@ async function commitChapterEditDraftToChapter(snapshot = {}) {
 
   chapter.title = nextTitle;
   chapter.content = editorHTML;
-  chapter.alignment = normalizeEditorAlignment(draft?.alignment ?? chapter.alignment);
-  chapter.lineHeight = normalizeOptionalEditorLineHeight(draft?.lineHeight ?? chapter.lineHeight);
-  chapter.paragraphGap = normalizeOptionalEditorParagraphGap(draft?.paragraphGap ?? chapter.paragraphGap);
-  chapter.paragraphMargin = normalizeOptionalEditorParagraphMargin(draft?.paragraphMargin ?? chapter.paragraphMargin);
-  chapter.fontFamily = normalizeEditorFontFamily(draft?.fontFamily ?? chapter.fontFamily);
-  chapter.fontSize = normalizeEditorFontSize(draft?.fontSize ?? chapter.fontSize);
+  if (draft) {
+    chapter.alignment = normalizeEditorAlignment(draft.alignment);
+    chapter.lineHeight = normalizeOptionalEditorLineHeight(draft.lineHeight);
+    chapter.paragraphGap = normalizeOptionalEditorParagraphGap(draft.paragraphGap);
+    chapter.paragraphMargin = normalizeOptionalEditorParagraphMargin(draft.paragraphMargin);
+    chapter.fontFamily = normalizeEditorFontFamily(draft.fontFamily);
+    chapter.fontSize = normalizeEditorFontSize(draft.fontSize);
+    if (draft.editorSettings) {
+      chapter.editorSettings = normalizeEditorSettings(draft.editorSettings);
+    }
+  }
   setChapterWordCache(targetChapterIndex, countWordsFromText(editorText));
 
   const tempDraftPath = draft?.contentPath || '';
@@ -2370,6 +2462,7 @@ function renderCommittedChapterSnapshotInEditor(chapter, editorHTML) {
 async function manualSave() {
   if (!hasActiveStory()) return;
   if (isTrashDraftActive()) return;
+  if (typeof flushEditorInputStatsUpdate === 'function') flushEditorInputStatsUpdate();
   if (typeof flushEditorHistorySnapshot === 'function') flushEditorHistorySnapshot('manual-save');
   const titleInput = document.getElementById('chapterTitleInput');
   const editorSnapshot = {
@@ -3151,7 +3244,12 @@ async function createStoryFromInfoForm() {
 }
 
 async function loadChapterContent(chapter) {
-  if (!chapter.contentPath || chapter.content) return;
+  if (!chapter) return;
+  if (chapter.content) {
+    chapter._wordCount = storageWordCountFromEditorHTML(chapter.content);
+    return;
+  }
+  if (!chapter.contentPath) return;
 
   try {
     if (projectDirectoryHandle) {
@@ -3159,7 +3257,7 @@ async function loadChapterContent(chapter) {
       chapter.contentHandle = fileHandle;
       const fileText = await readFileText(fileHandle);
       chapter.content = textToEditorHTML(fileText);
-      chapter._wordCount = countWordsFromText(fileText);
+      chapter._wordCount = storageWordCountFromText(fileText);
       return;
     }
   } catch (error) {
@@ -3168,7 +3266,12 @@ async function loadChapterContent(chapter) {
 }
 
 async function loadDraftContent(draft) {
-  if (!draft.contentPath || draft.content) return;
+  if (!draft) return;
+  if (draft.content) {
+    draft._wordCount = storageWordCountFromEditorHTML(draft.content);
+    return;
+  }
+  if (!draft.contentPath) return;
 
   try {
     if (projectDirectoryHandle) {
@@ -3176,7 +3279,7 @@ async function loadDraftContent(draft) {
       draft.contentHandle = fileHandle;
       const fileText = await readFileText(fileHandle);
       draft.content = textToEditorHTML(fileText);
-      draft._wordCount = countWordsFromText(fileText);
+      draft._wordCount = storageWordCountFromText(fileText);
     }
   } catch (error) {
     console.warn('Draft content load failed:', draft.contentPath, error);
@@ -3705,11 +3808,15 @@ function setEditorSettingsPanel(open) {
     isFindSettingsSelectorOpen = false;
     isReplaceSettingsSelectorOpen = false;
     isEditorAutoScrollModeSelectorOpen = false;
+    isPasteSettingsSelectorOpen = false;
+    isCopySettingsSelectorOpen = false;
   } else if (isTrashModeForEditorSettings()) {
     isStatusSelectorOpen = false;
     isFindSettingsSelectorOpen = false;
     isReplaceSettingsSelectorOpen = false;
     isEditorAutoScrollModeSelectorOpen = false;
+    isPasteSettingsSelectorOpen = false;
+    isCopySettingsSelectorOpen = false;
   }
   updateEditorSettingsUI();
 }
@@ -3868,8 +3975,426 @@ function updateEditorSettingsUI() {
   setTitle('findSettingsToggleBtn', copy.findSettings);
   setTitle('replaceSettingsToggleBtn', copy.replaceSettings);
   setTitle('statusVisibilityToggleBtn', copy.statusVisibilitySetting);
+  // Paste & Copy settings UI
+  updatePasteSettingsUI();
+  updateCopySettingsUI();
   if (typeof syncFocusTopControlsState === 'function') syncFocusTopControlsState();
   if (typeof positionFocusTopOpenPanels === 'function') positionFocusTopOpenPanels();
+}
+
+function getStoryStorageKey(baseKey) {
+  const projectFolder = projectDirectoryHandle?.name || localStorage.getItem(PROJECT_FOLDER_KEY) || 'global';
+  return `lm_story:${projectFolder}:${baseKey}`;
+}
+
+function smartPasteLineSpacingLabel(value) {
+  const safeValue = normalizeSmartPasteLineSpacing(value);
+  return safeValue > 0 ? String(safeValue) : 'Default';
+}
+
+function smartPasteFontSizeLabel(value) {
+  const safeValue = normalizeSmartPasteFontSize(value);
+  return safeValue > 0 ? `${safeValue}px` : 'Default';
+}
+
+function updateSmartPasteRange(rangeId, valueId, value, formatter) {
+  const range = document.getElementById(rangeId);
+  const valueEl = document.getElementById(valueId);
+  const nextValue = Number(value) || 0;
+  if (range) {
+    range.value = String(nextValue);
+    syncCopyGapsRangeFill(range);
+  }
+  if (valueEl) valueEl.textContent = formatter(nextValue);
+}
+
+function syncCopyGapsRangeFill(rangeEl) {
+  if (!rangeEl) return;
+  const min = Number(rangeEl.min) || 0;
+  const max = Number(rangeEl.max) || 3;
+  const val = Number(rangeEl.value) || 0;
+  const pct = max === min ? 0 : ((val - min) / (max - min)) * 100;
+  const pill = rangeEl.closest('.editor-focus-speed-pill');
+  if (pill) pill.style.setProperty('--editor-auto-scroll-focus-speed-fill', pct + '%');
+}
+
+function updatePasteSettingsUI() {
+  const pasteBtn = document.getElementById('pasteSettingsToggleBtn');
+  const pasteState = document.getElementById('pasteSettingsState');
+  const pastePanel = document.getElementById('smartPasteOptionsPanel');
+  const autoApplyToggleBtn = document.getElementById('autoApplySmartPasteToggleBtn');
+  const autoApplyState = document.getElementById('autoApplySmartPasteState');
+  const reviewMarginRow = document.getElementById('reviewMarginSettingRow');
+  const copy = text();
+  const isReviewMode = isChapterReviewModeForEditorSettings();
+
+  // ── Mode-based row swap ───────────────────────────────────────
+  // Review mode → show margin row, hide paste toggle + panel
+  // Edit / Draft → hide margin row, show paste toggle
+  if (reviewMarginRow) reviewMarginRow.hidden = !isReviewMode;
+  if (pasteBtn) pasteBtn.hidden = isReviewMode;
+  if (isReviewMode && isPasteSettingsSelectorOpen) {
+    isPasteSettingsSelectorOpen = false;
+  }
+
+  // ── 1. Main panel toggle button and panel visibility ─────────
+  if (pastePanel) pastePanel.hidden = !isPasteSettingsSelectorOpen;
+  if (!isReviewMode) {
+    if (pasteBtn) {
+      pasteBtn.setAttribute('aria-expanded', String(isPasteSettingsSelectorOpen));
+      pasteBtn.setAttribute('aria-pressed', String(Boolean(isPasteSettingsEnabled)));
+      pasteBtn.classList.toggle('is-active', Boolean(isPasteSettingsEnabled));
+    }
+    if (pasteState) {
+      pasteState.textContent = isPasteSettingsEnabled ? (copy.settingOn || 'On') : (copy.settingOff || 'Off');
+    }
+  }
+
+  // ── Sync active margin button ─────────────────────────────────
+  if (isReviewMode) {
+    const currentDoc = typeof activeEditorDocument === 'function' ? activeEditorDocument() : null;
+    const activeMargin = currentDoc?.paragraphMargin != null ? String(currentDoc.paragraphMargin) : '';
+    document.querySelectorAll('.review-margin-btn').forEach(btn => {
+      const isActive = btn.dataset.marginValue === activeMargin;
+      btn.classList.toggle('is-active', isActive);
+      btn.setAttribute('aria-pressed', String(isActive));
+    });
+  }
+
+  // ── 2. Sliders inside panel ───────────────────────────────────
+  updateSmartPasteRange('smartPasteLineSpacingRange', 'smartPasteLineSpacingValue', smartPasteLineSpacing, smartPasteLineSpacingLabel);
+  updateSmartPasteRange('smartPasteParagraphGapRange', 'smartPasteParagraphGapValue', smartPasteParagraphGap, value => String(value));
+  updateSmartPasteRange('smartPasteFontSizeRange', 'smartPasteFontSizeValue', smartPasteFontSize, smartPasteFontSizeLabel);
+
+  const rangeRows = document.querySelectorAll('.editor-smart-paste-range-row');
+  rangeRows.forEach(row => {
+    row.style.opacity = isPasteSettingsEnabled ? '1' : '0.5';
+    row.style.pointerEvents = isPasteSettingsEnabled ? 'auto' : 'none';
+  });
+
+  // ── 3. "Apply Globally" button visibility ────────────────────
+  const isDraft = activeEditorMode === 'draft';
+  const isChapterEdit = activeEditorMode === 'chapter' && isChapterEditUnlocked;
+  const container = document.getElementById('applyStylesGloballyContainer');
+  if (container) {
+    if (isDraft || isChapterEdit) {
+      container.hidden = false;
+      container.style.display = 'flex';
+    } else {
+      container.hidden = true;
+      container.style.display = 'none';
+    }
+  }
+
+
+
+  // ── 4. Auto-apply toggle state ───────────────────────────────
+  if (autoApplyToggleBtn) {
+    autoApplyToggleBtn.setAttribute('aria-pressed', String(smartPasteAutoApply));
+    autoApplyToggleBtn.classList.toggle('is-active', smartPasteAutoApply);
+  }
+  if (autoApplyState) {
+    autoApplyState.textContent = smartPasteAutoApply ? (copy.settingOn || 'On') : (copy.settingOff || 'Off');
+  }
+}
+
+function togglePasteSettings() {
+  isPasteSettingsEnabled = !isPasteSettingsEnabled;
+  savePasteCopySettings();
+  updatePasteSettingsUI();
+}
+
+function togglePasteSettingsPanel() {
+  const pastePanel = document.getElementById('smartPasteOptionsPanel');
+  if (!isPasteSettingsSelectorOpen && pastePanel?.hidden && typeof window.prepareFloatingPanelFocusReturn === 'function') {
+    window.prepareFloatingPanelFocusReturn(pastePanel);
+  }
+  isPasteSettingsSelectorOpen = !isPasteSettingsSelectorOpen;
+  if (isPasteSettingsSelectorOpen) {
+    isStatusSelectorOpen = false;
+    isFindSettingsSelectorOpen = false;
+    isReplaceSettingsSelectorOpen = false;
+    isEditorAutoScrollModeSelectorOpen = false;
+    isCopySettingsSelectorOpen = false;
+  }
+  updatePasteSettingsUI();
+  updateCopySettingsUI();
+  updateEditorSettingsUI();
+}
+
+
+
+function toggleSmartPasteAutoApply() {
+  smartPasteAutoApply = !smartPasteAutoApply;
+  savePasteCopySettings();
+  updatePasteSettingsUI();
+  if (smartPasteAutoApply) {
+    scheduleSmartPasteAutoApply();
+  } else {
+    clearTimeout(smartPasteAutoApplyTimer);
+  }
+}
+
+let smartPasteAutoApplyTimer = null;
+
+function scheduleSmartPasteAutoApply() {
+  clearTimeout(smartPasteAutoApplyTimer);
+  if (!smartPasteAutoApply) return;
+  smartPasteAutoApplyTimer = setTimeout(() => {
+    const isDraft = activeEditorMode === 'draft';
+    const isChapterEdit = activeEditorMode === 'chapter' && isChapterEditUnlocked;
+    if (isDraft || isChapterEdit) {
+      if (typeof applySmartPasteStylesGlobally === 'function') {
+        applySmartPasteStylesGlobally();
+      }
+    }
+  }, 120000); // 2 minutes
+}
+
+async function applySmartPasteStylesGlobally() {
+  const lineSpacing = normalizeSmartPasteLineSpacing(typeof smartPasteLineSpacing === 'undefined' ? 0 : smartPasteLineSpacing);
+  const gap = normalizeSmartPasteParagraphGap(typeof smartPasteParagraphGap === 'undefined' ? 0 : smartPasteParagraphGap);
+  const fontSize = normalizeSmartPasteFontSize(typeof smartPasteFontSize === 'undefined' ? 0 : smartPasteFontSize);
+
+  const targetLineHeight = getClosestEditorLineHeight(lineSpacing);
+  const targetFontSize = fontSize <= 0 ? 16 : fontSize;
+
+  // Update in-memory drafts
+  if (Array.isArray(chapterDrafts)) {
+    chapterDrafts.forEach(draft => {
+      draft.lineHeight = targetLineHeight;
+      draft.paragraphGap = gap;
+      draft.fontSize = targetFontSize;
+    });
+  }
+
+  // Update in-memory chapters
+  if (Array.isArray(chapters)) {
+    chapters.forEach(chapter => {
+      chapter.lineHeight = targetLineHeight;
+      chapter.paragraphGap = gap;
+      chapter.fontSize = targetFontSize;
+    });
+  }
+
+  // Update in-memory chapter edit drafts
+  if (chapterEditDrafts && typeof chapterEditDrafts === 'object') {
+    Object.values(chapterEditDrafts).forEach(draft => {
+      draft.lineHeight = targetLineHeight;
+      draft.paragraphGap = gap;
+      draft.fontSize = targetFontSize;
+    });
+  }
+
+  // Apply to active document in editor if present
+  const doc = activeEditorDocument();
+  if (doc) {
+    doc.lineHeight = targetLineHeight;
+    doc.paragraphGap = gap;
+    doc.fontSize = targetFontSize;
+    
+    // Apply styling to active editor
+    applyEditorSpacing(targetLineHeight, gap, doc.paragraphMargin);
+    applyEditorFontSize(targetFontSize, { clearSelectionScopedStyles: true });
+
+    // Update active control states
+    const lineSelect = document.getElementById('lineSpacingSel');
+    if (lineSelect) {
+      lineSelect.value = String(targetLineHeight || '');
+      if (typeof syncDockSelect === 'function') syncDockSelect('lineSpacingSel');
+    }
+    if (typeof setParagraphGapSelectValue === 'function') {
+      setParagraphGapSelectValue(gap);
+    }
+    const fsizeInp = document.getElementById('fsize');
+    if (fsizeInp) {
+      fsizeInp.value = targetFontSize || 16;
+    }
+  }
+
+  // Persist project manifest & storage state
+  persistProjectManifestSnapshot();
+  saveToStorage(true);
+
+  if (hasActiveStory() && projectDirectoryHandle) {
+    try {
+      await Promise.all([
+        writeProjectManifest(),
+        writeDraftsDataToProject(),
+        writeChapterEditDraftsToProject()
+      ]);
+      showSmartCopyToast("Applied styles globally!");
+    } catch (err) {
+      console.error("Failed to write updated project files: ", err);
+      showSmartCopyToast("Applied styles to current session.");
+    }
+  } else {
+    showSmartCopyToast("Applied styles globally!");
+  }
+}
+
+function setSmartPasteLineSpacing(value) {
+  smartPasteLineSpacing = normalizeSmartPasteLineSpacing(value);
+  savePasteCopySettings();
+  updatePasteSettingsUI();
+}
+
+function setSmartPasteParagraphGap(value) {
+  smartPasteParagraphGap = normalizeSmartPasteParagraphGap(value);
+  savePasteCopySettings();
+  updatePasteSettingsUI();
+}
+
+function setSmartPasteFontSize(value) {
+  smartPasteFontSize = normalizeSmartPasteFontSize(value);
+  savePasteCopySettings();
+  updatePasteSettingsUI();
+}
+
+function updateCopySettingsUI() {
+  const copyBtn = document.getElementById('copySettingsToggleBtn');
+  const copyPanel = document.getElementById('copySettingsSelectorPanel');
+  const copyState = document.getElementById('copySettingsState');
+  const copyGapsInput = document.getElementById('copyParagraphGapsInput');
+  const customGapRow = document.getElementById('copyParagraphGapsRow');
+  const copy = text();
+
+  if (copyPanel) copyPanel.hidden = !isCopySettingsSelectorOpen;
+  if (copyBtn) {
+    copyBtn.setAttribute('aria-expanded', String(isCopySettingsSelectorOpen));
+    copyBtn.setAttribute('aria-pressed', String(Boolean(isCopySettingsEnabled)));
+    copyBtn.classList.toggle('is-active', Boolean(isCopySettingsEnabled));
+  }
+  if (copyState) {
+    copyState.textContent = isCopySettingsEnabled ? (copy.settingOn || 'On') : (copy.settingOff || 'Off');
+  }
+
+  updateCopyParaModeOptionState('gap', 'copyParaModeGapState');
+  updateCopyParaModeOptionState('single', 'copyParaModeSingleState');
+
+  if (copyGapsInput) {
+    copyGapsInput.value = String(copyParagraphGaps);
+  }
+
+  // Set opacity/pointer-events based on global enable and mode selection
+  const optionRows = document.querySelectorAll('#copySettingsSelectorPanel .status-option-row');
+  optionRows.forEach(row => {
+    row.style.opacity = isCopySettingsEnabled ? '1' : '0.5';
+    row.style.pointerEvents = isCopySettingsEnabled ? 'auto' : 'none';
+  });
+
+  if (customGapRow) {
+    if (!isCopySettingsEnabled) {
+      customGapRow.style.opacity = '0.5';
+      customGapRow.style.pointerEvents = 'none';
+    } else {
+      customGapRow.style.opacity = '1';
+      customGapRow.style.pointerEvents = 'auto';
+    }
+  }
+}
+
+function updateCopyParaModeOptionState(mode, stateId) {
+  const copy = text();
+  const isActive = copyParaMode === mode;
+  const optionBtn = document.querySelector(`[data-copy-para-mode="${mode}"]`);
+  if (optionBtn) {
+    optionBtn.setAttribute('aria-pressed', String(isActive));
+    optionBtn.classList.toggle('is-active', isActive);
+  }
+  setText(stateId, isActive ? (copy.settingOn || 'On') : (copy.settingOff || 'Off'));
+}
+
+function toggleCopySettingsPanel() {
+  const copyPanel = document.getElementById('copySettingsSelectorPanel');
+  if (!isCopySettingsSelectorOpen && copyPanel?.hidden && typeof window.prepareFloatingPanelFocusReturn === 'function') {
+    window.prepareFloatingPanelFocusReturn(copyPanel);
+  }
+  isCopySettingsSelectorOpen = !isCopySettingsSelectorOpen;
+  if (isCopySettingsSelectorOpen) {
+    isStatusSelectorOpen = false;
+    isFindSettingsSelectorOpen = false;
+    isReplaceSettingsSelectorOpen = false;
+    isEditorAutoScrollModeSelectorOpen = false;
+    isPasteSettingsSelectorOpen = false;
+  }
+  updatePasteSettingsUI();
+  updateCopySettingsUI();
+  updateEditorSettingsUI();
+}
+
+function toggleCopySettings() {
+  isCopySettingsEnabled = !isCopySettingsEnabled;
+  savePasteCopySettings();
+  updateCopySettingsUI();
+}
+
+function setCopyParaMode(mode) {
+  if (typeof isCopySettingsEnabled !== 'undefined' && !isCopySettingsEnabled) return;
+  if (copyParaMode === mode) {
+    copyParaMode = (mode === 'single') ? 'gap' : 'single';
+  } else {
+    copyParaMode = mode;
+  }
+  savePasteCopySettings();
+  updateCopySettingsUI();
+}
+
+// Helper functions for spacing gap settings
+function setCopyParagraphGaps(value) {
+  copyParagraphGaps = Math.max(0, Math.min(4, Number(value) || 0));
+  copyParaMode = 'gap';
+  savePasteCopySettings();
+  updateCopySettingsUI();
+}
+
+function adjustCopyParagraphGapsInput(change) {
+  if (typeof isCopySettingsEnabled !== 'undefined' && !isCopySettingsEnabled) return;
+  const input = document.getElementById('copyParagraphGapsInput');
+  if (!input) return;
+  let val = (Number(input.value) || 0) + change;
+  val = Math.max(0, Math.min(4, val));
+  input.value = val;
+  setCopyParagraphGaps(val);
+}
+
+function changeCopyParagraphGapsFromInput(value) {
+  if (typeof isCopySettingsEnabled !== 'undefined' && !isCopySettingsEnabled) return;
+  let val = Math.max(0, Math.min(4, Math.round(Number(value) || 0)));
+  const input = document.getElementById('copyParagraphGapsInput');
+  if (input) input.value = val;
+  setCopyParagraphGaps(val);
+}
+
+function savePasteCopySettings() {
+  localStorage.setItem(getStoryStorageKey(PASTE_SETTINGS_ENABLED_KEY), String(isPasteSettingsEnabled));
+  localStorage.setItem(getStoryStorageKey(COPY_SETTINGS_ENABLED_KEY), String(isCopySettingsEnabled));
+  localStorage.setItem(getStoryStorageKey(COPY_PARA_MODE_KEY), copyParaMode);
+  localStorage.setItem(getStoryStorageKey(COPY_PARAGRAPH_GAPS_KEY), String(copyParagraphGaps));
+  localStorage.setItem(getStoryStorageKey(SMART_PASTE_LINE_SPACING_KEY), String(smartPasteLineSpacing));
+  localStorage.setItem(getStoryStorageKey(SMART_PASTE_PARAGRAPH_GAP_KEY), String(smartPasteParagraphGap));
+  localStorage.setItem(getStoryStorageKey(SMART_PASTE_FONT_SIZE_KEY), String(smartPasteFontSize));
+  localStorage.setItem(getStoryStorageKey(SMART_PASTE_AUTO_APPLY_KEY), String(smartPasteAutoApply));
+}
+
+function loadPasteCopySettings() {
+  const storedPaste = localStorage.getItem(getStoryStorageKey(PASTE_SETTINGS_ENABLED_KEY));
+  const storedCopyEnabled = localStorage.getItem(getStoryStorageKey(COPY_SETTINGS_ENABLED_KEY));
+  const storedCopyMode = localStorage.getItem(getStoryStorageKey(COPY_PARA_MODE_KEY));
+  const storedCopyGaps = localStorage.getItem(getStoryStorageKey(COPY_PARAGRAPH_GAPS_KEY));
+  const storedPasteLineSpacing = localStorage.getItem(getStoryStorageKey(SMART_PASTE_LINE_SPACING_KEY));
+  const storedPasteGap = localStorage.getItem(getStoryStorageKey(SMART_PASTE_PARAGRAPH_GAP_KEY));
+  const storedPasteFontSize = localStorage.getItem(getStoryStorageKey(SMART_PASTE_FONT_SIZE_KEY));
+  const storedAutoApply = localStorage.getItem(getStoryStorageKey(SMART_PASTE_AUTO_APPLY_KEY));
+
+  if (storedPaste !== null) isPasteSettingsEnabled = storedPaste === 'true';
+  if (storedCopyEnabled !== null) isCopySettingsEnabled = storedCopyEnabled === 'true';
+  if (storedCopyMode !== null) copyParaMode = EDITOR_COPY_PARA_MODES.includes(storedCopyMode) ? storedCopyMode : 'gap';
+  if (storedCopyGaps !== null) copyParagraphGaps = Math.max(0, Math.min(4, Number(storedCopyGaps) || 0));
+  if (storedPasteLineSpacing !== null) smartPasteLineSpacing = normalizeSmartPasteLineSpacing(storedPasteLineSpacing);
+  if (storedPasteGap !== null) smartPasteParagraphGap = normalizeSmartPasteParagraphGap(storedPasteGap);
+  if (storedPasteFontSize !== null) smartPasteFontSize = normalizeSmartPasteFontSize(storedPasteFontSize);
+  if (storedAutoApply !== null) smartPasteAutoApply = storedAutoApply === 'true';
 }
 
 function updateStatusOptionState(statusKey, stateId) {
@@ -3982,6 +4507,8 @@ function toggleEditorAutoScrollModePanel(event) {
     isStatusSelectorOpen = false;
     isFindSettingsSelectorOpen = false;
     isReplaceSettingsSelectorOpen = false;
+    isPasteSettingsSelectorOpen = false;
+    isCopySettingsSelectorOpen = false;
   }
   updateEditorSettingsUI();
 }
@@ -3996,6 +4523,8 @@ function toggleStatusVisibilitySetting() {
     isFindSettingsSelectorOpen = false;
     isReplaceSettingsSelectorOpen = false;
     isEditorAutoScrollModeSelectorOpen = false;
+    isPasteSettingsSelectorOpen = false;
+    isCopySettingsSelectorOpen = false;
   }
   updateEditorSettingsUI();
 }
@@ -4015,6 +4544,8 @@ function toggleFindSettingsPanel() {
     isStatusSelectorOpen = false;
     isReplaceSettingsSelectorOpen = false;
     isEditorAutoScrollModeSelectorOpen = false;
+    isPasteSettingsSelectorOpen = false;
+    isCopySettingsSelectorOpen = false;
   }
   updateEditorSettingsUI();
 }
@@ -4029,6 +4560,8 @@ function toggleReplaceSettingsPanel() {
     isStatusSelectorOpen = false;
     isFindSettingsSelectorOpen = false;
     isEditorAutoScrollModeSelectorOpen = false;
+    isPasteSettingsSelectorOpen = false;
+    isCopySettingsSelectorOpen = false;
   }
   updateEditorSettingsUI();
 }

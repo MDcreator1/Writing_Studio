@@ -1,4 +1,4 @@
-﻿
+
 function isNodeInsideEditor(node) {
   const editor = document.getElementById('editor');
   if (!editor || !node) return false;
@@ -982,6 +982,10 @@ function syncCurrentEditorParagraphGapBreaks() {
 function handleEditorParagraphGapInput(event) {
   const editor = document.getElementById('editor');
   if (typeof isEditorPlainTextMode === 'function' && isEditorPlainTextMode(editor)) return;
+  if (typeof scheduleEditorDeferredHeavyOperation === 'function') {
+    scheduleEditorDeferredHeavyOperation('paragraphGap', syncCurrentEditorParagraphGapBreaks);
+    return;
+  }
   requestAnimationFrame(syncCurrentEditorParagraphGapBreaks);
 }
 
@@ -1080,6 +1084,35 @@ function changeParagraphMargin() {
   const safeParagraphMargin = normalizeEditorParagraphMargin(document.getElementById('paragraphMarginSel')?.value);
   setParagraphMarginSelectValue(safeParagraphMargin);
   if (!plainTextMode && canEdit && applyEditorBlockStylesToSelection({ '--editor-paragraph-margin': `${safeParagraphMargin}px` }, 'selection-paragraph-margin')) return;
+
+  if (reviewMode) {
+    // Clear any selection-scoped margin override so global value takes effect cleanly
+    clearEditorScopedStyleProperties(['--editor-paragraph-margin']);
+
+    // Apply globally to all chapters and edit drafts in memory
+    if (Array.isArray(chapters)) {
+      chapters.forEach(chap => { chap.paragraphMargin = safeParagraphMargin; });
+    }
+    if (typeof chapterEditDrafts !== 'undefined' && chapterEditDrafts && typeof chapterEditDrafts === 'object') {
+      Object.values(chapterEditDrafts).forEach(draft => { draft.paragraphMargin = safeParagraphMargin; });
+    }
+
+    // Apply to the editor immediately
+    const doc = activeEditorDocument();
+    if (doc) doc.paragraphMargin = safeParagraphMargin;
+    applyEditorSpacing(doc?.lineHeight, doc?.paragraphGap, safeParagraphMargin);
+
+    // Persist to disk
+    saveToStorage(false);
+    if (typeof projectDirectoryHandle !== 'undefined' && projectDirectoryHandle) {
+      const saves = [writeProjectManifest()];
+      if (typeof writeChapterEditDraftsToProject === 'function') saves.push(writeChapterEditDraftsToProject());
+      Promise.all(saves).catch(err => console.warn('Review margin save failed:', err));
+    }
+    document.getElementById('editor')?.focus({ preventScroll: true });
+    return;
+  }
+
   const currentDocument = activeEditorDocument();
   if (currentDocument && dockSpacingValueKey(currentDocument.paragraphMargin) === dockSpacingValueKey(safeParagraphMargin)) {
     const changed = plainTextMode ? false : clearEditorScopedStyleProperties(['--editor-paragraph-margin']);
@@ -1093,6 +1126,15 @@ function changeParagraphMargin() {
   if (!plainTextMode) clearEditorScopedStyleProperties(['--editor-paragraph-margin']);
   applyEditorSpacing(documentItem?.lineHeight, documentItem?.paragraphGap, safeParagraphMargin);
   saveEditorSpacingChange();
+}
+
+// Helper called by the review-mode Margin buttons in editorSettingsPanel.
+// Always sets the underlying select value then calls changeParagraphMargin so
+// re-clicking the same value still triggers a save.
+function setReviewMargin(value) {
+  const sel = document.getElementById('paragraphMarginSel');
+  if (sel) sel.value = String(value);
+  changeParagraphMargin();
 }
 
 function changeFont() {

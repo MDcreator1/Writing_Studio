@@ -23,6 +23,8 @@ let projectDetailsShouldFocusTitleEditor = false;
 let projectDetailsPreviewLastFocus = null;
 let projectDetailsPreviewMentionIndex = 0;
 let projectDetailsNameHistoryLastFocus = null;
+let projectDetailsConfirmLastFocus = null;
+let projectDetailsConfirmResolve = null;
 let projectDetailsStoryLibraryLoading = false;
 let projectDetailsGraphDocumentFilter = 'all';
 let projectDetailsGraphSelectedDocumentId = '';
@@ -46,6 +48,9 @@ const PROJECT_DETAILS_PREVIEW_TEXT_ID = 'projectDetailsDocumentPreviewText';
 const PROJECT_DETAILS_PREVIEW_MENTION_CONTROLS_ID = 'projectDetailsDocumentPreviewMentionControls';
 const PROJECT_DETAILS_NAME_HISTORY_MODAL_ID = 'projectDetailsNameHistoryModal';
 const PROJECT_DETAILS_NAME_HISTORY_PANEL_ID = 'projectDetailsNameHistoryPanel';
+const PROJECT_DETAILS_CONFIRM_MODAL_ID = 'projectDetailsConfirmModal';
+const PROJECT_DETAILS_CONFIRM_TITLE_ID = 'projectDetailsConfirmTitle';
+const PROJECT_DETAILS_CONFIRM_BODY_ID = 'projectDetailsConfirmBody';
 const PROJECT_DETAILS_CUSTOM_SCROLL_SELECTOR = [
   '.project-details-edit-panel',
   '.project-details-document-preview-text',
@@ -485,7 +490,66 @@ function projectDetailsWordCount(textValue = '') {
   }
 }
 
-function projectDetailsCountTerm(textValue = '', termValue = '') {
+function projectDetailsFindWordChar(char) {
+  return Boolean(char && /[\p{L}\p{N}\p{M}_]/u.test(char));
+}
+
+function projectDetailsFindBoundary(value, index) {
+  return index < 0 || index >= value.length || !projectDetailsFindWordChar(value[index]);
+}
+
+const PROJECT_DETAILS_RAW_FIND_DEVANAGARI_CHAR_PATTERN = /[\u0900-\u097F]/u;
+const PROJECT_DETAILS_RAW_FIND_DEVANAGARI_MARK_PATTERN = /[\u0900-\u0903\u093A\u093C\u093E-\u094F\u0951-\u0957\u0962-\u0963]/u;
+
+function projectDetailsNormalizeRawFindToken(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLocaleLowerCase();
+}
+
+function projectDetailsNormalizeExactRawFindToken(value) {
+  return String(value || '').normalize('NFD').toLocaleLowerCase();
+}
+
+function projectDetailsRawFindTokenHasDevanagari(value = '') {
+  return PROJECT_DETAILS_RAW_FIND_DEVANAGARI_CHAR_PATTERN.test(String(value || ''));
+}
+
+function projectDetailsRawFindTokenEndsWithDevanagariMark(value = '') {
+  const chars = Array.from(projectDetailsNormalizeExactRawFindToken(value));
+  for (let index = chars.length - 1; index >= 0; index -= 1) {
+    const char = chars[index];
+    if (PROJECT_DETAILS_RAW_FIND_DEVANAGARI_MARK_PATTERN.test(char)) return true;
+    if (/\p{M}/u.test(char)) continue;
+    return false;
+  }
+  return false;
+}
+
+function projectDetailsRawFindSuffixIsOnlyDevanagariMarks(value = '') {
+  const chars = Array.from(String(value || ''));
+  return chars.length > 0 && chars.every(char => PROJECT_DETAILS_RAW_FIND_DEVANAGARI_MARK_PATTERN.test(char));
+}
+
+function projectDetailsRawFindTokenMatches(token = '', query = '') {
+  const tokenValue = String(token || '');
+  const queryValue = String(query || '');
+  if (!tokenValue || !queryValue) return false;
+  if (!projectDetailsRawFindTokenHasDevanagari(tokenValue) && !projectDetailsRawFindTokenHasDevanagari(queryValue)) {
+    return projectDetailsNormalizeRawFindToken(tokenValue) === projectDetailsNormalizeRawFindToken(queryValue);
+  }
+
+  const normalizedToken = projectDetailsNormalizeExactRawFindToken(tokenValue);
+  const normalizedQuery = projectDetailsNormalizeExactRawFindToken(queryValue);
+  if (!normalizedQuery) return false;
+  if (projectDetailsRawFindTokenEndsWithDevanagariMark(queryValue)) return normalizedToken === normalizedQuery;
+  if (normalizedToken === normalizedQuery) return true;
+  if (!normalizedToken.startsWith(normalizedQuery)) return false;
+  return projectDetailsRawFindSuffixIsOnlyDevanagariMarks(normalizedToken.slice(normalizedQuery.length));
+}
+
+function projectDetailsCountDeepTerm(textValue = '', termValue = '') {
   const term = String(termValue || '').trim().toLocaleLowerCase();
   if (!term) return 0;
   const text = String(textValue || '').toLocaleLowerCase();
@@ -498,24 +562,67 @@ function projectDetailsCountTerm(textValue = '', termValue = '') {
   return count;
 }
 
-function projectDetailsTermRanges(textValue = '', termValue = '') {
+function projectDetailsCountSafeTerm(textValue = '', termValue = '') {
+  return projectDetailsTermRanges(textValue, termValue, 'safe').length;
+}
+
+function projectDetailsCountRawTerm(textValue = '', termValue = '') {
+  return projectDetailsTermRanges(textValue, termValue, 'raw').length;
+}
+
+function projectDetailsCountTerm(textValue = '', termValue = '', mode = 'deep') {
+  if (mode === 'raw') return projectDetailsCountRawTerm(textValue, termValue);
+  if (mode === 'safe') return projectDetailsCountSafeTerm(textValue, termValue);
+  return projectDetailsCountDeepTerm(textValue, termValue);
+}
+
+function projectDetailsDocumentFindMode(documentItem = {}) {
+  return ['chapter', 'draft'].includes(documentItem?.type) ? 'raw' : 'deep';
+}
+
+function projectDetailsCountDocumentTerm(documentItem = {}, termValue = '') {
+  return projectDetailsCountTerm(documentItem.text, termValue, projectDetailsDocumentFindMode(documentItem));
+}
+
+function projectDetailsTermRanges(textValue = '', termValue = '', mode = 'deep') {
   const term = String(termValue || '').trim();
   if (!term) return [];
   const text = String(textValue || '');
-  const lowerText = text.toLocaleLowerCase();
-  const lowerTerm = term.toLocaleLowerCase();
+  if (mode === 'raw' && !/\s/.test(term)) {
+    const rawRanges = [];
+    const tokenPattern = /[\p{L}\p{N}\p{M}_]+/gu;
+    let tokenMatch = tokenPattern.exec(text);
+    while (tokenMatch) {
+      if (projectDetailsRawFindTokenMatches(tokenMatch[0], term)) {
+        rawRanges.push({ start: tokenMatch.index, end: tokenMatch.index + tokenMatch[0].length });
+      }
+      tokenMatch = tokenPattern.exec(text);
+    }
+    return rawRanges;
+  }
+
+  const isSafeMode = mode === 'safe';
+  const isRawMode = mode === 'raw';
+  const haystack = isSafeMode ? text : text.toLocaleLowerCase();
+  const needle = isSafeMode ? term : term.toLocaleLowerCase();
   const ranges = [];
-  let index = lowerText.indexOf(lowerTerm);
+  let index = haystack.indexOf(needle);
   while (index !== -1) {
-    ranges.push({ start: index, end: index + term.length });
-    index = lowerText.indexOf(lowerTerm, index + term.length);
+    const matchEnd = index + term.length;
+    if (
+      (!isSafeMode && !isRawMode) ||
+      (projectDetailsFindBoundary(text, index - 1) && projectDetailsFindBoundary(text, matchEnd))
+    ) {
+      ranges.push({ start: index, end: matchEnd });
+    }
+    index = haystack.indexOf(needle, matchEnd);
   }
   return ranges;
 }
 
-function projectDetailsPreviewMentionHtml(textValue = '', termValue = '') {
+function projectDetailsPreviewMentionHtml(textValue = '', termValue = '', mode = 'deep') {
   const text = String(textValue || '');
-  const ranges = projectDetailsTermRanges(text, termValue);
+  const ranges = projectDetailsTermRanges(text, termValue, mode);
   if (!ranges.length) return projectDetailsEscapeHtml(text);
 
   let html = '';
@@ -837,7 +944,7 @@ function projectDetailsNameInfoRecord(entry = {}, documentItem = {}, categoryByI
   );
   const mentionCount = Number.isFinite(options.mentionCount)
     ? options.mentionCount
-    : projectDetailsCountTerm(documentItem.text, entry.name);
+    : projectDetailsCountDocumentTerm(documentItem, entry.name);
 
   return `
     <article class="project-details-detail-record ${options.isDetected ? 'is-detected' : 'is-attached'}">
@@ -858,7 +965,7 @@ function projectDetailsFactInfoRecord(fact = {}, documentItem = {}, options = {}
   const description = projectDetailsEntityDescription(fact.description, 'No description saved for this fact.');
   const mentionCount = Number.isFinite(options.mentionCount)
     ? options.mentionCount
-    : projectDetailsCountTerm(documentItem.text, fact.keyword);
+    : projectDetailsCountDocumentTerm(documentItem, fact.keyword);
   return `
     <article class="project-details-detail-record ${options.isDetected ? 'is-detected' : 'is-fact'}">
       <div class="project-details-detail-record-head">
@@ -879,7 +986,7 @@ function projectDetailsDetectedNameItems(entries = [], documentItem = {}) {
     .map((entry, index) => ({
       entry,
       key: projectDetailsDetailKey('detected-name', entry, index),
-      mentionCount: projectDetailsCountTerm(documentItem.text, entry.name)
+      mentionCount: projectDetailsCountDocumentTerm(documentItem, entry.name)
     }))
     .sort((left, right) =>
       right.mentionCount - left.mentionCount ||
@@ -891,13 +998,13 @@ function projectDetailsFactItems(stats = {}, documentItem = {}) {
   const attachedItems = (stats.attachedFacts || []).map((fact, index) => ({
     fact,
     key: projectDetailsDetailKey('attached-fact', fact, index),
-    mentionCount: projectDetailsCountTerm(documentItem.text, fact.keyword),
+    mentionCount: projectDetailsCountDocumentTerm(documentItem, fact.keyword),
     isDetected: false
   }));
   const detectedItems = (stats.detectedFacts || []).map((fact, index) => ({
     fact,
     key: projectDetailsDetailKey('detected-fact', fact, index),
-    mentionCount: projectDetailsCountTerm(documentItem.text, fact.keyword),
+    mentionCount: projectDetailsCountDocumentTerm(documentItem, fact.keyword),
     isDetected: true
   })).sort((left, right) =>
     right.mentionCount - left.mentionCount ||
@@ -913,12 +1020,12 @@ function projectDetailsDocumentStats(documentItem = {}) {
   const attachedNames = entries.filter(entry => projectDetailsNameDocumentMatches(entry, documentItem));
   const detectedNames = entries.filter(entry =>
     !projectDetailsNameDocumentMatches(entry, documentItem) &&
-    projectDetailsCountTerm(documentItem.text, entry.name) > 0
+    projectDetailsCountDocumentTerm(documentItem, entry.name) > 0
   );
   const attachedFacts = facts.filter(fact => projectDetailsFactDocumentMatches(fact, documentItem));
   const detectedFacts = facts.filter(fact =>
     !projectDetailsFactDocumentMatches(fact, documentItem) &&
-    projectDetailsCountTerm(documentItem.text, fact.keyword) > 0
+    projectDetailsCountDocumentTerm(documentItem, fact.keyword) > 0
   );
 
   return {
@@ -1003,6 +1110,78 @@ function projectDetailsNotify(message = '', isDuplicate = false) {
   console.warn(message);
 }
 
+function projectDetailsEnsureConfirmModal() {
+  let modal = document.getElementById(PROJECT_DETAILS_CONFIRM_MODAL_ID);
+  if (modal) return modal;
+
+  modal = document.createElement('div');
+  modal.id = PROJECT_DETAILS_CONFIRM_MODAL_ID;
+  modal.className = 'project-details-confirm-modal';
+  modal.setAttribute('aria-hidden', 'true');
+  modal.innerHTML = `
+    <article class="project-details-confirm-panel" role="dialog" aria-modal="true"
+      aria-labelledby="${PROJECT_DETAILS_CONFIRM_TITLE_ID}"
+      aria-describedby="${PROJECT_DETAILS_CONFIRM_BODY_ID}">
+      <div class="project-details-confirm-mark" aria-hidden="true">
+        <span data-lm-icon="delete"></span>
+      </div>
+      <div class="project-details-confirm-copy">
+        <span class="project-details-confirm-kicker" data-project-details-confirm-kicker>Confirm action</span>
+        <h3 id="${PROJECT_DETAILS_CONFIRM_TITLE_ID}" data-project-details-confirm-title></h3>
+        <p id="${PROJECT_DETAILS_CONFIRM_BODY_ID}" data-project-details-confirm-body></p>
+      </div>
+      <div class="project-details-confirm-actions">
+        <button class="project-details-confirm-cancel" type="button" data-project-details-confirm-cancel>Cancel</button>
+        <button class="project-details-confirm-primary" type="button" data-project-details-confirm-accept>Delete</button>
+      </div>
+    </article>
+  `;
+  document.body.appendChild(modal);
+  if (typeof window.hydrateLmIcons === 'function') window.hydrateLmIcons(modal);
+  return modal;
+}
+
+function closeProjectDetailsConfirmModal(result = false) {
+  const modal = document.getElementById(PROJECT_DETAILS_CONFIRM_MODAL_ID);
+  if (!modal?.classList.contains('is-visible')) return;
+
+  modal.classList.remove('is-visible');
+  modal.setAttribute('aria-hidden', 'true');
+  const resolve = projectDetailsConfirmResolve;
+  projectDetailsConfirmResolve = null;
+  projectDetailsConfirmLastFocus?.focus?.({ preventScroll: true });
+  projectDetailsConfirmLastFocus = null;
+  if (typeof resolve === 'function') resolve(Boolean(result));
+}
+
+function projectDetailsConfirm(options = {}) {
+  const modal = projectDetailsEnsureConfirmModal();
+  const title = modal.querySelector('[data-project-details-confirm-title]');
+  const body = modal.querySelector('[data-project-details-confirm-body]');
+  const kicker = modal.querySelector('[data-project-details-confirm-kicker]');
+  const acceptButton = modal.querySelector('[data-project-details-confirm-accept]');
+  const cancelButton = modal.querySelector('[data-project-details-confirm-cancel]');
+
+  if (kicker) kicker.textContent = options.kicker || 'Confirm action';
+  if (title) title.textContent = options.title || 'Are you sure?';
+  if (body) body.textContent = options.body || '';
+  if (acceptButton) {
+    acceptButton.textContent = options.confirmLabel || 'Confirm';
+    acceptButton.classList.toggle('is-danger', options.tone === 'danger');
+  }
+  if (cancelButton) cancelButton.textContent = options.cancelLabel || 'Cancel';
+
+  if (projectDetailsConfirmResolve) closeProjectDetailsConfirmModal(false);
+  projectDetailsConfirmLastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  modal.classList.add('is-visible');
+  modal.setAttribute('aria-hidden', 'false');
+
+  return new Promise(resolve => {
+    projectDetailsConfirmResolve = resolve;
+    requestAnimationFrame(() => cancelButton?.focus?.({ preventScroll: true }));
+  });
+}
+
 function projectDetailsNameTitleExists(name = '', excludeEntryId = '') {
   const nameKey = projectDetailsValueKey(name);
   if (!nameKey) return false;
@@ -1071,11 +1250,17 @@ function projectDetailsRemoveNameReferences(entryId = '') {
   });
 }
 
-function projectDetailsDeleteName(entryId = '') {
+async function projectDetailsDeleteName(entryId = '') {
   const entry = (namingData.entries || []).find(item => item.id === entryId);
   if (!entry) return false;
-  const shouldDelete = typeof window.confirm !== 'function' ||
-    window.confirm(`Delete "${entry.name}"? This will remove the saved name and its description history.`);
+  const shouldDelete = await projectDetailsConfirm({
+    kicker: 'Delete name',
+    title: `Delete "${entry.name}"?`,
+    body: 'This will remove the saved name, its attachment, and description history from this project.',
+    confirmLabel: 'Delete Name',
+    cancelLabel: 'Keep Name',
+    tone: 'danger'
+  });
   if (!shouldDelete) return false;
 
   namingData.entries = (namingData.entries || []).filter(item => item.id !== entryId);
@@ -1083,6 +1268,7 @@ function projectDetailsDeleteName(entryId = '') {
   projectDetailsSelectedNameId = '';
   projectDetailsSaveNamingData();
   projectDetailsRerenderAfterNamingEdit();
+  projectDetailsNotify('Name deleted.');
   return true;
 }
 
@@ -1485,8 +1671,9 @@ function openProjectDetailsDocumentPreview(documentId = projectDetailsSelectedDo
   projectDetailsPreviewLastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const documentText = projectDetailsDocumentText(documentItem);
   const mentionTerm = String(options.mentionTerm || '').trim();
+  const mentionMode = projectDetailsDocumentFindMode(documentItem);
   if (mentionTerm) {
-    textContainer.innerHTML = projectDetailsPreviewMentionHtml(documentText, mentionTerm);
+    textContainer.innerHTML = projectDetailsPreviewMentionHtml(documentText, mentionTerm, mentionMode);
   } else {
     textContainer.textContent = documentText;
     if (controls) controls.hidden = true;
@@ -1657,7 +1844,7 @@ function projectDetailsDocumentRowsForTerm(documents = [], term = '') {
   return documents
     .map(documentItem => ({
       documentItem,
-      count: projectDetailsCountTerm(documentItem.text, term)
+      count: projectDetailsCountDocumentTerm(documentItem, term)
     }))
     .filter(item => item.count > 0)
     .sort((left, right) => right.count - left.count);
@@ -3178,7 +3365,7 @@ function projectDetailsGraphDocumentNameBars(documentItem = null) {
   const nameMap = new Map();
   [...(stats.attachedNames || []), ...(stats.detectedNames || [])].forEach(entry => {
     if (!entry?.id) return;
-    const count = projectDetailsCountTerm(documentItem.text, entry.name);
+    const count = projectDetailsCountDocumentTerm(documentItem, entry.name);
     if (count <= 0) return;
     nameMap.set(entry.id, {
       entry,
@@ -3255,7 +3442,7 @@ function projectDetailsGraphChapterRowsForEntity(entity = {}, chapterDocuments =
     : entity.model?.entry?.name || '';
   return chapterDocuments.map(documentItem => ({
     documentItem,
-    count: projectDetailsCountTerm(documentItem.text, term)
+    count: projectDetailsCountDocumentTerm(documentItem, term)
   }));
 }
 
@@ -4403,6 +4590,27 @@ function initProjectDetailsNameHistoryPanel() {
   });
 }
 
+function initProjectDetailsConfirmModal() {
+  const modal = projectDetailsEnsureConfirmModal();
+  if (modal.dataset.projectDetailsConfirmBound === 'true') return;
+  modal.dataset.projectDetailsConfirmBound = 'true';
+  modal.addEventListener('mousedown', event => {
+    if (event.target === modal) closeProjectDetailsConfirmModal(false);
+  });
+  modal.addEventListener('click', event => {
+    if (event.target.closest('[data-project-details-confirm-cancel]')) {
+      closeProjectDetailsConfirmModal(false);
+      return;
+    }
+    if (event.target.closest('[data-project-details-confirm-accept]')) {
+      closeProjectDetailsConfirmModal(true);
+    }
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closeProjectDetailsConfirmModal(false);
+  });
+}
+
 function projectDetailsSetEditButtonState(hasProject) {
   const button = document.getElementById('projectDetailsEditBtn');
   if (button) button.disabled = !hasProject;
@@ -4615,6 +4823,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initProjectDetailsGraphView();
   initProjectDetailsDocumentPreview();
   initProjectDetailsNameHistoryPanel();
+  initProjectDetailsConfirmModal();
   initProjectDetailsEditPanel();
   initProjectDetailsStoryLibrary();
   initProjectDetailsPage();

@@ -38,6 +38,14 @@ body.focus-mode .editor-focus-btn {
   z-index: 120;
 }
 
+body.focus-mode .editor-smart-copy-btn {
+  top: auto;
+  right: auto;
+  bottom: calc(var(--focus-editor-padding-top-botom) + 15px);
+  left: calc((100vw - var(--focus-editor-width, 70vw)) / 2 + 15px);
+  z-index: 120;
+}
+
 .lm-id-focus-overlay {
   display: none;
   position: fixed;
@@ -688,6 +696,13 @@ body.focus-mode .fact-detail-popover.is-focus-center-panel .fact-detail-descript
     right: 24px;
   }
 
+  .editor-smart-copy-btn {
+    top: auto;
+    right: auto;
+    bottom: 124px;
+    left: 24px;
+  }
+
   .lm-id-floating-tools {
     position: absolute;
     width: max-content;
@@ -809,6 +824,11 @@ body.focus-mode .fact-detail-popover.is-focus-center-panel .fact-detail-descript
   body.focus-mode .editor-focus-btn {
     top: 74px;
     right: calc((100vw - min(var(--focus-editor-width, 70vw), calc(100vw - 24px))) / 2 + 12px);
+  }
+
+  body.focus-mode .editor-smart-copy-btn {
+    bottom: 92px;
+    left: calc((100vw - min(var(--focus-editor-width, 70vw), calc(100vw - 24px))) / 2 + 12px);
   }
 
   .lm-id-focus-stats {

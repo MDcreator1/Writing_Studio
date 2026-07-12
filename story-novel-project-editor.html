@@ -11,13 +11,15 @@
   <link rel="stylesheet" href="assets/shared/css/00-base.css?v=20260610-project-library">
   <link rel="stylesheet" href="assets/shared/css/01-find-modals.css?v=20260608-story-info-edit-hover-icon">
   <link rel="stylesheet"
-    href="assets/pages/story-novel-project-editor/css/00-editor-layout.css?v=20260610-plain-text-editor">
+    href="assets/pages/story-novel-project-editor/css/00-editor-layout.css?v=20260712-smart-paste-copy">
   <link rel="stylesheet"
     href="assets/pages/story-novel-project-editor/css/01-floating-tools.css?v=20260610-review-dock-panel">
   <link rel="stylesheet"
     href="assets/pages/story-novel-project-editor/css/02-side-panels.css?v=20260610-ai-connection-floating">
   <link rel="stylesheet"
     href="assets/pages/story-novel-project-editor/css/03-focus-responsive.css?v=20260609-dock-row-layout">
+  <link rel="stylesheet"
+    href="assets/pages/story-novel-project-editor/css/04-advanced-draft-promote.css?v=20260705-advanced-promote">
   <link rel="stylesheet" href="assets/shared/css/99-theme-overrides.css?v=20260608-theme-option-previews">
 </head>
 
@@ -132,7 +134,8 @@
           onclick="window.location.href='project-details.html'">
           Untitled Story
         </div>
-        <div class="story-summary-meta lm-id-Writername" id="Writername" onclick="window.location.href='project-details.html'">Writer</div>
+        <div class="story-summary-meta lm-id-Writername" id="Writername"
+          onclick="window.location.href='project-details.html'">Writer</div>
       </div>
       <div class="draft-action-row">
         <button class="add-chap lm-id-addChapterBtn" id="addChapterBtn" type="button" onclick="addChapter()">+ New
@@ -245,6 +248,122 @@
                 id="editorAutoScrollFocusSpeedValue" type="button" aria-label="Edit scrolling speed">0.3 s</button>
             </div>
           </div>
+
+          <!-- Review Mode: Margin Setting (replaces Smart Paste in review mode) -->
+          <div class="editor-setting-row smart-setting-toggle-row lm-id-reviewMarginSettingRow"
+            id="reviewMarginSettingRow" hidden>
+            <span class="smart-setting-toggle-label lm-id-reviewMarginLabel" id="reviewMarginLabel">Margin</span>
+            <div class="review-margin-options" id="reviewMarginOptions">
+              <button class="setting-state review-margin-btn lm-id-reviewMarginBtnNone" id="reviewMarginBtnNone"
+                type="button" data-margin-value="" onclick="setReviewMargin('')">None</button>
+              <button class="setting-state review-margin-btn lm-id-reviewMarginBtn0" id="reviewMarginBtn0" type="button"
+                data-margin-value="0" onclick="setReviewMargin('0')">0</button>
+              <button class="setting-state review-margin-btn lm-id-reviewMarginBtn8" id="reviewMarginBtn8" type="button"
+                data-margin-value="8" onclick="setReviewMargin('8')">8</button>
+              <button class="setting-state review-margin-btn lm-id-reviewMarginBtn16" id="reviewMarginBtn16"
+                type="button" data-margin-value="16" onclick="setReviewMargin('16')">16</button>
+              <button class="setting-state review-margin-btn lm-id-reviewMarginBtn24" id="reviewMarginBtn24"
+                type="button" data-margin-value="24" onclick="setReviewMargin('24')">24</button>
+            </div>
+          </div>
+
+          <!-- Smart Paste Toggle -->
+
+          <div class="editor-setting-row lm-id-pasteSettingsToggleBtn" id="pasteSettingsToggleBtn">
+            <span id="pasteSettingsLabel" class="lm-id-pasteSettingsLabel" style="cursor: pointer; flex-grow: 1; display: flex; align-items: center; height: 100%;">Smart Paste</span>
+            <button class="setting-state lm-id-pasteSettingsState" id="pasteSettingsState" type="button">On</button>
+          </div>
+          <div
+            class="status-selector-panel editor-setting-options-panel editor-smart-paste-options lm-id-smartPasteOptionsPanel"
+            id="smartPasteOptionsPanel" hidden>
+            <div class="editor-setting-range-row editor-smart-paste-range-row lm-id-smartPasteLineSpacingRow">
+              <label class="editor-focus-speed-pill lm-id-smartPasteLineSpacingPill" for="smartPasteLineSpacingRange">
+                <span class="editor-focus-speed-fill" aria-hidden="true"></span>
+                <span class="editor-focus-speed-label lm-id-smartPasteLineSpacingLabel"
+                  id="smartPasteLineSpacingLabel">Line Spacing</span>
+                <input id="smartPasteLineSpacingRange"
+                  class="editor-setting-range editor-focus-speed-range lm-id-smartPasteLineSpacingRange" type="range"
+                  min="0" max="3" step="0.1" value="0" aria-label="Smart Paste Line Spacing">
+              </label>
+              <button class="setting-state editor-setting-range-value lm-id-smartPasteLineSpacingValue"
+                id="smartPasteLineSpacingValue" type="button"
+                aria-label="Smart Paste Line Spacing value">Default</button>
+            </div>
+            <div class="editor-setting-range-row editor-smart-paste-range-row lm-id-smartPasteParagraphGapRow">
+              <label class="editor-focus-speed-pill lm-id-smartPasteParagraphGapPill" for="smartPasteParagraphGapRange">
+                <span class="editor-focus-speed-fill" aria-hidden="true"></span>
+                <span class="editor-focus-speed-label lm-id-smartPasteParagraphGapLabel"
+                  id="smartPasteParagraphGapLabel">Paragraph Gap</span>
+                <input id="smartPasteParagraphGapRange"
+                  class="editor-setting-range editor-focus-speed-range lm-id-smartPasteParagraphGapRange" type="range"
+                  min="0" max="3" step="1" value="0" aria-label="Smart Paste paragraph gap">
+              </label>
+              <button class="setting-state editor-setting-range-value lm-id-smartPasteParagraphGapValue"
+                id="smartPasteParagraphGapValue" type="button" aria-label="Smart Paste paragraph gap value">0</button>
+            </div>
+            <div class="editor-setting-range-row editor-smart-paste-range-row lm-id-smartPasteFontSizeRow">
+              <label class="editor-focus-speed-pill lm-id-smartPasteFontSizePill" for="smartPasteFontSizeRange">
+                <span class="editor-focus-speed-fill" aria-hidden="true"></span>
+                <span class="editor-focus-speed-label lm-id-smartPasteFontSizeLabel" id="smartPasteFontSizeLabel">Font
+                  Size</span>
+                <input id="smartPasteFontSizeRange"
+                  class="editor-setting-range editor-focus-speed-range lm-id-smartPasteFontSizeRange" type="range"
+                  min="0" max="36" step="1" value="0" aria-label="Smart Paste font size">
+              </label>
+              <button class="setting-state editor-setting-range-value lm-id-smartPasteFontSizeValue"
+                id="smartPasteFontSizeValue" type="button" aria-label="Smart Paste font size value">Default</button>
+            </div>
+            <div class="editor-setting-row lm-id-applySmartPasteStylesGloballyBtn" id="applyStylesGloballyContainer">
+              <button class="status-option-row editor-setting-option-row" type="button"
+                id="applySmartPasteStylesGloballyBtn">
+                <span id="applySmartPasteStylesGloballyLabel" class="lm-id-applySmartPasteStylesGloballyLabel">Apply
+                  Styles Globally</span>
+              </button>
+              <div class="smart-paste-auto-apply-wrapper">
+                <button class="setting-state lm-id-autoApplySmartPasteToggleBtn" id="autoApplySmartPasteToggleBtn"
+                  type="button" title="Auto apply after 2 minutes">
+                  <span class="smart-paste-auto-label">Auto</span>
+                  <span id="autoApplySmartPasteState" class="lm-id-autoApplySmartPasteState">Off</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <!-- Smart Copy Toggle -->
+          <div class="editor-setting-row lm-id-copySettingsToggleBtn" id="copySettingsToggleBtn">
+            <span id="copySettingsLabel" class="lm-id-copySettingsLabel" style="cursor: pointer; flex-grow: 1; display: flex; align-items: center; height: 100%;">Smart Copy</span>
+            <button class="setting-state lm-id-copySettingsState" id="copySettingsState" type="button">On</button>
+          </div>
+          <div class="status-selector-panel editor-setting-options-panel lm-id-copySettingsSelectorPanel"
+            id="copySettingsSelectorPanel" hidden>
+            <div class="status-option-row editor-setting-option-row lm-id-copyParagraphGapsRow"
+              id="copyParagraphGapsRow">
+              <!-- Label -->
+              <span id="copyParaModeGapLabel" class="lm-id-copyParaModeGapLabel"
+                data-copy-para-mode="gap">Custom Gap</span>
+              <div class=".copy-custom-settings-btn">
+                <!-- Adjuster (stepper input) -->
+                <div class="dock-fsize-control" title="Custom Gap Spacing">
+                  <input type="number" class="dock-fsize-inp" id="copyParagraphGapsInput" value="1" min="0" max="4"
+                    onchange="changeCopyParagraphGapsFromInput(this.value)">
+                  <div class="dock-fsize-stepper">
+                    <button class="dock-fsize-step" type="button" onclick="adjustCopyParagraphGapsInput(1)">
+                      <span data-lm-icon="collapseChevron" data-lm-icon-class="step-chevron-svg lm-chevron-up"></span>
+                    </button>
+                    <button class="dock-fsize-step" type="button" onclick="adjustCopyParagraphGapsInput(-1)">
+                      <span data-lm-icon="collapseChevron" data-lm-icon-class="step-chevron-svg lm-chevron-down"></span>
+                    </button>
+                  </div>
+                </div>
+                <!-- Toggle Button (On/Off) -->
+                <button class="setting-state lm-id-copyParaModeGapState" id="copyParaModeGapState" type="button"
+                  data-copy-para-mode="gap">On</button>
+              </div>
+            </div>
+            <button class="status-option-row editor-setting-option-row" type="button" data-copy-para-mode="single">
+              <span id="copyParaModeSingleLabel" class="lm-id-copyParaModeSingleLabel">One Paragraph Copy</span>
+              <span class="setting-state lm-id-copyParaModeSingleState" id="copyParaModeSingleState">Off</span>
+            </button>
+          </div>
           <button class="editor-setting-row lm-id-findSettingsToggleBtn" id="findSettingsToggleBtn" type="button"
             aria-expanded="false" aria-controls="findSettingsSelectorPanel">
             <span id="findSettingsLabel" class="lm-id-findSettingsLabel">Find settings</span>
@@ -323,6 +442,10 @@
         <button class="editor-focus-btn lm-id-focBtn" id="focBtn" type="button" onclick="toggleFocus()"
           title="Focus mode" data-lm-shortcut="F10">
           <span data-lm-icon="focusCorners"></span>
+        </button>
+        <button class="editor-smart-copy-btn lm-id-smartCopyBtn" id="smartCopyBtn" type="button" onclick="doSmartCopy()"
+          title="Smart Copy" aria-label="Smart Copy">
+          <span data-lm-icon="smartCopyDefault"></span>
         </button>
         <div id="editor" class="lm-id-editor" contenteditable="true"
           data-placeholder="Start writing here... your story is waiting." oninput="handleEditorContentInput(event)"
@@ -1028,22 +1151,23 @@
     </div>
   </div>
 
-  <script src="assets/shared/js/00-icon-registry.js?v=20260608-collapse-chevron-icon"></script>
+  <script src="assets/shared/js/00-icon-registry.js?v=20260712-smart-copy-icons"></script>
   <script src="assets/shared/js/01-shortcut-tooltips.js?v=20260608-file-renames"></script>
   <script src="assets/shared/js/02-floating-panel-focus-return.js?v=20260608-file-renames"></script>
   <script src="assets/shared/js/03-theme-controller.js?v=20260608-file-renames"></script>
-  <script src="assets/shared/js/04-state-normalize.js?v=20260611-fact-description-history"></script>
+  <script src="assets/shared/js/04-state-normalize.js?v=20260712-smart-paste-copy"></script>
   <script src="assets/shared/js/05-floating-panel-positions.js?v=20260610-ai-connection-floating"></script>
-  <script src="assets/shared/js/06-project-storage.js?v=20260611-story-wide-name-mention-validation"></script>
+  <script src="assets/shared/js/06-project-storage.js?v=20260712-smart-paste-copy"></script>
   <script
-    src="assets/pages/story-novel-project-editor/js/00-hindi-unicode-input.js?v=20260610-review-dock-panel"></script>
+    src="assets/pages/story-novel-project-editor/js/00-hindi-unicode-input.js?v=20260619-large-input-defer"></script>
+  <script src="assets/pages/story-novel-project-editor/js/01-editor-core.js?v=20260712-smart-paste-copy"></script>
   <script
-    src="assets/pages/story-novel-project-editor/js/01-editor-core.js?v=20260613-auto-scroll-caret-resume"></script>
-  <script
-    src="assets/pages/story-novel-project-editor/js/02-find-replace-ai-tools.js?v=20260611-replace-all-close-focus"></script>
+    src="assets/pages/story-novel-project-editor/js/02-find-replace-ai-tools.js?v=20260619-large-input-defer"></script>
   <script
     src="assets/pages/story-novel-project-editor/js/03-side-panels-naming-facts.js?v=20260611-fact-description-history"></script>
   <script src="assets/pages/story-novel-project-editor/js/04-editor-boot.js?v=20260608-file-renames"></script>
+  <script
+    src="assets/pages/story-novel-project-editor/js/05-advanced-draft-promote.js?v=20260705-advanced-promote"></script>
 </body>
 
 </html>

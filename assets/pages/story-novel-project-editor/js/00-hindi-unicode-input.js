@@ -127,6 +127,7 @@
         editor,
         isComposing: false,
         pendingViramaOffset: null,
+        logicalRefreshTimer: null,
         text: '',
         sequence: []
       };
@@ -136,9 +137,38 @@
   }
 
   function refreshEditorLogicalInputSequence(editor, state = editorLogicalState(editor)) {
+    if (state.logicalRefreshTimer) {
+      clearTimeout(state.logicalRefreshTimer);
+      state.logicalRefreshTimer = null;
+    }
     state.text = editorLogicalText(editor);
     state.sequence = logicalInputSequence(state.text);
     return state.sequence;
+  }
+
+  function shouldDeferEditorLogicalRefresh(options = {}) {
+    return typeof options.shouldDeferLogicalRefresh === 'function' &&
+      options.shouldDeferLogicalRefresh();
+  }
+
+  function editorLogicalRefreshDelay(options = {}) {
+    const delay = typeof options.logicalRefreshDelay === 'function'
+      ? Number(options.logicalRefreshDelay())
+      : Number(options.logicalRefreshDelay);
+    return Number.isFinite(delay) && delay > 0 ? delay : 650;
+  }
+
+  function scheduleEditorLogicalInputSequenceRefresh(editor, state = editorLogicalState(editor), options = {}) {
+    if (!shouldDeferEditorLogicalRefresh(options)) {
+      refreshEditorLogicalInputSequence(editor, state);
+      return false;
+    }
+    if (state.logicalRefreshTimer) clearTimeout(state.logicalRefreshTimer);
+    state.logicalRefreshTimer = setTimeout(() => {
+      state.logicalRefreshTimer = null;
+      refreshEditorLogicalInputSequence(editor, state);
+    }, editorLogicalRefreshDelay(options));
+    return true;
   }
 
   function codePointBefore(value, offset) {
@@ -903,11 +933,13 @@
 
     editor.addEventListener('input', () => {
       if (!state.isComposing) {
-        const offset = currentCollapsedTextOffset(editor);
-        if (Number.isFinite(state.pendingViramaOffset) && offset !== state.pendingViramaOffset) {
-          clearPendingViramaState(state);
+        if (Number.isFinite(state.pendingViramaOffset)) {
+          const offset = currentCollapsedTextOffset(editor);
+          if (Number.isFinite(offset) && offset !== state.pendingViramaOffset) {
+            clearPendingViramaState(state);
+          }
         }
-        refreshEditorLogicalInputSequence(editor, state);
+        scheduleEditorLogicalInputSequenceRefresh(editor, state, options);
       }
     });
 

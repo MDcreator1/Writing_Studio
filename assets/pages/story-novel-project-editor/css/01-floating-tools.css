@@ -167,6 +167,14 @@
   pointer-events: none;
 }
 
+.smart-copy-svg {
+  display: block;
+  width: var(--svg-size-lg);
+  height: var(--svg-size-lg);
+  fill: currentColor;
+  pointer-events: none;
+}
+
 .tools-svg {
   display: block;
   width: var(--svg-size-2xl);
@@ -205,7 +213,7 @@
   bottom: auto;
 }
 
-.lm-id-floating-tools.is-collapsed .tool-dock-actions{
+.lm-id-floating-tools.is-collapsed .tool-dock-actions {
   opacity: .82;
   box-shadow: var(--tool-dock-shadow);
 }
@@ -380,7 +388,7 @@
 .dock-font-select,
 .dock-fsize-inp,
 .dock-spacing-select {
-  height: 38px;
+  height: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
@@ -723,4 +731,3 @@
   background: var(--trash-ai-border);
   color: var(--color-on-accent);
 }
-

@@ -1,4 +1,4 @@
-﻿const translations = {
+const translations = {
   en: {
     locale: 'en-US',
     title: 'Lekhak Manch \u2014 Novel Writing Editor',
@@ -93,6 +93,64 @@
     recentChaptersToDraftBody: 'Enter how many recent chapters from this list should become drafts.',
     chapterConvertCountLabel: 'Recent chapters',
     rawChaptersLabel: 'Raw Chapters',
+    promoteModeTitle: 'Promote draft',
+    promoteModeBody: 'Choose a direct save or open the chapter splitter before this draft becomes a chapter.',
+    rawPromote: 'Raw Promote',
+    rawPromoteBody: 'Save this draft as one chapter without changing the text.',
+    advancedPromote: 'Advanced Promote',
+    advancedPromoteBody: 'Split, preview, edit, copy, clear, delete, or reverse chapters before saving.',
+    advancedPromoteTitle: 'Advanced Promote',
+    advancedPromoteKicker: 'Draft splitter',
+    advancedPromoteSource: 'Source Draft',
+    advancedPromoteCreatedChapters: 'Created Chapters',
+    advancedPromoteViews: 'Advanced promote views',
+    advancedPromoteFullSource: 'Full source draft',
+    advancedPromoteSettings: 'Create chapters',
+    advancedPromoteWordLimit: 'Words per chapter',
+    advancedPromoteChapterCount: 'Chapter count',
+    advancedPromoteEndingNote: 'Ending note',
+    advancedPromoteAppendNote: 'Append note',
+    advancedPromotePermanentConclusion: 'Permanent conclusion',
+    advancedPromotePermanentConclusionBody: 'Saved for this project and automatically added to every created chapter.',
+    advancedPromoteConclusionPlaceholder: 'Write the reusable chapter conclusion...',
+    advancedPromoteConclusionReady: 'Auto-add on',
+    advancedPromoteConclusionEmpty: 'No conclusion set',
+    advancedPromoteConclusionAdded: 'Conclusion added',
+    advancedPromoteNoConclusion: 'No conclusion',
+    advancedPromoteChapterConclusion: 'Chapter conclusion',
+    advancedPromoteChapterConclusionBody: 'This is appended to the chapter when promoted.',
+    advancedPromoteUsePermanent: 'Use permanent',
+    advancedPromotePermanentStatus: 'Permanent conclusion',
+    advancedPromoteCustomStatus: 'Custom conclusion',
+    advancedPromoteCreate: 'Create Chapters',
+    advancedPromoteReverse: 'Reverse Creation',
+    advancedPromoteApply: 'Promote Chapters',
+    advancedPromoteRemainder: 'Text staying in source draft',
+    advancedPromoteRemainderBody: 'This text is not promoted and will remain saved in the same draft.',
+    advancedPromoteNoChapters: 'Create split chapters to preview them here.',
+    advancedPromoteNoFullChapter: 'The source does not contain enough words for a full chapter at this parameter.',
+    advancedPromoteRegenerateRequired: 'Source or split settings changed. Create chapters again before promoting.',
+    advancedPromoteEmptyChapter: 'This chapter is empty.',
+    advancedPromoteCopy: 'Copy',
+    advancedPromoteCopied: 'Chapter copied',
+    advancedPromoteEdit: 'Edit',
+    advancedPromoteClear: 'Clear',
+    advancedPromoteDelete: 'Delete',
+    advancedPromotePreview: 'Preview / Edit',
+    advancedPromoteFullPreview: 'Full chapter preview / edit',
+    advancedPromoteReady: 'Ready',
+    advancedPromoteBelowParameter: 'Below parameter',
+    advancedPromoteBelowParameterBody: 'Every non-empty chapter must meet the word parameter before promotion.',
+    advancedPromoteBodyWords: 'body words',
+    advancedPromoteFinalWords: 'final words',
+    advancedPromoteProposed: 'proposed',
+    advancedPromoteRemaining: 'remaining',
+    advancedPromoteLastLine: 'Last line',
+    advancedPromoteWords: 'words',
+    advancedPromoteNoRemainder: 'No remaining text',
+    advancedPromoteDestination: 'Destination',
+    advancedPromoteCreateFirst: 'Create at least one chapter first.',
+    advancedPromoteSaved: 'Draft promoted into chapters',
     promoteDestinationTitle: 'Where should this draft go?',
     promoteDestinationBody: 'Raw chapters are present. Choose whether this draft should become a chapter in the recent part or stay outside parts as a raw chapter.',
     promoteToRecentPart: 'Recent Part',
@@ -490,6 +548,17 @@ let isEditorAutoScrollEnabled = true;
 let isEditorAutoScrollEmptyParagraphOnly = false;
 let editorFindMode = 'safe';
 let editorReplaceScope = 'all';
+let isPasteSettingsEnabled = true;
+let isPasteSettingsSelectorOpen = false;
+let copyParaMode = 'gap';
+let copyParagraphGaps = 1;
+let smartPasteLineSpacing = 0;
+let smartPasteParagraphGap = 0;
+let smartPasteFontSize = 0;
+let isCopySettingsEnabled = true;
+let isCopySettingsSelectorOpen = false;
+let smartPasteAutoApply = false;
+
 let lastSavedChapterHTML = '';
 let savedEditorRange = null;
 let activeInlineFormats = {
@@ -582,6 +651,20 @@ const EDITOR_PARAGRAPH_GAP_BR_CLASS = 'editor-paragraph-gap-br';
 const EDITOR_FILE_GAP_BR_CLASS = 'editor-file-gap-br';
 const FACTS_PAGE_SIZE = 10;
 
+// Paste & Copy settings storage keys
+const PASTE_SETTINGS_ENABLED_KEY = 'lm_paste_settings_enabled';
+const COPY_SETTINGS_ENABLED_KEY = 'lm_copy_settings_enabled';
+const COPY_PARA_MODE_KEY = 'lm_copy_para_mode';
+const EDITOR_COPY_PARA_MODES = ['gap', 'single'];
+const COPY_PARAGRAPH_GAPS_KEY = 'lm_copy_paragraph_gaps';
+const SMART_PASTE_LINE_SPACING_KEY = 'lm_smart_paste_line_spacing';
+const SMART_PASTE_PARAGRAPH_GAP_KEY = 'lm_smart_paste_paragraph_gap';
+const SMART_PASTE_FONT_SIZE_KEY = 'lm_smart_paste_font_size';
+const SMART_PASTE_AUTO_APPLY_KEY = 'lm_smart_paste_auto_apply';
+const SMART_PASTE_LINE_SPACING_MAX = 3;
+const SMART_PASTE_PARAGRAPH_GAP_MAX = 3;
+const SMART_PASTE_FONT_SIZE_MAX = 36;
+
 function hasActiveStory() {
   return Boolean(projectManifest && projectDirectoryHandle);
 }
@@ -589,6 +672,7 @@ function hasActiveStory() {
 function editorFileGapHTML() {
   return `<span class="${EDITOR_FILE_GAP_BR_CLASS}" data-file-paragraph-gap="true" aria-hidden="true"></span>`;
 }
+
 
 function createEditorParagraphGapNode() {
   const gapNode = document.createElement('p');
@@ -715,6 +799,23 @@ function normalizeOptionalEditorLineHeight(value) {
   if (isEditorSpacingValueUnset(value)) return null;
   const numericValue = Number(value);
   return EDITOR_LINE_HEIGHTS.includes(numericValue) ? numericValue : null;
+}
+
+function getClosestEditorLineHeight(value) {
+  if (value === undefined || value === null || Number(value) <= 0) {
+    return null;
+  }
+  const numericValue = Number(value);
+  let closest = EDITOR_LINE_HEIGHTS[0];
+  let minDiff = Math.abs(numericValue - closest);
+  for (let i = 1; i < EDITOR_LINE_HEIGHTS.length; i++) {
+    const diff = Math.abs(numericValue - EDITOR_LINE_HEIGHTS[i]);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closest = EDITOR_LINE_HEIGHTS[i];
+    }
+  }
+  return closest;
 }
 
 function normalizeOptionalEditorParagraphGap(value) {
@@ -1778,4 +1879,3 @@ function syncActiveEditorDocumentFromEditor() {
   const editor = document.getElementById('editor');
   if (editor && documentItem) documentItem.content = getCleanEditorHTML();
 }
-
