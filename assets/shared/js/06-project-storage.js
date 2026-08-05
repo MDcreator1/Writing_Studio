@@ -528,6 +528,58 @@ async function removeRemovedChapterEditDraftsFile() {
   await removeProjectFileIfExists(removedChapterEditDraftsFilePath());
 }
 
+const PROJECT_DETAILS_CACHE_DIR = 'project-details';
+
+async function readProjectDetailsCacheFile(filename = 'total-mentions.json') {
+  const path = `${PROJECT_DETAILS_CACHE_DIR}/${filename}`;
+  if (typeof projectDirectoryHandle !== 'undefined' && projectDirectoryHandle) {
+    try {
+      const fileHandle = await getProjectFileHandle(path);
+      const text = await readFileText(fileHandle);
+      return text ? JSON.parse(text) : null;
+    } catch (error) {
+      if (error?.name !== 'NotFoundError') {
+        console.warn('Project details cache read failed:', path, error);
+      }
+    }
+  }
+
+  const folderName = typeof projectDirectoryHandle !== 'undefined' && projectDirectoryHandle?.name
+    ? projectDirectoryHandle.name
+    : localStorage.getItem('lm_project_folder_name') || 'default';
+  const localKey = `lm_project_details_cache_${typeof uniqueNameKey === 'function' ? uniqueNameKey(folderName) : folderName}_${filename.replace(/[^a-z0-9_-]/gi, '_')}`;
+  try {
+    const raw = localStorage.getItem(localKey);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeProjectDetailsCacheFile(filename = 'total-mentions.json', data = {}) {
+  const path = `${PROJECT_DETAILS_CACHE_DIR}/${filename}`;
+  const jsonString = JSON.stringify(data, null, 2);
+
+  if (typeof projectDirectoryHandle !== 'undefined' && projectDirectoryHandle) {
+    try {
+      const fileHandle = await getProjectFileHandle(path, { create: true });
+      await writeFileText(fileHandle, jsonString);
+    } catch (error) {
+      console.warn('Project details cache file write failed:', path, error);
+    }
+  }
+
+  const folderName = typeof projectDirectoryHandle !== 'undefined' && projectDirectoryHandle?.name
+    ? projectDirectoryHandle.name
+    : localStorage.getItem('lm_project_folder_name') || 'default';
+  const localKey = `lm_project_details_cache_${typeof uniqueNameKey === 'function' ? uniqueNameKey(folderName) : folderName}_${filename.replace(/[^a-z0-9_-]/gi, '_')}`;
+  try {
+    localStorage.setItem(localKey, jsonString);
+  } catch (e) {
+    console.warn('Project details cache localStorage write failed:', e);
+  }
+}
+
 function createProjectManifest(folderName = 'Untitled Story') {
   const createdAt = new Date().toISOString();
   return {
@@ -4653,11 +4705,14 @@ function hideProjectGate() {
   if (gate) gate.classList.remove('is-visible');
 }
 
+let appLoaderSafetyTimer = null;
+
 function showAppLoader(message = text().loading) {
   const loader = document.getElementById('appLoader');
   if (!loader) return;
 
   clearTimeout(appLoaderHideTimer);
+  clearTimeout(appLoaderSafetyTimer);
   appLoadingDepth += 1;
   setText('appLoaderText', message);
   loader.hidden = false;
@@ -4665,12 +4720,18 @@ function showAppLoader(message = text().loading) {
   requestAnimationFrame(() => {
     if (appLoadingDepth > 0 && !loader.hidden) loader.classList.add('is-visible');
   });
+
+  // Safety fallback: Automatically dismiss loader after 4.5 seconds to prevent hanging
+  appLoaderSafetyTimer = setTimeout(() => {
+    hideAppLoader(true);
+  }, 4500);
 }
 
 function hideAppLoader(force = false) {
   const loader = document.getElementById('appLoader');
   if (!loader) return;
 
+  clearTimeout(appLoaderSafetyTimer);
   appLoadingDepth = force ? 0 : Math.max(0, appLoadingDepth - 1);
   if (appLoadingDepth > 0) return;
 

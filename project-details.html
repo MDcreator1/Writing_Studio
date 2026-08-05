@@ -128,15 +128,28 @@
       </div>
     </section>
 
-    <nav class="project-details-tabs lm-id-projectDetailsTabs" aria-label="Project detail sections">
-      <button class="project-details-tab is-active" type="button"
-        data-project-details-tab="documents">Documents</button>
-      <button class="project-details-tab" type="button" data-project-details-tab="notes">Notes</button>
-      <button class="project-details-tab" type="button" data-project-details-tab="changes">Graphical View</button>
-    </nav>
+    <div class="project-details-tabs-bar">
+      <nav class="project-details-tabs lm-id-projectDetailsTabs" aria-label="Project detail sections">
+        <button class="project-details-tab is-active" type="button"
+          data-project-details-tab="documents">Documents</button>
+        <button class="project-details-tab" type="button" data-project-details-tab="notes">Notes</button>
+        <button class="project-details-tab" type="button" data-project-details-tab="changes">Graphical View</button>
+      </nav>
+      <div class="project-details-tab-actions">
+        <button id="projectDetailsSectionRefreshBtn" class="project-details-section-refresh-btn" type="button"
+          onclick="refreshProjectDetailsActiveSection()" title="Scan & refresh active section data">
+          <span class="refresh-icon">🔄</span>
+          <span id="projectDetailsRefreshBtnText">Refresh Documents</span>
+        </button>
+      </div>
+    </div>
 
     <section class="project-details-section lm-id-projectDetailsDocuments is-active" id="projectDetailsDocuments"
       data-project-details-section="documents">
+      <div class="project-details-section-loader" id="projectDetailsLoaderDocuments" hidden>
+        <div class="project-details-loader-spinner"></div>
+        <span>Loading Documents...</span>
+      </div>
       <div class="project-details-document-grid lm-id-projectDetailsDocumentGrid lm-theme-purple"
         id="projectDetailsDocumentGrid"></div>
     </section>
@@ -144,12 +157,20 @@
     <section
       class="project-details-section lm-id-projectDetailsNotes lm-id-projectDetailsNames lm-id-projectDetailsFacts"
       id="projectDetailsNotes" data-project-details-section="notes">
+      <div class="project-details-section-loader" id="projectDetailsLoaderNotes" hidden>
+        <div class="project-details-loader-spinner"></div>
+        <span>Scanning Names & Facts...</span>
+      </div>
       <div class="project-details-note-grid lm-id-projectDetailsNoteGrid lm-theme-purple" id="projectDetailsNoteGrid">
       </div>
     </section>
 
     <section class="project-details-section lm-id-projectDetailsChanges lm-id-projectDetailsGraphicalView"
       id="projectDetailsChanges" data-project-details-section="changes">
+      <div class="project-details-section-loader" id="projectDetailsLoaderChanges" hidden>
+        <div class="project-details-loader-spinner"></div>
+        <span>Building Graphical View...</span>
+      </div>
       <div class="project-details-graph-view lm-id-projectDetailsGraphView" id="projectDetailsGraphView"></div>
     </section>
   </main>

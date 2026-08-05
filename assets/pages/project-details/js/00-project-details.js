@@ -1909,15 +1909,68 @@ function projectDetailsDefinedInInfo(entry = {}, documents = []) {
   };
 }
 
+let projectDetailsMentionsCache = null;
+
+async function projectDetailsLoadMentionsCache() {
+  if (projectDetailsMentionsCache) return projectDetailsMentionsCache;
+  if (typeof readProjectDetailsCacheFile === 'function') {
+    projectDetailsMentionsCache = await readProjectDetailsCacheFile('total-mentions.json');
+  }
+  return projectDetailsMentionsCache;
+}
+
+async function projectDetailsSaveMentionsCache(mentionsMap = {}) {
+  const cacheData = {
+    updatedAt: new Date().toISOString(),
+    projectTitle: projectDetailsCurrentState?.manifest?.title || 'Untitled Story',
+    mentions: mentionsMap
+  };
+  projectDetailsMentionsCache = cacheData;
+  if (typeof writeProjectDetailsCacheFile === 'function') {
+    await writeProjectDetailsCacheFile('total-mentions.json', cacheData);
+  }
+}
+
 function projectDetailsNameViewModels(documents = []) {
   const categoryById = projectDetailsCategoryMap();
-  return (namingData.entries || []).map(entry => {
-    const rows = projectDetailsDocumentRowsForTerm(documents, entry.name);
+  const cachedMentions = projectDetailsMentionsCache?.mentions || {};
+  let cacheDirty = false;
+  const newScanMentions = { ...cachedMentions };
+
+  const models = (namingData.entries || []).map(entry => {
+    const cachedEntry = cachedMentions[entry.id] || cachedMentions[entry.name];
+    let rows;
+    let totalMentions;
+
+    if (cachedEntry && Array.isArray(cachedEntry.rows) && typeof cachedEntry.totalMentions === 'number') {
+      rows = cachedEntry.rows.map(r => {
+        const docItem = documents.find(d => d.id === r.documentId || d.key === r.documentKey) ||
+          r.documentItem ||
+          { id: r.documentId || r.documentKey, title: r.title || 'Document', type: 'chapter' };
+        return { documentItem: docItem, count: Number(r.count) || 0 };
+      }).filter(r => r.count > 0);
+      totalMentions = cachedEntry.totalMentions;
+    } else {
+      rows = projectDetailsDocumentRowsForTerm(documents, entry.name);
+      totalMentions = rows.reduce((sum, row) => sum + row.count, 0);
+      newScanMentions[entry.id] = {
+        name: entry.name,
+        totalMentions,
+        rows: rows.map(r => ({
+          documentId: r.documentItem?.id || '',
+          documentKey: r.documentItem?.key || '',
+          title: r.documentItem?.title || '',
+          count: r.count
+        }))
+      };
+      cacheDirty = true;
+    }
+
     const definedIn = projectDetailsDefinedInInfo(entry, documents);
     return {
       entry,
       rows,
-      totalMentions: rows.reduce((sum, row) => sum + row.count, 0),
+      totalMentions,
       category: categoryById.get(entry.categoryId),
       status: normalizeNamingEntryStatus(entry),
       definedIn,
@@ -1925,6 +1978,12 @@ function projectDetailsNameViewModels(documents = []) {
       latestTime: projectDetailsNameLatestTime(entry)
     };
   });
+
+  if (cacheDirty) {
+    projectDetailsSaveMentionsCache(newScanMentions).catch(e => console.warn('Cache save failed:', e));
+  }
+
+  return models;
 }
 
 function projectDetailsNameLatestTime(entry = {}) {
@@ -3723,6 +3782,12 @@ async function projectDetailsLoadState() {
   return { manifest: projectManifest, documents, changes };
 }
 
+let projectDetailsTabLoaded = {
+  documents: false,
+  notes: false,
+  changes: false
+};
+
 function projectDetailsRenderAll(state) {
   projectDetailsCurrentState = state || null;
   projectDetailsSetEditButtonState(Boolean(state?.manifest));
@@ -3736,9 +3801,16 @@ function projectDetailsRenderAll(state) {
   projectDetailsSetEmptyState(false);
   projectDetailsRenderHero(state.manifest);
   projectDetailsRenderStats(state.documents, state.changes);
-  projectDetailsRenderDocuments(state.documents);
-  projectDetailsRenderNotes(state.documents);
-  projectDetailsRenderChanges(state.changes);
+
+  projectDetailsTabLoaded = {
+    documents: false,
+    notes: false,
+    changes: false
+  };
+
+  const activeTabBtn = document.querySelector('.project-details-tab.is-active');
+  const activeTab = activeTabBtn?.dataset?.projectDetailsTab || 'documents';
+  projectDetailsActivateTab(activeTab);
   projectDetailsSyncCustomScrollThumbs();
 }
 
@@ -4099,13 +4171,61 @@ function initProjectDetailsStoryLibrary() {
   window.addEventListener('resize', projectDetailsPositionStoryLibraryPanel, { passive: true });
 }
 
-function projectDetailsActivateTab(tabName = 'documents') {
+function projectDetailsUpdateRefreshButtonLabel(tabName = 'documents') {
+  const btnText = document.getElementById('projectDetailsRefreshBtnText');
+  if (!btnText) return;
+  const labels = {
+    documents: 'Refresh Documents',
+    notes: 'Refresh Names & Facts',
+    changes: 'Refresh View'
+  };
+  btnText.textContent = labels[tabName] || 'Refresh Section';
+}
+
+function projectDetailsShowSectionLoader(tabName, visible = true) {
+  const loaderId = tabName === 'notes'
+    ? 'projectDetailsLoaderNotes'
+    : tabName === 'changes'
+      ? 'projectDetailsLoaderChanges'
+      : 'projectDetailsLoaderDocuments';
+  const loader = document.getElementById(loaderId);
+  if (loader) loader.hidden = !visible;
+}
+
+async function projectDetailsActivateTab(tabName = 'documents', options = {}) {
+  const allowedTabs = ['documents', 'notes', 'changes'];
+  const safeTab = allowedTabs.includes(tabName) ? tabName : 'documents';
+
   document.querySelectorAll('[data-project-details-tab]').forEach(button => {
-    button.classList.toggle('is-active', button.dataset.projectDetailsTab === tabName);
+    button.classList.toggle('is-active', button.dataset.projectDetailsTab === safeTab);
   });
   document.querySelectorAll('[data-project-details-section]').forEach(section => {
-    section.classList.toggle('is-active', section.dataset.projectDetailsSection === tabName);
+    section.classList.toggle('is-active', section.dataset.projectDetailsSection === safeTab);
   });
+
+  projectDetailsUpdateRefreshButtonLabel(safeTab);
+
+  const force = Boolean(options.force);
+  if (!projectDetailsTabLoaded[safeTab] || force) {
+    projectDetailsShowSectionLoader(safeTab, true);
+    try {
+      if (safeTab === 'notes') {
+        if (force) projectDetailsMentionsCache = null;
+        await projectDetailsLoadMentionsCache();
+        projectDetailsRenderNotes(projectDetailsCurrentState?.documents || []);
+      } else if (safeTab === 'changes') {
+        projectDetailsRenderChanges(projectDetailsCurrentState?.changes || []);
+      } else if (safeTab === 'documents') {
+        projectDetailsRenderDocuments(projectDetailsCurrentState?.documents || []);
+      }
+      projectDetailsTabLoaded[safeTab] = true;
+    } catch (e) {
+      console.warn(`Tab ${safeTab} load failed:`, e);
+    } finally {
+      projectDetailsShowSectionLoader(safeTab, false);
+      projectDetailsSyncCustomScrollThumbs();
+    }
+  }
 }
 
 function initProjectDetailsTabs() {
@@ -4113,6 +4233,58 @@ function initProjectDetailsTabs() {
     button.addEventListener('click', () => projectDetailsActivateTab(button.dataset.projectDetailsTab));
   });
 }
+
+async function refreshProjectDetailsSection(sectionName = 'documents') {
+  const refreshBtn = document.getElementById('projectDetailsSectionRefreshBtn');
+  if (refreshBtn) refreshBtn.classList.add('is-spinning');
+
+  try {
+    if (sectionName === 'notes') {
+      projectDetailsMentionsCache = null;
+      const documents = projectDetailsCurrentState?.documents || [];
+      const newMentions = {};
+      (namingData.entries || []).forEach(entry => {
+        const rows = projectDetailsDocumentRowsForTerm(documents, entry.name);
+        const totalMentions = rows.reduce((sum, row) => sum + row.count, 0);
+        newMentions[entry.id] = {
+          name: entry.name,
+          totalMentions,
+          rows: rows.map(r => ({
+            documentId: r.documentItem?.id || '',
+            documentKey: r.documentItem?.key || '',
+            title: r.documentItem?.title || '',
+            count: r.count
+          }))
+        };
+      });
+      await projectDetailsSaveMentionsCache(newMentions);
+      await projectDetailsActivateTab('notes', { force: true });
+      projectDetailsNotify('Names & Facts re-scanned & cache updated.');
+    } else if (sectionName === 'documents') {
+      const state = await projectDetailsLoadState();
+      projectDetailsCurrentState = state;
+      await projectDetailsActivateTab('documents', { force: true });
+      projectDetailsNotify('Documents refreshed.');
+    } else if (sectionName === 'changes') {
+      await projectDetailsActivateTab('changes', { force: true });
+      projectDetailsNotify('Graphical view refreshed.');
+    }
+  } catch (error) {
+    console.warn('Section refresh failed:', error);
+    projectDetailsNotify('Refresh failed.', true);
+  } finally {
+    if (refreshBtn) refreshBtn.classList.remove('is-spinning');
+  }
+}
+
+function refreshProjectDetailsActiveSection() {
+  const activeTabBtn = document.querySelector('.project-details-tab.is-active');
+  const activeTab = activeTabBtn?.dataset?.projectDetailsTab || 'documents';
+  refreshProjectDetailsSection(activeTab);
+}
+
+window.refreshProjectDetailsSection = refreshProjectDetailsSection;
+window.refreshProjectDetailsActiveSection = refreshProjectDetailsActiveSection;
 
 function initProjectDetailsGraphView() {
   const graph = document.getElementById('projectDetailsGraphView');
