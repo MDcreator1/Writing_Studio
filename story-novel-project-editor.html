@@ -158,10 +158,10 @@
 
     <div id="editor-area" class="lm-id-editor-area">
       <div id="editor-info-panel" class="lm-id-editor-info-panel">
-        <div class="editor-info-title">
-          <span class="editor-info-kicker lm-id-chapterNumberBadge" id="chapterNumberBadge">01</span>
+        <div class="editor-info-title" ondblclick="copyChapterTitleInReviewMode(event)">
+          <span class="editor-info-kicker lm-id-chapterNumberBadge" id="chapterNumberBadge" ondblclick="copyChapterTitleInReviewMode(event)">01</span>
           <button class="chapter-title-btn lm-id-cur-chap" id="cur-chap" type="button"
-            onclick="beginChapterTitleEdit()">
+            onclick="beginChapterTitleEdit()" ondblclick="copyChapterTitleInReviewMode(event)">
             Chapter 1
           </button>
           <input class="chapter-title-input lm-id-chapterTitleInput" id="chapterTitleInput" type="text" hidden
@@ -798,9 +798,36 @@
 
       <div id="tab-tags" class="side-workspace naming-workspace lm-id-tab-tags">
         <div class="naming-intro">
-          <span class="naming-kicker">Story Memory</span>
+          <div class="naming-intro-header">
+            <span class="naming-kicker">Story Memory</span>
+            <button class="naming-legend-trigger-btn" id="namingLegendTriggerBtn" type="button"
+              onclick="toggleNamingColorLegendPanel(this)" title="Color Settings Legend"
+              aria-label="Color Settings Legend">
+              <span data-lm-icon="categoryInfoClosed"></span>
+            </button>
+          </div>
           <small id="namingPanelHint" class="lm-id-namingPanelHint">Categories are story-wide; names are shown for the
             active chapter.</small>
+          <button class="naming-deep-scan-btn" id="namingDeepScanBtn" type="button"
+            onclick="deepScanAllNamingEntries(this)" title="Deep scan story to update names' first appearance"
+            aria-label="Deep scan story to update names' first appearance">
+            <span data-lm-icon="refresh"></span>
+          </button>
+        </div>
+        <div class="naming-search-sort-row">
+          <div class="naming-search-bar-container">
+            <button class="naming-search-toggle-btn is-active" id="namingSearchToggleBtn" type="button"
+              onclick="toggleNamingSearchMode()" title="Search categories (Active) / Search names (Inactive)"
+              aria-label="Search categories (Active) / Search names (Inactive)">
+              <span data-lm-icon="namingSearchCategory"></span>
+            </button>
+            <input type="text" id="namingSearchInput" class="naming-search-input" placeholder="Search categories..."
+              oninput="handleNamingSearch(event)">
+          </div>
+          <button class="naming-sort-btn" id="namingSortBtn" type="button" onclick="toggleNamingSortPanel(this)"
+            title="Sort settings" aria-label="Sort settings">
+            <span data-lm-icon="sortDirectionBars"></span>
+          </button>
         </div>
         <div class="naming-categories lm-id-tag-display" id="tag-display"></div>
         <div class="add-category-form">
@@ -808,6 +835,11 @@
             <button class="add-tag-btn lm-id-addCategoryBtn" id="addCategoryBtn" type="button"
               onclick="toggleCategoryInputPanel(this)">+
               Category</button>
+            <button class="show-all-categories-btn lm-id-showAllCategoriesBtn" id="showAllCategoriesBtn" type="button"
+              onclick="showAllNamingCategories(this)" title="Show all categories" aria-label="Show all categories"
+              style="display: none;">
+              <span data-lm-icon="eye"></span>
+            </button>
             <button class="category-manager-btn category-action-panel-anchor lm-id-categoryManagerBtn"
               id="categoryManagerBtn" type="button" onclick="openCategoryManagerPanel(this)" title="Category settings"
               aria-label="Category settings">

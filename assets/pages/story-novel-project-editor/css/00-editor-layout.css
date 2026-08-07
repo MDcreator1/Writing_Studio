@@ -2196,14 +2196,14 @@
 
 .chapter-title-btn.is-locked,
 .chapter-title-btn:disabled {
-  cursor: not-allowed;
+  cursor: pointer;
   color: var(--ink);
 }
 
 .chapter-title-btn.is-locked:hover,
 .chapter-title-btn:disabled:hover {
-  background: transparent;
-  border-color: transparent;
+  background: var(--surface-soft);
+  border-color: var(--border);
   color: var(--accent);
 }
 

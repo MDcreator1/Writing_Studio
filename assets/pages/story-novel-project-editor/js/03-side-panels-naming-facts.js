@@ -1,4 +1,4 @@
-﻿function addTag() {
+function addTag() {
   activeNamingCategoryId = activeNamingCategoryId || expandedNamingCategoryId || namingData.categories[0]?.id;
   saveNamingEntry();
 }
@@ -660,10 +660,10 @@ function renderFocusFactsPanel(panel = document.getElementById('focusFactsPanel'
       </div>
       <div class="fact-list-actions focus-facts-actions">
         ${hasMore
-          ? `<button class="fact-more-btn" type="button" onclick="showMoreFocusFacts()">${escapeHtml(copy.showMoreFacts)}</button>`
-          : canCollapse
-            ? `<button class="fact-more-btn" type="button" onclick="showLessFocusFacts()">${escapeHtml(copy.showLessFacts)}</button>`
-            : ''}
+      ? `<button class="fact-more-btn" type="button" onclick="showMoreFocusFacts()">${escapeHtml(copy.showMoreFacts)}</button>`
+      : canCollapse
+        ? `<button class="fact-more-btn" type="button" onclick="showLessFocusFacts()">${escapeHtml(copy.showLessFacts)}</button>`
+        : ''}
       </div>
     </div>`;
   return true;
@@ -1026,7 +1026,20 @@ function handleCategoryInputKey(event) {
 }
 
 function toggleNamingCategory(categoryId) {
-  expandedNamingCategoryId = expandedNamingCategoryId === categoryId ? '' : categoryId;
+  const isClosingCurrent = expandedNamingCategoryId === categoryId;
+  expandedNamingCategoryId = isClosingCurrent ? '' : categoryId;
+
+  if (window.activeExpandedCategoryWithShowMore) {
+    if (isClosingCurrent || window.activeExpandedCategoryWithShowMore !== expandedNamingCategoryId) {
+      window.activeExpandedCategoryWithShowMore = null;
+      window.categorySearchQuery = '';
+      window.categorySortOption = 'status';
+      const globalRow = document.querySelector('.naming-search-sort-row');
+      if (globalRow) globalRow.hidden = false;
+      closeCategorySortPanel();
+    }
+  }
+
   renderTags();
 }
 
@@ -1094,16 +1107,24 @@ function namingEntryMatchesActiveDocument(entry = {}, activeText = activeNamingP
     const draft = chapterDrafts[curDraft];
     if (!draft || entryStatus !== 'draft') return false;
     const draftTitle = draft.title || activeEditorDisplayTitle();
-    return entry.draftIndex === curDraft &&
-      normalizeNamingMatchTitle(entry.draftTitle) === normalizeNamingMatchTitle(draftTitle);
+    const draftKey = draft.contentPath || (typeof draftFilePath === 'function' ? draftFilePath(curDraft) : `draft-${curDraft}`);
+    return (
+      entry.draftIndex === curDraft ||
+      entry.draftKey === draftKey ||
+      entry.chapterKey === draftKey ||
+      entry.contentPath === draftKey
+    );
   }
 
   const chapter = chapters[curChap];
   if (!chapter || entryStatus !== 'chapter') return false;
-  const chapterTitle = chapterDisplayTitle(chapter, curChap);
-  return entry.chapterIndex === curChap &&
-    normalizeNamingMatchTitle(entry.chapterTitle) === normalizeNamingMatchTitle(chapterTitle) &&
-    namingEntryPromotionMinuteMatchesChapter(entry, chapter);
+  const chapterKey = chapter.contentPath || (typeof chapterStorageKey === 'function' ? chapterStorageKey(curChap) : `chap-${curChap}`);
+
+  return (
+    entry.chapterIndex === curChap ||
+    entry.chapterKey === chapterKey ||
+    entry.contentPath === chapterKey
+  );
 }
 
 function namingCategoryDetectedCount(categoryId, chapterKey = currentNamingChapterKey()) {
@@ -1316,6 +1337,109 @@ function hideNamingCategoryForChapter(categoryId) {
 
 function showNamingCategoryForChapter(categoryId) {
   setNamingCategoryChapterVisibility(categoryId, false);
+}
+
+function showAllNamingCategories(button = null) {
+  namingData = normalizeNamingData(namingData);
+  const chapterKey = currentNamingChapterKey();
+  const hiddenSet = hiddenCategoriesForChapter(chapterKey);
+  const categories = namingData.categories || [];
+
+  const hasHiddenCategories = categories.some(cat => hiddenSet.has(cat.id));
+
+  if (hasHiddenCategories) {
+    if (namingData.hiddenByChapter) {
+      delete namingData.hiddenByChapter[chapterKey];
+    }
+    const allCategoryIds = categories.map(cat => cat.id);
+    namingData.visibleByChapter = {
+      ...(namingData.visibleByChapter || {}),
+      [chapterKey]: allCategoryIds
+    };
+    renderTags();
+    saveNamingData();
+    const msg = 'All categories are now visible.';
+    if (typeof showSmartCopyToast === 'function') {
+      showSmartCopyToast(msg);
+    }
+  } else {
+    const activeText = activeNamingPanelText();
+
+    const catStats = categories.map(cat => {
+      const catEntries = (namingData.entries || []).filter(e => e.categoryId === cat.id);
+      const matchingCount = catEntries.filter(entry => namingEntryNameInText(entry, activeText)).length;
+      return {
+        id: cat.id,
+        matchingCount,
+        totalEntries: catEntries.length
+      };
+    });
+
+    const matchingCats = catStats.filter(c => c.matchingCount > 0);
+    const nonMatchingCats = catStats
+      .filter(c => c.matchingCount === 0)
+      .sort((a, b) => b.totalEntries - a.totalEntries);
+
+    const MIN_VISIBLE = 6;
+    const visibleIds = new Set(matchingCats.map(c => c.id));
+
+    if (visibleIds.size < MIN_VISIBLE) {
+      const needed = MIN_VISIBLE - visibleIds.size;
+      const extraCats = nonMatchingCats.slice(0, needed);
+      extraCats.forEach(c => visibleIds.add(c.id));
+    }
+
+    const newHiddenList = categories.filter(cat => !visibleIds.has(cat.id)).map(cat => cat.id);
+    const newVisibleList = [...visibleIds];
+
+    namingData.hiddenByChapter = {
+      ...(namingData.hiddenByChapter || {}),
+      [chapterKey]: newHiddenList
+    };
+    namingData.visibleByChapter = {
+      ...(namingData.visibleByChapter || {}),
+      [chapterKey]: newVisibleList
+    };
+
+    renderTags();
+    saveNamingData();
+    const msg = `Smart filter applied: ${newVisibleList.length} categories visible.`;
+    if (typeof showSmartCopyToast === 'function') {
+      showSmartCopyToast(msg);
+    }
+  }
+}
+
+function updateShowAllCategoriesBtnVisibility() {
+  const btn = document.getElementById('showAllCategoriesBtn');
+  const display = document.getElementById('tag-display');
+  if (!btn || !display) return;
+
+  if (!display._hasShowAllBtnScrollListener) {
+    display._hasShowAllBtnScrollListener = true;
+    display.addEventListener('scroll', updateShowAllCategoriesBtnVisibility);
+    window.addEventListener('resize', updateShowAllCategoriesBtnVisibility);
+  }
+
+  const chapterKey = currentNamingChapterKey();
+  const hiddenSet = hiddenCategoriesForChapter(chapterKey);
+  const categories = namingData?.categories || [];
+  const hasHidden = categories.some(cat => hiddenSet.has(cat.id));
+
+  const hasScroll = display.scrollHeight > display.clientHeight + 2;
+  const isAtBottom = display.scrollTop + display.clientHeight >= display.scrollHeight - 6;
+
+  // Always visible if any category is hidden (so user can un-hide all anytime), or if no scrollbar / thumb at bottom
+  const shouldBeVisible = hasHidden || !hasScroll || isAtBottom;
+  btn.style.display = shouldBeVisible ? 'inline-flex' : 'none';
+
+  if (hasHidden) {
+    btn.classList.add('is-filtered');
+    btn.title = 'Show all categories (Some categories are hidden)';
+  } else {
+    btn.classList.remove('is-filtered');
+    btn.title = 'Smart filter categories (Hide empty categories)';
+  }
 }
 
 function closeCategoryActionPanel() {
@@ -2252,7 +2376,7 @@ function categoryActionPanelPosition(panel, anchor, anchorRect, panelWidth, pane
   const categoryAnchorRect = categoryTitleRect || anchorRect;
   const positionConfig = lmFloatingPanelPositionConfig?.(panel, { gap: 24 }, { positionKey: 'categoryActionPanel' }) || {};
   const leftGap = lmPanelNumber?.(positionConfig.gap, 24) ?? 24;
-  let left = categoryAnchorRect.left - categoryAnchorRect.width - panelWidth/4 - leftGap;
+  let left = categoryAnchorRect.left - categoryAnchorRect.width - panelWidth / 4 - leftGap;
   let top = categoryAnchorRect.top;
   if (top < bounds.minTop) top = categoryAnchorRect.bottom;
   return { left, top };
@@ -2509,8 +2633,284 @@ function handleNamingEntryItemPointerEnter(event, entryId) {
   scheduleNamingEntryDescriptionInfo(event, entryId);
 }
 
+function refreshIconSvg() {
+  return `<svg class="btn-svg tag-refresh-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm-6 8c0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3c-3.31 0-6-2.69-6-6z" fill="currentColor"/>
+  </svg>`;
+}
+
+function htmlToPlainText(html) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = String(html || '');
+  return tmp.textContent || '';
+}
+
+function scanStoryForNamingEntry(entryId) {
+  const entry = namingData.entries.find(item => item.id === entryId);
+  if (!entry) return;
+
+  const name = entry.name;
+
+  // 1. Search in chapters
+  for (let i = 0; i < chapters.length; i++) {
+    const chapter = chapters[i];
+    const text = htmlToPlainText(chapter.content);
+    if (countSavedNameUsesInText(name, text) > 0) {
+      entry.chapterStatus = 'chapter';
+      entry.documentType = 'chapter';
+      entry.chapterIndex = i;
+      entry.chapterKey = chapter.contentPath || chapterStorageKey(i);
+      entry.chapterTitle = chapter.title || '';
+      entry.chapterNo = chapter.chapterNo || (i + 1);
+      entry.draftKey = null;
+      entry.draftIndex = null;
+      entry.draftNo = null;
+      entry.draftTitle = '';
+
+      entry.orphanedAt = null;
+      entry.orphanedFromDraft = null;
+      entry.missingDocumentAt = null;
+      entry.missingDocumentMeta = null;
+      entry.sourceState = null;
+      entry.namingSourceState = null;
+
+      saveNamingData();
+      renderTags();
+
+      const successMsg = `Scanned: "${name}" found in ${chapter.title || 'Chapter ' + (i + 1)}! Set as entry document.`;
+      if (typeof showSmartCopyToast === 'function') {
+        showSmartCopyToast(successMsg);
+      } else {
+        alert(successMsg);
+      }
+      return true;
+    }
+  }
+
+  // 2. Search in drafts
+  for (let i = 0; i < chapterDrafts.length; i++) {
+    const draft = chapterDrafts[i];
+    const text = htmlToPlainText(draft.content);
+    if (countSavedNameUsesInText(name, text) > 0) {
+      entry.chapterStatus = 'draft';
+      entry.documentType = 'draft';
+      entry.draftIndex = i;
+      entry.draftKey = draft.contentPath || draftFilePath(i);
+      entry.chapterKey = entry.draftKey;
+      entry.draftTitle = draft.title || '';
+      entry.chapterTitle = draft.title || '';
+      entry.draftNo = draft.draftNo || (i + 1);
+      entry.chapterIndex = null;
+      entry.chapterNo = null;
+
+      entry.orphanedAt = null;
+      entry.orphanedFromDraft = null;
+      entry.missingDocumentAt = null;
+      entry.missingDocumentMeta = null;
+      entry.sourceState = null;
+      entry.namingSourceState = null;
+
+      saveNamingData();
+      renderTags();
+
+      const successMsg = `Scanned: "${name}" found in ${draft.title || 'Draft ' + (i + 1)}! Set as entry document.`;
+      if (typeof showSmartCopyToast === 'function') {
+        showSmartCopyToast(successMsg);
+      } else {
+        alert(successMsg);
+      }
+      return true;
+    }
+  }
+
+  const failMsg = `Not found: "${name}" is not present in any chapter or draft.`;
+  if (typeof showSmartCopyToast === 'function') {
+    showSmartCopyToast(failMsg);
+  } else {
+    alert(failMsg);
+  }
+  return false;
+}
+
+function deepScanAllNamingEntries(buttonElement = null) {
+  const btn = buttonElement || document.getElementById('namingDeepScanBtn');
+  if (btn) {
+    btn.classList.add('is-scanning');
+    btn.disabled = true;
+  }
+
+  setTimeout(() => {
+    let updatedCount = 0;
+    const entries = namingData && Array.isArray(namingData.entries) ? namingData.entries : [];
+
+    entries.forEach(entry => {
+      if (!entry || !entry.name) return;
+      const name = entry.name;
+      let foundInChapter = false;
+
+      // 1. Search chapters from earliest (index 0) to latest
+      if (Array.isArray(chapters)) {
+        for (let i = 0; i < chapters.length; i++) {
+          const chapter = chapters[i];
+          if (!chapter) continue;
+          const text = htmlToPlainText(chapter.content);
+          if (countSavedNameUsesInText(name, text) > 0) {
+            foundInChapter = true;
+            const newChapterKey = chapter.contentPath || (typeof chapterStorageKey === 'function' ? chapterStorageKey(i) : `chap-${i}`);
+            const newChapterNo = chapter.chapterNo || (i + 1);
+            const newChapterTitle = chapter.title || '';
+
+            const needsUpdate =
+              entry.chapterStatus !== 'chapter' ||
+              entry.documentType !== 'chapter' ||
+              entry.chapterIndex !== i ||
+              entry.chapterKey !== newChapterKey ||
+              entry.descriptionMeta?.chapterStatus !== 'chapter' ||
+              entry.descriptionMeta?.documentType !== 'chapter' ||
+              entry.descriptionMeta?.draftKey != null ||
+              entry.draftKey != null ||
+              entry.orphanedAt != null ||
+              entry.orphanedFromDraft != null ||
+              entry.missingDocumentAt != null ||
+              entry.missingDocumentMeta != null ||
+              entry.missingNameMentionAt != null ||
+              entry.missingNameMentionMeta != null ||
+              Boolean(entry.sourceState) ||
+              Boolean(entry.namingSourceState);
+
+            if (needsUpdate) {
+              entry.chapterStatus = 'chapter';
+              entry.documentType = 'chapter';
+              entry.chapterIndex = i;
+              entry.chapterKey = newChapterKey;
+              entry.chapterTitle = newChapterTitle;
+              entry.chapterNo = newChapterNo;
+              entry.contentPath = newChapterKey;
+              entry.draftKey = null;
+              entry.draftIndex = null;
+              entry.draftNo = null;
+              entry.draftTitle = '';
+              entry.resolvedAt = null;
+              entry.resolvedFromDraft = null;
+
+              entry.descriptionMeta = {
+                chapterStatus: 'chapter',
+                documentType: 'chapter',
+                chapterKey: newChapterKey,
+                chapterIndex: i,
+                chapterNo: newChapterNo,
+                chapterTitle: newChapterTitle,
+                contentPath: newChapterKey,
+                savedAt: entry.createdAt || new Date().toISOString(),
+                attachedAt: entry.createdAt || new Date().toISOString()
+              };
+
+              entry.orphanedAt = null;
+              entry.orphanedFromDraft = null;
+              entry.missingDocumentAt = null;
+              entry.missingDocumentMeta = null;
+              entry.missingNameMentionAt = null;
+              entry.missingNameMentionMeta = null;
+              entry.sourceState = null;
+              entry.namingSourceState = null;
+              updatedCount++;
+            }
+            break;
+          }
+        }
+      }
+
+      // 2. If not found in any chapter, search drafts from earliest (index 0) to latest
+      if (!foundInChapter && Array.isArray(chapterDrafts)) {
+        for (let i = 0; i < chapterDrafts.length; i++) {
+          const draft = chapterDrafts[i];
+          if (!draft) continue;
+          const text = htmlToPlainText(draft.content);
+          if (countSavedNameUsesInText(name, text) > 0) {
+            const newDraftKey = draft.contentPath || (typeof draftFilePath === 'function' ? draftFilePath(i) : `draft-${i}`);
+            const newDraftNo = draft.draftNo || (i + 1);
+            const newDraftTitle = draft.title || '';
+
+            const needsDraftUpdate =
+              entry.chapterStatus !== 'draft' ||
+              entry.documentType !== 'draft' ||
+              entry.draftIndex !== i ||
+              entry.draftKey !== newDraftKey ||
+              entry.descriptionMeta?.chapterStatus !== 'draft' ||
+              entry.descriptionMeta?.documentType !== 'draft' ||
+              entry.orphanedAt != null ||
+              entry.missingDocumentAt != null ||
+              entry.missingNameMentionAt != null ||
+              Boolean(entry.sourceState);
+
+            if (needsDraftUpdate) {
+              entry.chapterStatus = 'draft';
+              entry.documentType = 'draft';
+              entry.draftIndex = i;
+              entry.draftKey = newDraftKey;
+              entry.chapterKey = newDraftKey;
+              entry.draftTitle = newDraftTitle;
+              entry.chapterTitle = newDraftTitle;
+              entry.draftNo = newDraftNo;
+              entry.chapterIndex = null;
+              entry.chapterNo = null;
+              entry.contentPath = newDraftKey;
+              entry.descriptionMeta = {
+                chapterStatus: 'draft',
+                documentType: 'draft',
+                draftKey: newDraftKey,
+                draftIndex: i,
+                draftNo: newDraftNo,
+                draftTitle: newDraftTitle,
+                contentPath: newDraftKey,
+                savedAt: entry.createdAt || new Date().toISOString(),
+                attachedAt: entry.createdAt || new Date().toISOString()
+              };
+
+              entry.orphanedAt = null;
+              entry.orphanedFromDraft = null;
+              entry.missingDocumentAt = null;
+              entry.missingDocumentMeta = null;
+              entry.missingNameMentionAt = null;
+              entry.missingNameMentionMeta = null;
+              entry.sourceState = null;
+              entry.namingSourceState = null;
+              updatedCount++;
+            }
+            break;
+          }
+        }
+      }
+    });
+
+    if (btn) {
+      btn.classList.remove('is-scanning');
+      btn.disabled = false;
+    }
+
+    if (updatedCount > 0) {
+      saveNamingData();
+      renderTags();
+      const msg = `Deep scan complete: Updated first appearance for ${updatedCount} name(s)!`;
+      if (typeof showSmartCopyToast === 'function') {
+        showSmartCopyToast(msg);
+      } else {
+        alert(msg);
+      }
+    } else {
+      const msg = `Deep scan complete: All names' first appearance metadata is up to date.`;
+      if (typeof showSmartCopyToast === 'function') {
+        showSmartCopyToast(msg);
+      } else {
+        alert(msg);
+      }
+    }
+  }, 300);
+}
+
 function namingEntryItemHtml(entry, extraClass = '', activeText = null) {
   const isExistingEntry = String(extraClass).split(/\s+/).includes('naming-existing-entry');
+  const isOrphanEntry = String(extraClass).split(/\s+/).includes('naming-orphan-entry');
   const mentionCount = isExistingEntry ? 0 : namingEntryMentionCount(entry, activeText);
   const deepFindingLabel = namingEntryDeepFindingLabel();
   return `
@@ -2521,6 +2921,10 @@ function namingEntryItemHtml(entry, extraClass = '', activeText = null) {
       <span class="tname">
         <span>${escapeHtml(entry.name)}</span>
       </span>
+      ${isOrphanEntry ? `
+        <span class="tag-refresh-btn" onclick="event.stopPropagation();scanStoryForNamingEntry('${escapeJsString(entry.id)}')" title="Scan story for this name" aria-label="Scan story for this name">
+          ${refreshIconSvg()}
+        </span>` : ''}
       ${isExistingEntry ? '' : `
         <span class="tag-find-meta" title="${escapeHtml(namingEntryDeepFindingTitle(mentionCount))}">
           <span class="tag-find-meta-count">${mentionCount}</span>
@@ -2529,10 +2933,65 @@ function namingEntryItemHtml(entry, extraClass = '', activeText = null) {
     </button>`;
 }
 
-function existingNamingEntriesHtml(categoryId, entries) {
+function getEntryTime(entry) {
+  if (!entry) return 0;
+  if (entry.updatedAt) {
+    const t = new Date(entry.updatedAt).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  if (entry.createdAt) {
+    const t = new Date(entry.createdAt).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  if (entry.id) {
+    const m = String(entry.id).match(/\d+/);
+    if (m) return parseInt(m[0], 10);
+  }
+  return 0;
+}
+
+function getCategoryFilteredSortedEntries(categoryId, entries) {
+  const query = String(window.categorySearchQuery || '').trim().toLocaleLowerCase();
+  const sortOption = window.categorySortOption || 'status';
+
+  let filtered = query
+    ? entries.filter(e => String(e.name || '').toLocaleLowerCase().includes(query))
+    : [...entries];
+
+  if (sortOption === 'count') {
+    filtered.sort((a, b) => {
+      const countA = typeof namingEntryMentionCount === 'function' ? namingEntryMentionCount(a) : 0;
+      const countB = typeof namingEntryMentionCount === 'function' ? namingEntryMentionCount(b) : 0;
+      return countB - countA;
+    });
+  } else if (sortOption === 'time') {
+    filtered.sort((a, b) => getEntryTime(b) - getEntryTime(a));
+  }
+  // 'status' is default order (as-is from the data)
+  return filtered;
+}
+
+function categorySortBarHtml(categoryId) {
+  const query = window.categorySearchQuery || '';
+  const sortOption = window.categorySortOption || 'status';
+  const searchIcon = typeof lmIcon === 'function' ? lmIcon('search') : '';
+  const sortIcon = typeof lmIcon === 'function' ? lmIcon('sort') : '';
   return `
-    <div class="naming-existing-list" hidden>
-      ${entries.map(entry => namingEntryItemHtml(entry, namingEntryUsesOrphanStyle(entry) ? 'naming-existing-entry naming-orphan-entry' : 'naming-existing-entry')).join('')}
+    <div class="cat-search-sort-row" data-cat-id="${escapeHtml(categoryId)}">
+      <div class="naming-search-bar-container">
+        <span class="cat-search-icon">${searchIcon}</span>
+        <input type="text" class="naming-search-input cat-search-input" placeholder="Search in this category..." value="${escapeHtml(query)}" oninput="handleCategorySearch(event, '${escapeJsString(categoryId)}')" autocomplete="off">
+      </div>
+      <button class="naming-sort-btn cat-sort-btn ${sortOption !== 'status' ? 'is-active' : ''}" type="button" onclick="toggleCategorySortPanel(this, '${escapeJsString(categoryId)}')" title="Sort names in category" aria-label="Sort names in category">${sortIcon}</button>
+    </div>`;
+}
+
+function existingNamingEntriesHtml(categoryId, entries) {
+  const isActive = window.activeExpandedCategoryWithShowMore === categoryId;
+  const filteredEntries = isActive ? getCategoryFilteredSortedEntries(categoryId, entries) : entries;
+  return `
+    <div class="naming-existing-list" ${isActive ? '' : 'hidden'}>
+      ${filteredEntries.map(entry => namingEntryItemHtml(entry, namingEntryUsesOrphanStyle(entry) ? 'naming-existing-entry naming-orphan-entry' : 'naming-existing-entry')).join('')}
       <button class="hide-existing-names-btn" type="button" onclick="hideExistingNamesForCategory('${escapeJsString(categoryId)}', this)">
         ${escapeHtml(text().hideExistingNames)}
       </button>
@@ -2540,22 +2999,118 @@ function existingNamingEntriesHtml(categoryId, entries) {
 }
 
 function showExistingNamesForCategory(categoryId, button = null) {
-  const card = button?.closest?.('.naming-category-card');
-  const list = card?.querySelector?.('.naming-existing-list');
-  const triggerRow = button?.closest?.('.naming-existing-toggle-row');
-  if (!list) return;
+  window.activeExpandedCategoryWithShowMore = categoryId;
   expandedNamingCategoryId = categoryId;
-  list.hidden = false;
-  if (triggerRow) triggerRow.hidden = true;
+  window.categorySearchQuery = '';
+  window.categorySortOption = 'status';
+  // Hide global search-sort row
+  const globalRow = document.querySelector('.naming-search-sort-row');
+  if (globalRow) globalRow.hidden = true;
+  renderTags();
 }
 
 function hideExistingNamesForCategory(categoryId, button = null) {
-  const card = button?.closest?.('.naming-category-card');
-  const list = card?.querySelector?.('.naming-existing-list');
-  const triggerRow = card?.querySelector?.('.naming-existing-toggle-row');
-  if (list) list.hidden = true;
-  if (triggerRow) triggerRow.hidden = false;
+  window.activeExpandedCategoryWithShowMore = null;
   expandedNamingCategoryId = categoryId;
+  window.categorySearchQuery = '';
+  window.categorySortOption = 'status';
+  // Restore global search-sort row
+  const globalRow = document.querySelector('.naming-search-sort-row');
+  if (globalRow) globalRow.hidden = false;
+  closeCategorySortPanel();
+  renderTags();
+}
+
+function handleCategorySearch(event, categoryId) {
+  window.categorySearchQuery = String(event.target.value || '');
+  renderTags();
+  // Restore focus to search input after re-render
+  requestAnimationFrame(() => {
+    const input = document.querySelector(`.cat-search-sort-row[data-cat-id="${CSS.escape(categoryId)}"] .cat-search-input`);
+    if (input) {
+      input.focus();
+      const len = input.value.length;
+      input.setSelectionRange(len, len);
+    }
+  });
+}
+
+function ensureCategorySortPanel() {
+  let panel = document.getElementById('categorySortPanel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'categorySortPanel';
+    panel.className = 'naming-sort-panel';
+    panel.hidden = true;
+    document.body.appendChild(panel);
+  }
+  return panel;
+}
+
+function closeCategorySortPanel() {
+  clearTimeout(closeCategorySortPanel._timer);
+  const panel = document.getElementById('categorySortPanel');
+  if (panel) panel.hidden = true;
+}
+
+function openCategorySortPanel(anchor, categoryId) {
+  const panel = ensureCategorySortPanel();
+  clearTimeout(closeCategorySortPanel._timer);
+  const sortOption = window.categorySortOption || 'status';
+  panel.innerHTML = `
+    <div class="naming-sort-header">
+      <h4 class="naming-sort-title">Sort Names</h4>
+      <button class="naming-sort-close-btn" type="button" onclick="closeCategorySortPanel()" title="Close" aria-label="Close">
+        ${typeof lmIcon === 'function' ? lmIcon('closeCompact') : '&#x2715;'}
+      </button>
+    </div>
+    <div class="naming-sort-options">
+      <button class="naming-sort-option-btn ${sortOption === 'status' ? 'is-active' : ''}" type="button"
+        onclick="setCategorySortOption('${escapeJsString(categoryId)}', 'status')">
+        Status-wise (Default)
+      </button>
+      <button class="naming-sort-option-btn ${sortOption === 'count' ? 'is-active' : ''}" type="button"
+        onclick="setCategorySortOption('${escapeJsString(categoryId)}', 'count')">
+        Most Mentioned (High to Low)
+      </button>
+      <button class="naming-sort-option-btn ${sortOption === 'time' ? 'is-active' : ''}" type="button"
+        onclick="setCategorySortOption('${escapeJsString(categoryId)}', 'time')">
+        Created / Modified (Newest First)
+      </button>
+    </div>
+  `;
+  panel.hidden = false;
+  if (typeof openNamingSortPanel === 'function') {
+    // Position using existing positioning logic
+    positionCategoryInfoPopover && positionCategoryInfoPopover(panel, anchor, 'categorySortPanel');
+  }
+  if (typeof positionPanel === 'function') {
+    positionPanel(panel, anchor);
+  }
+  // Simple fallback positioning
+  if (anchor) {
+    const rect = anchor.getBoundingClientRect();
+    panel.style.position = 'fixed';
+    panel.style.top = (rect.bottom + 4) + 'px';
+    panel.style.right = (window.innerWidth - rect.right) + 'px';
+    panel.style.left = 'auto';
+  }
+  closeCategorySortPanel._timer = setTimeout(closeCategorySortPanel, 15000);
+}
+
+function toggleCategorySortPanel(anchor, categoryId) {
+  const panel = document.getElementById('categorySortPanel');
+  if (panel && !panel.hidden) {
+    closeCategorySortPanel();
+  } else {
+    openCategorySortPanel(anchor, categoryId);
+  }
+}
+
+function setCategorySortOption(categoryId, option) {
+  window.categorySortOption = option;
+  closeCategorySortPanel();
+  renderTags();
 }
 
 function renderTags() {
@@ -2565,16 +3120,98 @@ function renderTags() {
   namingData = normalizeNamingData(namingData);
   const chapterKey = currentNamingChapterKey();
   const focusCategoryId = isFocus ? activeFocusNamingCategoryId : '';
-  const visibleCategories = namingData.categories.filter(category =>
+  let visibleCategories = namingData.categories.filter(category =>
     isNamingCategoryVisible(category.id, chapterKey) || category.id === focusCategoryId
   );
 
-  if (!visibleCategories.length) {
-    display.innerHTML = `<div class="naming-empty naming-empty-panel">${escapeHtml(text().noVisibleCategories)}</div>`;
+  if (isNewDraftState()) {
+    const getCategoryCount = (category) => {
+      return namingData.entries.filter(entry => entry.categoryId === category.id).length;
+    };
+    visibleCategories = [...namingData.categories]
+      .sort((a, b) => getCategoryCount(b) - getCategoryCount(a))
+      .slice(0, 10);
+  }
+
+  if (namingSearchMode === 'name' && namingSearchQuery) {
+    const activeText = activeNamingPanelText();
+    const matchingEntries = namingData.entries.filter(entry =>
+      String(entry.name || '').toLocaleLowerCase().includes(namingSearchQuery.toLocaleLowerCase())
+    );
+
+    if (!matchingEntries.length) {
+      display.innerHTML = `<div class="naming-flat-search-empty">No names found matching "${escapeHtml(namingSearchQuery)}"</div>`;
+      return;
+    }
+
+    const {
+      activeDocumentEntries: entries,
+      detectedEntries,
+      existingEntries
+    } = namingEntriesByActiveTextPriority(matchingEntries, activeText);
+
+    const htmlParts = [];
+    entries.forEach(entry => {
+      htmlParts.push(namingEntryItemHtml(entry, '', activeText));
+    });
+    detectedEntries.forEach(entry => {
+      htmlParts.push(namingEntryItemHtml(entry, 'naming-detected-entry', activeText));
+    });
+    existingEntries.forEach(entry => {
+      const extraClass = namingEntryUsesOrphanStyle(entry)
+        ? 'naming-existing-entry naming-orphan-entry'
+        : 'naming-existing-entry';
+      htmlParts.push(namingEntryItemHtml(entry, extraClass, activeText));
+    });
+
+    display.innerHTML = `<div class="naming-flat-search-list">${htmlParts.join('')}</div>`;
     return;
   }
 
-  display.innerHTML = visibleCategories.map(category => {
+  const filteredCategories = visibleCategories.filter(category =>
+    !namingSearchQuery || (category.title || '').toLocaleLowerCase().includes(namingSearchQuery.toLocaleLowerCase())
+  );
+
+  if (!filteredCategories.length) {
+    display.innerHTML = `<div class="naming-flat-search-empty">No categories found matching "${escapeHtml(namingSearchQuery)}"</div>`;
+    return;
+  }
+
+  // Sort categories
+  const sortedCategories = [...filteredCategories];
+
+  if (namingSortOption === 'status') {
+    const activeText = activeNamingPanelText();
+    const getCategoryStatusScore = (category) => {
+      const globalEntries = namingData.entries.filter(entry => entry.categoryId === category.id);
+      const {
+        activeDocumentEntries: entries,
+        detectedEntries,
+        existingEntries
+      } = namingEntriesByActiveTextPriority(globalEntries, activeText);
+
+      const hasChapterEntries = entries.length > 0;
+      const hasDetectedEntries = detectedEntries.length > 0;
+      const hasOtherEntries = existingEntries.length > 0;
+      const hasOrphanEntries = !hasChapterEntries && !hasDetectedEntries && hasOtherEntries && existingEntries.some(entry => namingEntryUsesOrphanStyle(entry));
+      const hasExistingEntries = !hasChapterEntries && !hasDetectedEntries && hasOtherEntries && !hasOrphanEntries;
+
+      if (hasChapterEntries) return 4;
+      if (hasDetectedEntries) return 3;
+      if (hasExistingEntries) return 2;
+      return 1;
+    };
+    sortedCategories.sort((a, b) => getCategoryStatusScore(b) - getCategoryStatusScore(a));
+  } else if (namingSortOption === 'count') {
+    const getCategoryCount = (category) => {
+      return namingData.entries.filter(entry => entry.categoryId === category.id).length;
+    };
+    sortedCategories.sort((a, b) => getCategoryCount(b) - getCategoryCount(a));
+  } else if (namingSortOption === 'alphabetical') {
+    sortedCategories.sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' }));
+  }
+
+  display.innerHTML = sortedCategories.map(category => {
     const isExpanded = expandedNamingCategoryId === category.id;
     const activeText = activeNamingPanelText();
     const globalEntries = namingData.entries.filter(entry => entry.categoryId === category.id);
@@ -2596,25 +3233,48 @@ function renderTags() {
     const addNameTitle = shortcutLabel
       ? `${text().addNameTitle} (${shortcutLabel})`
       : text().addNameTitle;
-    const entryHtml = visibleEntryCount
-      ? `${entries.map(entry => namingEntryItemHtml(entry, '', activeText)).join('')}
-          ${detectedEntries.map(entry => namingEntryItemHtml(entry, 'naming-detected-entry', activeText)).join('')}
-          ${hasOtherEntries ? `
-            <div class="naming-existing-toggle-row">
-              <button class="show-existing-names-btn" type="button" onclick="showExistingNamesForCategory('${escapeJsString(category.id)}', this)">
-                ${escapeHtml(text().showOtherNames)}
-              </button>
-            </div>
-            ${existingNamingEntriesHtml(category.id, existingEntries)}` : ''}`
-      : (hasExistingEntries || hasOrphanEntries)
-        ? `<div class="naming-empty naming-chapter-empty naming-existing-toggle-row">
-            <span>${escapeHtml(text().noTagsInChapter)}</span>
-            <button class="show-existing-names-btn" type="button" onclick="showExistingNamesForCategory('${escapeJsString(category.id)}', this)">
-              ${escapeHtml(text().showExistingNames)}
-            </button>
-          </div>
-          ${existingNamingEntriesHtml(category.id, existingEntries)}`
-        : `<div class="naming-empty">${escapeHtml(text().noTags)}</div>`;
+    const isShowingAll = isExpanded && window.activeExpandedCategoryWithShowMore === category.id;
+
+    let entryHtml = '';
+    if (isExpanded) {
+      if (isShowingAll) {
+        // Combine ALL entries and apply category-level filter+sort
+        const allCategoryEntries = [...entries, ...detectedEntries, ...existingEntries];
+        const filteredAll = getCategoryFilteredSortedEntries(category.id, allCategoryEntries);
+        entryHtml = `
+          ${filteredAll.map(entry => {
+            const isDetected = detectedEntries.includes(entry);
+            const isExisting = existingEntries.includes(entry);
+            const extraClass = isExisting
+              ? (namingEntryUsesOrphanStyle(entry) ? 'naming-existing-entry naming-orphan-entry' : 'naming-existing-entry')
+              : isDetected ? 'naming-detected-entry' : '';
+            return namingEntryItemHtml(entry, extraClass, activeText);
+          }).join('')}
+          <button class="hide-existing-names-btn" type="button" onclick="hideExistingNamesForCategory('${escapeJsString(category.id)}', this)">
+            ${escapeHtml(text().hideExistingNames)}
+          </button>`;
+      } else {
+        entryHtml = visibleEntryCount
+          ? `${entries.map(entry => namingEntryItemHtml(entry, '', activeText)).join('')}
+              ${detectedEntries.map(entry => namingEntryItemHtml(entry, 'naming-detected-entry', activeText)).join('')}
+              ${hasOtherEntries ? `
+                <div class="naming-existing-toggle-row">
+                  <button class="show-existing-names-btn" type="button" onclick="showExistingNamesForCategory('${escapeJsString(category.id)}', this)">
+                    ${escapeHtml(text().showOtherNames)}
+                  </button>
+                </div>
+                ${existingNamingEntriesHtml(category.id, existingEntries)}` : ''}`
+          : (hasExistingEntries || hasOrphanEntries)
+            ? `<div class="naming-empty naming-chapter-empty naming-existing-toggle-row">
+                <span>${escapeHtml(text().noTagsInChapter)}</span>
+                <button class="show-existing-names-btn" type="button" onclick="showExistingNamesForCategory('${escapeJsString(category.id)}', this)">
+                  ${escapeHtml(text().showExistingNames)}
+                </button>
+              </div>
+              ${existingNamingEntriesHtml(category.id, existingEntries)}`
+            : `<div class="naming-empty">${escapeHtml(text().noTags)}</div>`;
+      }
+    }
 
     return `
       <div class="cat-section naming-category-card ${isExpanded ? 'is-expanded' : ''}" data-category-id="${escapeHtml(category.id)}">
@@ -2635,6 +3295,7 @@ function renderTags() {
             </button>
           </div>
         </div>
+        ${isShowingAll ? `<div class="cat-search-sort-wrapper">${categorySortBarHtml(category.id)}</div>` : ''}
         <div class="category-entries" ${isExpanded ? '' : 'hidden'}>${entryHtml}</div>
       </div>`;
   }).join('');
@@ -2642,6 +3303,10 @@ function renderTags() {
   if (isFocus && activeFocusNamingCategoryId) {
     requestAnimationFrame(() => syncFocusNamingCategoryPanel(activeFocusNamingCategoryId));
   }
+  if (typeof updateSidebarScrollThumb === 'function') {
+    requestAnimationFrame(() => updateSidebarScrollThumb('naming', false));
+  }
+  requestAnimationFrame(updateShowAllCategoriesBtnVisibility);
 }
 
 function showNameDetail(entryId, anchor = null) {
@@ -2858,15 +3523,15 @@ function addFact() {
   const editedAt = new Date().toISOString();
   const chapterMeta = hasChapterStatus
     ? {
-        chapterStatus: 'chapter',
-        documentType: 'chapter',
-        chapterKey,
-        chapterIndex,
-        chapterNo: chapter.chapterNo || chapterIndex + 1,
-        chapterTitle: chapterDisplayTitle(chapter, chapterIndex),
-        contentPath: chapterKey,
-        savedAt: editedAt
-      }
+      chapterStatus: 'chapter',
+      documentType: 'chapter',
+      chapterKey,
+      chapterIndex,
+      chapterNo: chapter.chapterNo || chapterIndex + 1,
+      chapterTitle: chapterDisplayTitle(chapter, chapterIndex),
+      contentPath: chapterKey,
+      savedAt: editedAt
+    }
     : null;
   const editingFact = storyFacts.find(fact => fact.id === activeEditingFactId);
   if (editingFact) {
@@ -2874,22 +3539,22 @@ function addFact() {
     storyFacts = normalizeStoryFacts(storyFacts.map(fact =>
       fact.id === editingFact.id
         ? {
-            ...fact,
-            keyword,
-            description,
-            chapterKey,
-            chapterIndex: hasChapterStatus ? chapterIndex : null,
-            chapterNo: chapterMeta?.chapterNo || '',
-            chapterTitle: chapterMeta?.chapterTitle || '',
-            descriptionMeta: chapterMeta || fact.descriptionMeta || null,
-            descriptionHistory: descriptionChanged && chapterMeta
-              ? [
-                  ...(Array.isArray(fact.descriptionHistory) ? fact.descriptionHistory : []),
-                  { description, editedAt, chapterMeta }
-                ]
-              : fact.descriptionHistory,
-            updatedAt: editedAt
-          }
+          ...fact,
+          keyword,
+          description,
+          chapterKey,
+          chapterIndex: hasChapterStatus ? chapterIndex : null,
+          chapterNo: chapterMeta?.chapterNo || '',
+          chapterTitle: chapterMeta?.chapterTitle || '',
+          descriptionMeta: chapterMeta || fact.descriptionMeta || null,
+          descriptionHistory: descriptionChanged && chapterMeta
+            ? [
+              ...(Array.isArray(fact.descriptionHistory) ? fact.descriptionHistory : []),
+              { description, editedAt, chapterMeta }
+            ]
+            : fact.descriptionHistory,
+          updatedAt: editedAt
+        }
         : fact
     ));
     saveFacts();
@@ -3215,6 +3880,111 @@ function switchSidePanel(panel) {
   syncSidePanelAvailability();
 }
 
+function ensureNamingColorLegendPanel() {
+  let panel = document.getElementById('namingColorLegendPanel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'namingColorLegendPanel';
+    panel.className = 'naming-color-legend-panel';
+    panel.hidden = true;
+    document.body.appendChild(panel);
+  }
+  return panel;
+}
+
+function closeNamingColorLegendPanel() {
+  clearTimeout(closeNamingColorLegendPanel.timer);
+  const panel = document.getElementById('namingColorLegendPanel');
+  if (panel) {
+    panel.hidden = true;
+    panel.innerHTML = '';
+  }
+  const triggerBtn = document.getElementById('namingLegendTriggerBtn');
+  if (triggerBtn && typeof lmIcon === 'function') {
+    triggerBtn.innerHTML = lmIcon('categoryInfoClosed');
+  }
+}
+
+function openNamingColorLegendPanel(anchor) {
+  const panel = ensureNamingColorLegendPanel();
+  if (!panel || !anchor) return;
+
+  closeNamingColorLegendPanel();
+  closeCategoryInfoPopover();
+  closeNamingEntryDescriptionPopover();
+
+  const triggerBtn = document.getElementById('namingLegendTriggerBtn');
+  if (triggerBtn && typeof lmIcon === 'function') {
+    triggerBtn.innerHTML = lmIcon('categoryInfoOpened');
+  }
+
+  panel.innerHTML = `
+    <div class="naming-legend-header">
+      <h4 class="naming-legend-title">Naming Status Legend</h4>
+      <button class="naming-legend-close-btn" type="button" onclick="closeNamingColorLegendPanel()" title="Close" aria-label="Close">
+        ${lmIcon ? lmIcon('closeCompact') : '✖'}
+      </button>
+    </div>
+    
+    <div class="naming-legend-section">
+      <h5 class="naming-legend-section-title">Category Status (श्रेणी संकेतक)</h5>
+      <div class="naming-legend-list">
+        <div class="naming-legend-item">
+          <span class="category-action-trigger category-name-entry-node"></span>
+          <span class="naming-legend-text">अध्याय में सक्रिय नाम (Active chapter names saved)</span>
+        </div>
+        <div class="naming-legend-item">
+          <span class="category-action-trigger category-detected-node"></span>
+          <span class="naming-legend-text">पहचाने गए नाम, सहेजे नहीं (Detected names in chapter, not saved)</span>
+        </div>
+        <div class="naming-legend-item">
+          <span class="category-action-trigger category-existing-node"></span>
+          <span class="naming-legend-text">केवल अन्य अध्यायों के नाम (Names saved in other chapters only)</span>
+        </div>
+        <div class="naming-legend-item">
+          <span class="category-action-trigger category-empty-node"></span>
+          <span class="naming-legend-text">खाली श्रेणी या अनाथ नाम (खाली श्रेणी के लिए भी यही नोड दिखेगा) / Empty category or contains orphan names</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="naming-legend-section">
+      <h5 class="naming-legend-section-title">Name Tag Items (नाम टैग आइटम)</h5>
+      <div class="naming-legend-list">
+        <div class="naming-legend-item">
+          <span class="tag-item naming-entry-item">नाम</span>
+          <span class="naming-legend-text">अध्याय में सक्रिय/सहेजा नाम (Saved active name in chapter)</span>
+        </div>
+        <div class="naming-legend-item">
+          <span class="tag-item naming-entry-item naming-detected-entry">नाम</span>
+          <span class="naming-legend-text">अध्याय में पहचाना गया नाम (Detected name, not saved)</span>
+        </div>
+        <div class="naming-legend-item">
+          <span class="tag-item naming-entry-item naming-existing-entry">नाम</span>
+          <span class="naming-legend-text">अन्य अध्यायों में सहेजा नाम (Saved name used in other chapters only)</span>
+        </div>
+        <div class="naming-legend-item">
+          <span class="tag-item naming-entry-item naming-existing-entry naming-orphan-entry">नाम</span>
+          <span class="naming-legend-text">अनाथ/असंबंधित नाम (Orphaned saved name)</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  panel.hidden = false;
+  positionCategoryInfoPopover(panel, anchor, 'namingColorLegendPanel');
+  closeNamingColorLegendPanel.timer = setTimeout(closeNamingColorLegendPanel, 15000);
+}
+
+function toggleNamingColorLegendPanel(anchor) {
+  const panel = document.getElementById('namingColorLegendPanel');
+  if (panel && !panel.hidden) {
+    closeNamingColorLegendPanel();
+  } else {
+    openNamingColorLegendPanel(anchor);
+  }
+}
+
 function exportTxt() {
   if (!hasActiveStory()) return;
   const out = chapters.map(chapter => {
@@ -3226,4 +3996,121 @@ function exportTxt() {
   link.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(out);
   link.download = text().exportFile;
   link.click();
+}
+
+// Search & Sort State
+window.namingSearchMode = 'category';
+window.namingSearchQuery = '';
+window.namingSortOption = 'status';
+
+function toggleNamingSearchMode() {
+  const btn = document.getElementById('namingSearchToggleBtn');
+  const input = document.getElementById('namingSearchInput');
+  if (namingSearchMode === 'category') {
+    namingSearchMode = 'name';
+    if (btn) {
+      btn.classList.remove('is-active');
+      btn.title = "Search names (Active) / Search categories (Inactive)";
+      btn.innerHTML = typeof lmIcon === 'function' ? lmIcon('namingSearchName') : '';
+    }
+    if (input) {
+      input.placeholder = "Search names...";
+    }
+  } else {
+    namingSearchMode = 'category';
+    if (btn) {
+      btn.classList.add('is-active');
+      btn.title = "Search categories (Active) / Search names (Inactive)";
+      btn.innerHTML = typeof lmIcon === 'function' ? lmIcon('namingSearchCategory') : '';
+    }
+    if (input) {
+      input.placeholder = "Search categories...";
+    }
+  }
+  renderTags();
+}
+
+function handleNamingSearch(event) {
+  namingSearchQuery = String(event.target.value || '').trim();
+  renderTags();
+}
+
+function ensureNamingSortPanel() {
+  let panel = document.getElementById('namingSortPanel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'namingSortPanel';
+    panel.className = 'naming-sort-panel';
+    panel.hidden = true;
+    document.body.appendChild(panel);
+  }
+  return panel;
+}
+
+function closeNamingSortPanel() {
+  clearTimeout(closeNamingSortPanel.timer);
+  const panel = document.getElementById('namingSortPanel');
+  if (panel) panel.hidden = true;
+}
+
+function openNamingSortPanel(anchor) {
+  const panel = ensureNamingSortPanel();
+  clearTimeout(closeNamingSortPanel.timer);
+  closeNamingColorLegendPanel();
+  closeCategoryInfoPopover();
+  closeNamingEntryDescriptionPopover();
+
+  panel.innerHTML = `
+    <div class="naming-sort-header">
+      <h4 class="naming-sort-title">Sort Categories</h4>
+      <button class="naming-sort-close-btn" type="button" onclick="closeNamingSortPanel()" title="Close" aria-label="Close">
+        ${lmIcon ? lmIcon('closeCompact') : '✖'}
+      </button>
+    </div>
+    <div class="naming-sort-options">
+      <button class="naming-sort-option-btn ${namingSortOption === 'status' ? 'is-active' : ''}" type="button" onclick="setNamingSortOption('status')">
+        Status-wise (Default)
+      </button>
+      <button class="naming-sort-option-btn ${namingSortOption === 'count' ? 'is-active' : ''}" type="button" onclick="setNamingSortOption('count')">
+        Name Count (High to Low)
+      </button>
+      <button class="naming-sort-option-btn ${namingSortOption === 'alphabetical' ? 'is-active' : ''}" type="button" onclick="setNamingSortOption('alphabetical')">
+        Alphabetical (A to Z)
+      </button>
+    </div>
+  `;
+
+  panel.hidden = false;
+  positionCategoryInfoPopover(panel, anchor, 'namingSortPanel');
+  closeNamingSortPanel.timer = setTimeout(closeNamingSortPanel, 15000);
+}
+
+function toggleNamingSortPanel(anchor) {
+  const panel = document.getElementById('namingSortPanel');
+  if (panel && !panel.hidden) {
+    closeNamingSortPanel();
+  } else {
+    openNamingSortPanel(anchor);
+  }
+}
+
+function setNamingSortOption(option) {
+  namingSortOption = option;
+  closeNamingSortPanel();
+  renderTags();
+}
+
+function isNewDraftState() {
+  if (typeof activeEditorMode === 'undefined' || activeEditorMode !== 'draft') return false;
+  if (typeof curDraft === 'undefined' || curDraft < 0 || typeof chapterDrafts === 'undefined' || curDraft >= chapterDrafts.length) return false;
+  const draft = chapterDrafts[curDraft];
+  if (!draft) return false;
+
+  const content = String(draft.content || '').trim();
+  if (content === '' || content === '<p></p>' || content === '<p><br></p>') {
+    return true;
+  }
+
+  const plainText = htmlToPlainText(content).trim();
+  return plainText.length === 0;
 }

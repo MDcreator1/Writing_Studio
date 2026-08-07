@@ -597,6 +597,14 @@ function createProjectManifest(folderName = 'Untitled Story') {
 }
 
 function chapterManifestEntry(chapter, index, chapterNo = index + 1) {
+  const words = Number.isFinite(chapter._wordCount)
+    ? chapter._wordCount
+    : (Number.isFinite(chapter.wordCount)
+      ? chapter.wordCount
+      : (typeof countWordsFromText === 'function' && typeof htmlToCountableText === 'function' && chapter.content
+        ? countWordsFromText(htmlToCountableText(chapter.content))
+        : null));
+
   return {
     no: chapterNo,
     title: chapter.title,
@@ -609,7 +617,9 @@ function chapterManifestEntry(chapter, index, chapterNo = index + 1) {
     paragraphMargin: normalizeOptionalEditorParagraphMargin(chapter.paragraphMargin),
     fontFamily: normalizeEditorFontFamily(chapter.fontFamily),
     fontSize: normalizeEditorFontSize(chapter.fontSize),
-    editorSettings: normalizeEditorSettings(chapter.editorSettings)
+    editorSettings: normalizeEditorSettings(chapter.editorSettings),
+    wordCount: words,
+    _wordCount: words
   };
 }
 
@@ -1319,14 +1329,12 @@ async function loadLocalProject(handle, shouldStoreHandle = true, options = {}) 
   }
   chapters = chaptersFromManifest(projectManifest);
   storyFacts = normalizeStoryFacts(projectManifest.facts);
-  await Promise.all(chapters.map(loadChapterContent));
-  await readDraftsDataFromProject();
-  await Promise.all(chapterDrafts.map(loadDraftContent));
-  await readTrashDraftsDataFromProject();
-  await Promise.all(chapterTrashDrafts.map(loadDraftContent));
-  await readChapterEditDraftsFromProject();
-  await Promise.all(Object.values(chapterEditDrafts).map(loadChapterEditDraftContent));
-  await readNamingDataFromProject();
+  await Promise.all([
+    readDraftsDataFromProject(),
+    readTrashDraftsDataFromProject(),
+    readChapterEditDraftsFromProject(),
+    readNamingDataFromProject()
+  ]);
   if (savedEditorTarget) {
     restoreSavedActiveEditorTarget(savedEditorTarget);
   } else if (shouldRestoreSavedTarget) {
@@ -1340,6 +1348,7 @@ async function loadLocalProject(handle, shouldStoreHandle = true, options = {}) 
     syncSidebarWithRestoredEditorTarget();
   }
   ensureChapters();
+  await ensureActiveDocumentContentLoaded();
 
   if (shouldStoreHandle) await saveProjectHandle(handle);
   localStorage.setItem(PROJECT_MODE_KEY, 'local');
@@ -3293,6 +3302,32 @@ async function createStoryFromInfoForm() {
   }
   refreshProjectUI();
   setSaveStatusDot('saved', text().storyCreated);
+}
+
+async function ensureChapterContentLoaded(chapterIndex = curChap) {
+  if (typeof chapterIndex !== 'number' || chapterIndex < 0 || !Array.isArray(chapters) || chapterIndex >= chapters.length) return;
+  const chapter = chapters[chapterIndex];
+  if (!chapter) return;
+  if (!chapter.content) {
+    await loadChapterContent(chapter);
+  }
+}
+
+async function ensureDraftContentLoaded(draftIndex = curDraft) {
+  if (typeof draftIndex !== 'number' || draftIndex < 0 || !Array.isArray(chapterDrafts) || draftIndex >= chapterDrafts.length) return;
+  const draft = chapterDrafts[draftIndex];
+  if (!draft) return;
+  if (!draft.content) {
+    await loadDraftContent(draft);
+  }
+}
+
+async function ensureActiveDocumentContentLoaded() {
+  if (typeof isDraftActive === 'function' && isDraftActive()) {
+    await ensureDraftContentLoaded(curDraft);
+  } else {
+    await ensureChapterContentLoaded(curChap);
+  }
 }
 
 async function loadChapterContent(chapter) {

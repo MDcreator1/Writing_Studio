@@ -181,7 +181,7 @@ function bindHomeEvents() {
     if (!document.getElementById('storyLibraryPanel')?.hidden) positionStoryLibraryPanel();
     if (document.getElementById('homeRecentProjectsModal')?.classList.contains('is-visible')) positionHomeRecentProjectsPanel();
     if (document.getElementById('story-info-modal')?.classList.contains('is-visible')) positionStoryInfoPanel();
-  });
+  }, { passive: true });
 }
 
 async function initHome() {

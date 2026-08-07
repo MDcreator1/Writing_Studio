@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Agents Studio & Monitor - Lekhak Manch</title>
+  <meta name="description" content="Manage, configure, and monitor multi-agent AI systems for novel writing, world building, continuity enforcement, and plot architecture.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/pages/ai-agents/css/ai-agents.css">
+</head>
+<body>
+  <div class="agents-page-wrapper">
+    <!-- Top Header -->
+    <header class="agents-header">
+      <div class="header-left">
+        <div class="brand-badge">
+          <span class="brand-icon">🤖</span>
+          <div class="brand-titles">
+            <h1>Lekhak Manch — AI Agents Studio</h1>
+            <p>Multi-Agent Orchestrator & Novel Continuity System</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-center">
+        <div class="project-pill" id="headerProjectInfo">
+          <span class="project-dot"></span>
+          <span id="projectNameText">Loading Project...</span>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <button type="button" class="btn btn-secondary" onclick="runFullContinuityAudit()">
+          ⚡ Run Full Novel Audit
+        </button>
+        <button type="button" class="btn btn-primary" onclick="window.close()">
+          ↩ Return to Editor
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="agents-main">
+      <!-- System Overview Metrics Bar -->
+      <section class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-icon">🤖</div>
+          <div class="metric-data">
+            <span class="metric-value" id="statActiveAgents">8 / 8</span>
+            <span class="metric-label">Active AI Agents</span>
+          </div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-icon">📖</div>
+          <div class="metric-data">
+            <span class="metric-value" id="statLoadedChapters">0</span>
+            <span class="metric-label">Chapters & Drafts Index</span>
+          </div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-icon">🏷️</div>
+          <div class="metric-data">
+            <span class="metric-value" id="statNamingEntries">0</span>
+            <span class="metric-label">Naming & Lore Entities</span>
+          </div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-icon">📌</div>
+          <div class="metric-data">
+            <span class="metric-value" id="statStoryFacts">0</span>
+            <span class="metric-label">Canon Facts & Lore Rules</span>
+          </div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-icon">🧠</div>
+          <div class="metric-data">
+            <span class="metric-value" id="statProviderName">ChatGPT / OpenAI</span>
+            <span class="metric-label">Current AI Engine</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="dashboard-split">
+        <!-- Left: Agents Grid -->
+        <section class="agents-section">
+          <div class="section-head">
+            <h2>Specialized AI Novel Agents</h2>
+            <p>Configure agent autonomy, parameters, and live monitoring modes.</p>
+          </div>
+
+          <div class="agents-grid" id="agentsGrid">
+            <!-- Rendered by JS -->
+          </div>
+        </section>
+
+        <!-- Right: Inspector & Terminal Console -->
+        <aside class="inspector-sidebar">
+          <!-- Context & Lore Inspector Tabs -->
+          <div class="inspector-card">
+            <div class="inspector-tabs" role="tablist">
+              <button class="tab-btn active" data-tab="naming" onclick="switchInspectorTab('naming')">🏷️ Naming Lore</button>
+              <button class="tab-btn" data-tab="facts" onclick="switchInspectorTab('facts')">📌 Story Facts</button>
+              <button class="tab-btn" data-tab="chapters" onclick="switchInspectorTab('chapters')">📖 Chapters</button>
+              <button class="tab-btn" data-tab="payload" onclick="switchInspectorTab('payload')">⚡ AI Context</button>
+            </div>
+
+            <div class="tab-content" id="tabContentNaming">
+              <div class="tab-head">
+                <h3>Project Naming & World Entities</h3>
+                <span class="badge" id="namingCountBadge">0 Entities</span>
+              </div>
+              <div class="lore-list" id="namingLoreList">
+                <p class="empty-msg">No naming entries found in active project.</p>
+              </div>
+            </div>
+
+            <div class="tab-content hidden" id="tabContentFacts">
+              <div class="tab-head">
+                <h3>Canon Facts & World Rules</h3>
+                <span class="badge" id="factsCountBadge">0 Rules</span>
+              </div>
+              <div class="lore-list" id="storyFactsList">
+                <p class="empty-msg">No story facts found in active project.</p>
+              </div>
+            </div>
+
+            <div class="tab-content hidden" id="tabContentChapters">
+              <div class="tab-head">
+                <h3>Chapter Structure & Word Counts</h3>
+                <span class="badge" id="chapterCountBadge">0 Chapters</span>
+              </div>
+              <div class="lore-list" id="chaptersList">
+                <p class="empty-msg">No chapters found.</p>
+              </div>
+            </div>
+
+            <div class="tab-content hidden" id="tabContentPayload">
+              <div class="tab-head">
+                <h3>Live AI Prompt Context Payload</h3>
+                <button type="button" class="btn-xs" onclick="copyPayloadJson()">Copy JSON</button>
+              </div>
+              <pre class="json-code-block" id="payloadJsonBlock">Loading live context payload...</pre>
+            </div>
+          </div>
+
+          <!-- Multi-Agent Terminal Console -->
+          <div class="console-card">
+            <div class="console-head">
+              <div class="console-title">
+                <span class="terminal-dot green"></span>
+                <span class="terminal-dot yellow"></span>
+                <span class="terminal-dot red"></span>
+                <span class="console-name">Agent Collaboration Terminal</span>
+              </div>
+              <button class="btn-xs" onclick="clearConsoleLog()">Clear</button>
+            </div>
+
+            <div class="console-output" id="consoleOutput">
+              <div class="log-line sys">[SYSTEM INITIALIZED] Multi-agent orchestration engine ready.</div>
+              <div class="log-line sys">[CONTEXT LOADED] Connected to Lekhak Manch story workspace database.</div>
+            </div>
+
+            <div class="console-input-row">
+              <input type="text" id="agentConsoleInput" placeholder="Send directive to Agent Orchestra..." onkeydown="handleConsoleInputKey(event)">
+              <button type="button" class="btn btn-primary btn-sm" onclick="sendConsoleDirective()">Send</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <script src="assets/pages/ai-agents/js/ai-agents.js"></script>
+</body>
+</html>

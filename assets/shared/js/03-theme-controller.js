@@ -264,8 +264,8 @@
     setThemePanel(false);
     event.stopImmediatePropagation?.();
   });
-  window.addEventListener('resize', positionThemePanel);
-  window.addEventListener('scroll', positionThemePanel, true);
+  window.addEventListener('resize', positionThemePanel, { passive: true });
+  window.addEventListener('scroll', positionThemePanel, { capture: true, passive: true });
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initLekhakThemeClasses, { once: true });

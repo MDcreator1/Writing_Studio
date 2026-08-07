@@ -418,7 +418,15 @@ function initFloatingPanelFocusReturnSystem() {
       if (mutation.type === 'attributes' && FLOATING_FOCUS_PANEL_IDS.includes(mutation.target.id)) {
         syncFloatingPanelFocusState(mutation.target);
       }
-      if (mutation.type === 'attributes' && mutation.target.nodeType === Node.ELEMENT_NODE) {
+      if (
+        mutation.type === 'attributes' &&
+        mutation.target.nodeType === Node.ELEMENT_NODE &&
+        (mutation.target.hasAttribute?.('data-focus-panel-slot') ||
+         mutation.target.classList?.contains('is-focus-center-panel') ||
+         mutation.target.classList?.contains('is-focus-left-panel') ||
+         mutation.target.classList?.contains('is-focus-right-panel') ||
+         mutation.target.classList?.contains('is-focus-top-panel'))
+      ) {
         enforceFocusPanelSlot(mutation.target);
       }
       mutation.addedNodes.forEach(node => {

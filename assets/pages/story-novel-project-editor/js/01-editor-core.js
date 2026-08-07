@@ -3166,6 +3166,10 @@ async function init() {
   document.addEventListener('pointermove', handleEditorScrollThumbDrag);
   document.addEventListener('pointerup', endEditorScrollThumbDrag);
   document.addEventListener('pointercancel', endEditorScrollThumbDrag);
+  ['cur-chap', 'chapterNumberBadge'].forEach(id => {
+    document.getElementById(id)?.addEventListener('dblclick', copyChapterTitleInReviewMode);
+  });
+  document.querySelector('.editor-info-title')?.addEventListener('dblclick', copyChapterTitleInReviewMode);
   document.getElementById('draftBox')?.addEventListener('scroll', () => handleSidebarScrollReveal('draft'), { passive: true });
   document.getElementById('chapter-list')?.addEventListener('scroll', () => handleSidebarScrollReveal('chapters'), { passive: true });
   bindSidebarScrollHoverTarget('draft');
@@ -4019,7 +4023,7 @@ function syncActiveEditorEditState() {
   }
 
   if (titleButton) {
-    titleButton.disabled = lockedChapter;
+    titleButton.disabled = false;
     titleButton.classList.toggle('is-locked', lockedChapter);
     titleButton.title = lockedChapter ? text().chapterLockedTitle : text().editChapterTitle;
   }
@@ -4197,6 +4201,60 @@ function updateChapterStatus() {
   if (titleInput) titleInput.title = text().editChapterTitle;
   syncActiveEditorEditState();
 }
+
+function copyChapterTitleInReviewMode(event) {
+  if (event) {
+    if (typeof event.preventDefault === 'function') event.preventDefault();
+    if (typeof event.stopPropagation === 'function') event.stopPropagation();
+  }
+
+  if (isEditingChapterTitle) return;
+
+  const titleBtn = document.getElementById('cur-chap');
+  const titleText = String(activeEditorDisplayTitle() || (titleBtn ? titleBtn.textContent.trim() : '') || '').trim();
+  if (!titleText) return;
+
+  try {
+    const sel = window.getSelection();
+    if (sel && typeof sel.removeAllRanges === 'function') sel.removeAllRanges();
+  } catch (err) {
+  }
+
+  let copied = false;
+
+  try {
+    const textArea = document.createElement('textarea');
+    textArea.value = titleText;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-9999px';
+    textArea.style.top = '-9999px';
+    textArea.style.opacity = '0';
+    textArea.setAttribute('readonly', '');
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    textArea.setSelectionRange(0, titleText.length);
+    copied = document.execCommand('copy');
+    document.body.removeChild(textArea);
+  } catch (err) {
+    copied = false;
+  }
+
+  if (!copied && navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      navigator.clipboard.writeText(titleText).catch(() => {});
+      copied = true;
+    } catch (err) {
+    }
+  }
+
+  const toastMsg = (typeof text === 'function' && text().titleCopied) ? text().titleCopied : 'Title copied to clipboard';
+  if (typeof showSmartCopyToast === 'function') {
+    showSmartCopyToast(toastMsg);
+  }
+}
+
+window.copyChapterTitleInReviewMode = copyChapterTitleInReviewMode;
 
 function beginChapterTitleEdit() {
   ensureChapters();
@@ -4458,21 +4516,26 @@ async function cleanupActiveChapterEditDraftIfUnchanged(index = curChap, draftKe
 
 function setChapterWordCache(index, words) {
   if (!chapters[index]) return;
-  chapters[index]._wordCount = Math.max(0, Number(words) || 0);
+  const val = Math.max(0, Number(words) || 0);
+  chapters[index]._wordCount = val;
+  chapters[index].wordCount = val;
 }
 
 function setDraftWordCache(index, words) {
   if (!chapterDrafts[index]) return;
-  chapterDrafts[index]._wordCount = Math.max(0, Number(words) || 0);
+  const val = Math.max(0, Number(words) || 0);
+  chapterDrafts[index]._wordCount = val;
+  chapterDrafts[index].wordCount = val;
 }
 
 function cachedChapterWordTotal(chapter) {
   if (!chapter) return 0;
-  const cachedTotal = Number(chapter._wordCount);
+  const cachedTotal = Number.isFinite(chapter._wordCount) ? Number(chapter._wordCount) : (Number.isFinite(chapter.wordCount) ? Number(chapter.wordCount) : null);
   if (Number.isFinite(cachedTotal) && cachedTotal >= 0) return cachedTotal;
 
   const calculatedTotal = wordCount(chapter.content);
   chapter._wordCount = calculatedTotal;
+  chapter.wordCount = calculatedTotal;
   return calculatedTotal;
 }
 

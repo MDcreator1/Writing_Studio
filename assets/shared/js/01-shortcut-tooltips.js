@@ -110,30 +110,34 @@ function initShortcutTooltips() {
     const target = shortcutTooltipTargetFromEvent(event);
     if (!target || target === shortcutTooltipTarget || target === pendingShortcutTooltipTarget) return;
     scheduleShortcutTooltip(target);
-  });
+  }, { passive: true });
 
   document.addEventListener('pointerout', event => {
     const target = shortcutTooltipTargetFromEvent(event);
-    if (!target) return;
-    if (event.relatedTarget && target.contains(event.relatedTarget)) return;
-    hideShortcutTooltip();
-  });
+    if (target && event.relatedTarget && target.contains(event.relatedTarget)) return;
+    if (shortcutTooltipTarget || pendingShortcutTooltipTarget) {
+      hideShortcutTooltip();
+    }
+  }, { passive: true });
 
   document.addEventListener('focusin', event => {
     const target = shortcutTooltipTargetFromEvent(event);
     if (target) scheduleShortcutTooltip(target);
-  });
+  }, { passive: true });
 
   document.addEventListener('focusout', event => {
     const target = shortcutTooltipTargetFromEvent(event);
     if (target) hideShortcutTooltip();
-  });
+  }, { passive: true });
 
-  ['click', 'keydown', 'scroll'].forEach(eventName => {
+  ['click', 'keydown'].forEach(eventName => {
     document.addEventListener(eventName, hideShortcutTooltip, true);
   });
-  window.addEventListener('resize', hideShortcutTooltip);
+  document.addEventListener('scroll', hideShortcutTooltip, { capture: true, passive: true });
+  window.addEventListener('resize', hideShortcutTooltip, { passive: true });
 }
+
+window.hideShortcutTooltip = hideShortcutTooltip;
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initShortcutTooltips);

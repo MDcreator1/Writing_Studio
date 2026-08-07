@@ -3842,17 +3842,30 @@ function deleteActiveAIThread() {
   showSidePanelSaveLine(text().aiChatDeleted);
 }
 
+function openAIAgentsDashboard() {
+  window.open('ai-agents.html', '_blank');
+}
+
 function aiActiveStoryContext() {
   const manifest = normalizeProjectManifest(projectManifest || createProjectManifest());
   const activeDocument = activeEditorDocument?.() || {};
   const activeText = typeof getCleanEditorText === 'function' ? getCleanEditorText() : '';
+  const namesSummary = Array.isArray(typeof namingData !== 'undefined' && namingData?.entries)
+    ? namingData.entries.slice(0, 30).map(e => ({ name: e.name, category: e.categoryId, info: e.info || '' }))
+    : [];
+  const factsSummary = Array.isArray(typeof storyFacts !== 'undefined' && storyFacts)
+    ? storyFacts.slice(0, 30).map(f => ({ text: f.text || f.title || '', pinned: Boolean(f.pinned) }))
+    : [];
+
   return {
     storyTitle: manifest.title,
     storyType: manifest.type,
     language: manifest.language,
     activeDocumentTitle: typeof activeEditorDisplayTitle === 'function' ? activeEditorDisplayTitle() : activeDocument.title || '',
     activeDocumentMode: activeEditorMode,
-    activeDocumentText: activeText.length > 6000 ? activeText.slice(-6000) : activeText
+    activeDocumentText: activeText.length > 6000 ? activeText.slice(-6000) : activeText,
+    namingEntries: namesSummary,
+    storyFacts: factsSummary
   };
 }
 

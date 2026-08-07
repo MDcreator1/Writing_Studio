@@ -245,6 +245,7 @@ const translations = {
     creatingPart: 'Creating new part...',
     creatingChapter: 'Creating new chapter...',
     savingProject: 'Saving project...',
+    titleCopied: 'Title copied to clipboard',
     saving: 'Saving...',
     unsaved: 'Unsaved changes',
     editorSettings: 'Editor settings',
@@ -1190,6 +1191,13 @@ function createDefaultPart(index = 0) {
 
 function normalizeChapter(chapter, index = 0, partIndex = 0, chapterIndex = index) {
   const source = chapter || {};
+  const wordVal = Number.isFinite(source._wordCount)
+    ? source._wordCount
+    : (Number.isFinite(source.wordCount)
+      ? source.wordCount
+      : (typeof countWordsFromText === 'function' && typeof htmlToCountableText === 'function' && (source.content || source.contentHTML)
+        ? countWordsFromText(htmlToCountableText(source.content || source.contentHTML))
+        : null));
   return {
     id: source.id || source.no || Date.now() + index,
     title: source.title || `${translations.en.newChapterPrefix} ${index + 1}`,
@@ -1211,12 +1219,20 @@ function normalizeChapter(chapter, index = 0, partIndex = 0, chapterIndex = inde
       : source.editor_settings && typeof source.editor_settings === 'object'
         ? { ...source.editor_settings }
         : null,
-    _wordCount: Number.isFinite(source._wordCount) ? source._wordCount : null
+    wordCount: wordVal,
+    _wordCount: wordVal
   };
 }
 
 function normalizeDraft(draft, index = 0) {
   const source = draft || {};
+  const wordVal = Number.isFinite(source._wordCount)
+    ? source._wordCount
+    : (Number.isFinite(source.wordCount)
+      ? source.wordCount
+      : (typeof countWordsFromText === 'function' && typeof htmlToCountableText === 'function' && (source.content || source.contentHTML)
+        ? countWordsFromText(htmlToCountableText(source.content || source.contentHTML))
+        : null));
   return {
     id: source.id || Date.now() + index,
     title: source.title || `${text().draftPrefix} ${index + 1}`,
@@ -1237,7 +1253,8 @@ function normalizeDraft(draft, index = 0) {
       : source.editor_settings && typeof source.editor_settings === 'object'
         ? { ...source.editor_settings }
         : null,
-    _wordCount: Number.isFinite(source._wordCount) ? source._wordCount : null
+    wordCount: wordVal,
+    _wordCount: wordVal
   };
 }
 
