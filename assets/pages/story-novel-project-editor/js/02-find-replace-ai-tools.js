@@ -2996,6 +2996,24 @@ function showReplacementCountReminder(count) {
   if (message && typeof showMiniReminder === 'function') showMiniReminder(message);
 }
 
+function queueAdvancedWordEditingLearning(source, replacement, count = 1) {
+  const safeSource = String(source || '').trim();
+  const safeReplacement = String(replacement || '').trim();
+  if (!safeSource || !safeReplacement || safeSource === safeReplacement || !(Number(count) > 0)) return;
+  const learn = () => {
+    try {
+      const task = window.lmAdvancedWordEditing?.learnFromEditorReplacement?.({
+        source: safeSource,
+        replacement: safeReplacement,
+        count: Number(count) || 1
+      });
+      if (task && typeof task.catch === 'function') task.catch(() => {});
+    } catch { /* Dictionary learning must never interrupt Find & Replace. */ }
+  };
+  if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(learn, { timeout: 1200 });
+  else window.setTimeout(learn, 0);
+}
+
 function replaceOne() {
   if (!canEditActiveDocument()) return;
   const query = document.getElementById('findInp').value;
@@ -3028,6 +3046,7 @@ function replaceOne() {
   }
   updateStats();
   showReplacementCountReminder(1);
+  queueAdvancedWordEditingLearning(query, replacement, 1);
 }
 
 function replaceFindMatchElements(matches, replacement) {
@@ -3182,6 +3201,7 @@ function replaceAll(scope) {
   }
   updateStats();
   showReplacementCountReminder(targetMatches.length);
+  queueAdvancedWordEditingLearning(query, replacement, targetMatches.length);
 }
 
 function fillPrompt() {

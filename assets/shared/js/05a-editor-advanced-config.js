@@ -255,6 +255,7 @@ const LM_EDITOR_ADVANCED_TOP_SECTIONS = [
   { key: 'smart-paste', icon: 'P', label: 'Smart Paste', note: 'Pasted formatting', description: 'Choose how incoming text is cleaned and styled inside the editor.' },
   { key: 'global', icon: 'G', label: 'Global Text Formatting', note: 'All editor text', description: 'Set the default text format used everywhere: drafts, chapter reading, chapter editing, new documents, promoted chapters, and new paragraphs.' },
   { key: 'find-replace', icon: 'FR', label: 'Find & Replace', note: 'Matching and scope', description: 'Choose how text is matched and which results Replace All is allowed to change.' },
+  { key: 'advanced-word-editing', icon: 'WE', label: 'Advanced Word Editing', note: 'Rules and replacement flow', description: 'Prepare how grouped aliases, matching priorities, dictionaries, previews, and safe bulk word edits will behave.' },
   { key: 'developer', icon: 'Dev', label: 'Developer settings', note: '44 internal controls', description: 'Performance, saving, input, layout, feedback, and import engine controls.' }
 ];
 const LM_EDITOR_ADVANCED_CATEGORY_META = {
@@ -435,7 +436,10 @@ function advancedStoredPercent(key, fallback) {
 
 function advancedFeatureSection(key, meta, body, countLabel = '', quickPins = []) {
   const tools = `${countLabel ? `<strong class="advanced-feature-count">${countLabel}</strong>` : ''}${quickPins.map(pin => advancedQuickPinButton(pin.key, pin.label)).join('')}`;
-  return `<section class="advanced-editor-feature-section" data-advanced-top-section="${key}" ${key === activeAdvancedEditorSettingsTopSection ? '' : 'hidden'}><div class="advanced-editor-settings-section-head"><div><span>Advanced editor</span><h3>${meta.label}</h3><p>${meta.description}</p></div>${tools ? `<div class="advanced-feature-head-tools">${tools}</div>` : ''}</div>${body}</section>`;
+  const sectionHead = key === 'advanced-word-editing'
+    ? `<div class="advanced-editor-settings-section-head is-heading-only"><h3>${meta.label}</h3><button class="advanced-word-editing-import-button" type="button" onclick="window.lmAdvancedWordEditing?.openImport?.()">Import JSON</button></div>`
+    : `<div class="advanced-editor-settings-section-head"><div><span>Advanced editor</span><h3>${meta.label}</h3><p>${meta.description}</p></div>${tools ? `<div class="advanced-feature-head-tools">${tools}</div>` : ''}</div>`;
+  return `<section class="advanced-editor-feature-section" data-advanced-top-section="${key}" ${key === activeAdvancedEditorSettingsTopSection ? '' : 'hidden'}>${sectionHead}${body}</section>`;
 }
 
 function renderAdvancedEditorSettings() {
@@ -510,13 +514,19 @@ function renderAdvancedEditorSettings() {
     ${advancedRuntimeSelect('replaceScope', 'Replace All scope', 'Choose whether Replace All changes every match or only matches before or after the current position.', editorReplaceScope, [{ value: 'all', label: 'All matches' }, { value: 'after', label: 'Matches after current position' }, { value: 'before', label: 'Matches before current position' }], 'all', { key: 'replace', label: 'Replace settings' })}
   </div>`;
 
+  const wordEditingMeta = LM_EDITOR_ADVANCED_TOP_SECTIONS.find(section => section.key === 'advanced-word-editing');
+  const wordEditingBody = typeof window.lmAdvancedWordEditing?.markup === 'function'
+    ? window.lmAdvancedWordEditing.markup()
+    : '<div class="advanced-word-editing-loading">Loading the word-editing workspace…</div>';
+
   const sections = [
     advancedFeatureSection('developer', developerMeta, developerBody, `${LM_EDITOR_ADVANCED_SCHEMA.length} settings`),
     advancedFeatureSection('autoscroll', autoScrollMeta, autoScrollBody, '7 controls', [{ key: 'autoscroll', label: 'Auto-scroll' }]),
     advancedFeatureSection('smart-copy', smartCopyMeta, smartCopyBody, '3 controls', [{ key: 'smartCopy', label: 'Smart Copy' }]),
     advancedFeatureSection('smart-paste', smartPasteMeta, smartPasteBody, '4 controls', [{ key: 'smartPaste', label: 'Smart Paste' }]),
     advancedFeatureSection('global', globalMeta, globalBody, '8 controls'),
-    advancedFeatureSection('find-replace', findMeta, findBody, '2 controls')
+    advancedFeatureSection('find-replace', findMeta, findBody, '2 controls'),
+    advancedFeatureSection('advanced-word-editing', wordEditingMeta, wordEditingBody)
   ].join('');
 
   modal.innerHTML = `<section class="advanced-editor-settings-card" role="dialog" aria-modal="true" aria-labelledby="advancedEditorSettingsTitle">
@@ -528,6 +538,7 @@ function renderAdvancedEditorSettings() {
   attachAdvancedRuntimeQuickPin('replaceScope', 'replace', 'Replace settings');
   syncAdvancedSmartCopyConditionalControls();
   decorateAdvancedEditorSettingsIcons();
+  window.lmAdvancedWordEditing?.mount?.(modal);
 }
 
 function openAdvancedEditorSettings() {
