@@ -14,7 +14,7 @@ function rememberEditorSelection() {
 
 let editorFormattingSelectionRange = null;
 let editorFormattingSelectionCapturedAt = 0;
-const EDITOR_FORMATTING_SELECTION_GRACE_MS = 30000;
+const EDITOR_FORMATTING_SELECTION_GRACE_MS = lmEditorAdvancedNumber('formatSelectionGrace', 30000);
 
 function isValidEditorFormattingRange(range) {
   return Boolean(
@@ -323,10 +323,10 @@ function updateFormattingButtons(options = {}) {
 }
 
 const FOCUS_EDITOR_WIDTH_STORAGE_KEY = 'lm_focus_editor_width_percent';
-const FOCUS_EDITOR_WIDTH_MIN_VW = 30;
-const FOCUS_EDITOR_WIDTH_MAX_VW = 90;
-const FOCUS_EDITOR_WIDTH_DEFAULT_PERCENT = 67;
-const FOCUS_STATS_HIDE_DELAY_MS = 4000;
+const FOCUS_EDITOR_WIDTH_MIN_VW = lmEditorAdvancedNumber('focusWidthMin', 30);
+const FOCUS_EDITOR_WIDTH_MAX_VW = lmEditorAdvancedNumber('focusWidthMax', 90);
+const FOCUS_EDITOR_WIDTH_DEFAULT_PERCENT = lmEditorAdvancedNumber('focusWidthDefault', 67);
+const FOCUS_STATS_HIDE_DELAY_MS = lmEditorAdvancedNumber('focusStatsHide', 4000);
 
 let focusStatsHideTimer = null;
 let lastFocusStatsScrollTop = 0;
@@ -1040,7 +1040,7 @@ function changeLineSpacing() {
   const currentDocument = activeEditorDocument();
   if (currentDocument && dockSpacingValueKey(currentDocument.lineHeight) === dockSpacingValueKey(safeLineHeight)) {
     const changed = plainTextMode ? false : clearEditorScopedStyleProperties(['line-height']);
-    applyEditorSpacing(currentDocument.lineHeight, currentDocument.paragraphGap, currentDocument.paragraphMargin);
+    applyEditorSpacing(currentDocument.lineHeight, currentDocument.paragraphGap, null);
     if (changed) saveEditorSpacingChange();
     document.getElementById('editor')?.focus({ preventScroll: true });
     return;
@@ -1048,7 +1048,7 @@ function changeLineSpacing() {
   const documentItem = activeMutableEditorDocumentForChange();
   if (documentItem) documentItem.lineHeight = safeLineHeight;
   if (!plainTextMode) clearEditorScopedStyleProperties(['line-height']);
-  applyEditorSpacing(safeLineHeight, documentItem?.paragraphGap, documentItem?.paragraphMargin);
+  applyEditorSpacing(safeLineHeight, documentItem?.paragraphGap, null);
   saveEditorSpacingChange();
 }
 
@@ -1062,7 +1062,7 @@ function changeParagraphGap() {
   const currentDocument = activeEditorDocument();
   if (currentDocument && dockSpacingValueKey(currentDocument.paragraphGap) === dockSpacingValueKey(safeParagraphGap)) {
     const changed = plainTextMode ? false : clearEditorScopedStyleProperties(['--editor-selection-paragraph-gap']);
-    applyEditorSpacing(currentDocument.lineHeight, currentDocument.paragraphGap, currentDocument.paragraphMargin, { applyParagraphGap: true });
+    applyEditorSpacing(currentDocument.lineHeight, currentDocument.paragraphGap, null, { applyParagraphGap: true });
     if (changed) saveEditorSpacingChange();
     document.getElementById('editor')?.focus({ preventScroll: true });
     return;
@@ -1070,62 +1070,25 @@ function changeParagraphGap() {
   const documentItem = activeMutableEditorDocumentForChange();
   if (documentItem) documentItem.paragraphGap = safeParagraphGap;
   if (!plainTextMode) clearEditorScopedStyleProperties(['--editor-selection-paragraph-gap']);
-  applyEditorSpacing(documentItem?.lineHeight, safeParagraphGap, documentItem?.paragraphMargin, { applyParagraphGap: true });
+  applyEditorSpacing(documentItem?.lineHeight, safeParagraphGap, null, { applyParagraphGap: true });
   saveEditorSpacingChange();
 }
 
 function changeParagraphMargin() {
   const editor = document.getElementById('editor');
-  const canEdit = canEditActiveDocument();
-  const plainTextMode = typeof isEditorPlainTextMode === 'function' && isEditorPlainTextMode(editor);
   const reviewMode = typeof isEditorReviewMode === 'function' && isEditorReviewMode(editor);
-  if (!canEdit && !reviewMode) return;
+  if (!reviewMode) return;
   ensureChapters();
   const safeParagraphMargin = normalizeEditorParagraphMargin(document.getElementById('paragraphMarginSel')?.value);
   setParagraphMarginSelectValue(safeParagraphMargin);
-  if (!plainTextMode && canEdit && applyEditorBlockStylesToSelection({ '--editor-paragraph-margin': `${safeParagraphMargin}px` }, 'selection-paragraph-margin')) return;
-
-  if (reviewMode) {
-    // Clear any selection-scoped margin override so global value takes effect cleanly
-    clearEditorScopedStyleProperties(['--editor-paragraph-margin']);
-
-    // Apply globally to all chapters and edit drafts in memory
-    if (Array.isArray(chapters)) {
-      chapters.forEach(chap => { chap.paragraphMargin = safeParagraphMargin; });
-    }
-    if (typeof chapterEditDrafts !== 'undefined' && chapterEditDrafts && typeof chapterEditDrafts === 'object') {
-      Object.values(chapterEditDrafts).forEach(draft => { draft.paragraphMargin = safeParagraphMargin; });
-    }
-
-    // Apply to the editor immediately
-    const doc = activeEditorDocument();
-    if (doc) doc.paragraphMargin = safeParagraphMargin;
-    applyEditorSpacing(doc?.lineHeight, doc?.paragraphGap, safeParagraphMargin);
-
-    // Persist to disk
-    saveToStorage(false);
-    if (typeof projectDirectoryHandle !== 'undefined' && projectDirectoryHandle) {
-      const saves = [writeProjectManifest()];
-      if (typeof writeChapterEditDraftsToProject === 'function') saves.push(writeChapterEditDraftsToProject());
-      Promise.all(saves).catch(err => console.warn('Review margin save failed:', err));
-    }
-    document.getElementById('editor')?.focus({ preventScroll: true });
-    return;
-  }
-
-  const currentDocument = activeEditorDocument();
-  if (currentDocument && dockSpacingValueKey(currentDocument.paragraphMargin) === dockSpacingValueKey(safeParagraphMargin)) {
-    const changed = plainTextMode ? false : clearEditorScopedStyleProperties(['--editor-paragraph-margin']);
-    applyEditorSpacing(currentDocument.lineHeight, currentDocument.paragraphGap, currentDocument.paragraphMargin);
-    if (changed) saveEditorSpacingChange();
-    document.getElementById('editor')?.focus({ preventScroll: true });
-    return;
-  }
-  const documentItem = canEdit ? activeMutableEditorDocumentForChange() : activeEditorDocument();
-  if (documentItem) documentItem.paragraphMargin = safeParagraphMargin;
-  if (!plainTextMode) clearEditorScopedStyleProperties(['--editor-paragraph-margin']);
-  applyEditorSpacing(documentItem?.lineHeight, documentItem?.paragraphGap, safeParagraphMargin);
-  saveEditorSpacingChange();
+  clearEditorScopedStyleProperties(['--editor-paragraph-margin']);
+  const reviewMargin = typeof setEditorReviewModeMarginDefault === 'function'
+    ? setEditorReviewModeMarginDefault(safeParagraphMargin)
+    : safeParagraphMargin;
+  const doc = activeEditorDocument();
+  applyEditorSpacing(doc?.lineHeight, doc?.paragraphGap, reviewMargin);
+  if (typeof updateEditorSettingsUI === 'function') updateEditorSettingsUI();
+  editor?.focus({ preventScroll: true });
 }
 
 // Helper called by the review-mode Margin buttons in editorSettingsPanel.
@@ -1806,6 +1769,15 @@ function syncToolDockMode(options = {}) {
   const reviewPanel = panel?.querySelector('[data-tool-dock-mode-panel="review"]');
   if (editPanel) editPanel.hidden = mode !== 'edit';
   if (reviewPanel) reviewPanel.hidden = mode !== 'review';
+
+  if (mode === 'review') {
+    const reviewMargin = typeof editorReviewModeMarginDefault === 'function' ? editorReviewModeMarginDefault() : 0;
+    const documentItem = typeof activeEditorDocument === 'function' ? activeEditorDocument() : null;
+    applyEditorSpacing(documentItem?.lineHeight, documentItem?.paragraphGap, reviewMargin, { applyParagraphGap: false });
+  } else {
+    const documentItem = typeof activeEditorDocument === 'function' ? activeEditorDocument() : null;
+    applyEditorSpacing(documentItem?.lineHeight, documentItem?.paragraphGap, null, { applyParagraphGap: false });
+  }
 
   if (mode === 'review' && isFontToolsOpen) setFontToolsPanel(false);
   if (options.closeInvalidSelect !== false) {
@@ -2609,6 +2581,11 @@ function setFindPanel(open) {
     prepareFloatingPanelFocusReturn('find-bar');
   }
   if (open && !wasOpen) captureFindPanelReturnSelection();
+  if (open && typeof suspendVirtualEditorForFullDOM === 'function') {
+    Promise.resolve(suspendVirtualEditorForFullDOM()).then(materialized => {
+      if (materialized && isFindOpen) refreshFindResultsFromOpenQuery();
+    });
+  }
   isFindOpen = open;
   const findBar = document.getElementById('find-bar');
   const findBtn = document.getElementById('findBtn');
@@ -2626,6 +2603,10 @@ function setFindPanel(open) {
   } else {
     setReplacePanel(false);
     const didSelectReplacement = wasOpen && selectLastReplacementInEditorForFindClose();
+    if (wasOpen && typeof flushVirtualEditorPatchBatch === 'function') flushVirtualEditorPatchBatch();
+    if (activeVirtualEditorDocument?.temporaryReason === 'find') {
+      activeVirtualEditorDocument.temporaryReason = 'caret-inactive';
+    }
     const didSelectMatch = !didSelectReplacement && wasOpen && selectCurrentFindMatchInEditor();
     if (!didSelectReplacement && !didSelectMatch) {
       clearHighlights();
@@ -2878,19 +2859,39 @@ function renderFindMarkerRail() {
     marker.title = `${index + 1}/${findMatches.length}`;
     const topPercent = Math.min(markerMaxPercent, Math.max(2, (match.offsetTop / scrollHeight) * 100));
     marker.style.top = `${topPercent}%`;
+    marker.addEventListener('pointerdown', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    });
     marker.addEventListener('click', event => {
       event.preventDefault();
       event.stopPropagation();
-      goToFindMatch(index);
+      event.stopImmediatePropagation();
+      goToFindMatch(index, { preservePanel: true });
     });
     rail.appendChild(marker);
   });
 }
 
-function goToFindMatch(index) {
+function preserveOpenFindPanelAfterMarkerNavigation() {
+  const findBar = document.getElementById('find-bar');
+  const findBtn = document.getElementById('findBtn');
+  isFindOpen = true;
+  if (findBar) findBar.hidden = false;
+  if (findBtn) findBtn.setAttribute('aria-expanded', 'true');
+  if (typeof positionFindPanelFromDock === 'function') positionFindPanelFromDock();
+}
+
+function goToFindMatch(index, options = {}) {
   if (!findMatches.length) return;
+  if (options.preservePanel) preserveOpenFindPanelAfterMarkerNavigation();
   findIdx = Math.min(Math.max(index, 0), findMatches.length - 1);
   highlightCurrent();
+  if (options.preservePanel) {
+    preserveOpenFindPanelAfterMarkerNavigation();
+    requestAnimationFrame(preserveOpenFindPanelAfterMarkerNavigation);
+  }
 }
 
 function clampFindScrollValue(value, min, max) {

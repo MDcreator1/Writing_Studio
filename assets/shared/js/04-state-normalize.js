@@ -344,6 +344,8 @@ const translations = {
     categoryShortcutAutoHint: 'Clear and save to return to auto shortcut.',
     addNameTitle: 'Add Name',
     namePlaceholder: 'Name',
+    similarNamePlaceholder: 'Similar name',
+    addSimilarNameTitle: 'Add similar name',
     nameDescriptionPlaceholder: 'Description / details',
     saveName: 'Save Name',
     nameSaved: 'Name saved',
@@ -496,6 +498,7 @@ let editorScrollThumbDrag = null;
 let autoSaveTimer = null;
 let autoSaveIntervalTimer = null;
 let isAutoSaveRunning = false;
+let autoSaveRerunRequested = false;
 let saveStatusHideTimer = null;
 let saveStatusSettleTimer = null;
 let sidePanelSaveLineHideTimer = null;
@@ -843,6 +846,28 @@ function normalizeEditorFontSize(value) {
   return clampNumber(Math.round(numericValue), EDITOR_FONT_SIZE_MIN, EDITOR_FONT_SIZE_MAX);
 }
 
+function editorGlobalTextFormattingDefaults() {
+  let stored = {};
+  try { stored = JSON.parse(localStorage.getItem('lm_editor_advanced_settings_v1') || '{}') || {}; }
+  catch { stored = {}; }
+  const rawLineHeight = Number(stored.globalLineSpacing);
+  const rawParagraphGap = Number(stored.globalParagraphGap);
+  const rawFontSize = Number(stored.globalFontSize);
+  return {
+    alignment: normalizeEditorAlignment(stored.globalAlignment || 'justify'),
+    lineHeight: Number.isFinite(rawLineHeight) && rawLineHeight > 0 ? getClosestEditorLineHeight(rawLineHeight) : null,
+    paragraphGap: normalizeEditorParagraphGap(Number.isFinite(rawParagraphGap) ? rawParagraphGap : 0),
+    fontFamily: normalizeEditorFontFamily(stored.globalFontFamily || EDITOR_FONT_FAMILIES[0]),
+    fontSize: normalizeEditorFontSize(Number.isFinite(rawFontSize) && rawFontSize > 0 ? rawFontSize : 16)
+  };
+}
+
+function applyEditorGlobalTextFormatting(documentItem) {
+  if (!documentItem || typeof documentItem !== 'object') return documentItem;
+  Object.assign(documentItem, editorGlobalTextFormattingDefaults());
+  return documentItem;
+}
+
 function createDefaultChapter() {
   return {
     id: 1,
@@ -853,12 +878,7 @@ function createDefaultChapter() {
     partIndex: 0,
     chapterNo: 1,
     createdAt: new Date().toISOString(),
-    alignment: 'justify',
-    lineHeight: null,
-    paragraphGap: null,
-    paragraphMargin: null,
-    fontFamily: EDITOR_FONT_FAMILIES[0],
-    fontSize: 16
+    ...editorGlobalTextFormattingDefaults()
   };
 }
 
@@ -871,12 +891,7 @@ function createDefaultDraft(index = 0) {
     contentPath: draftFilePath(index),
     draftNo: index + 1,
     createdAt: new Date().toISOString(),
-    alignment: 'justify',
-    lineHeight: null,
-    paragraphGap: null,
-    paragraphMargin: null,
-    fontFamily: EDITOR_FONT_FAMILIES[0],
-    fontSize: 16,
+    ...editorGlobalTextFormattingDefaults(),
     _wordCount: 0
   };
 }
@@ -1056,6 +1071,13 @@ function normalizeNamingData(data = {}) {
             : isOrphanEntry || isUndefinedEntry
               ? draftTitle
               : chapters[chapterIndex ?? curChap]?.title || '');
+        const primaryNameKey = String(entry.name || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+        const similarNames = [...new Map(
+          (Array.isArray(entry.similarNames) ? entry.similarNames : Array.isArray(entry.aliases) ? entry.aliases : [])
+            .map(value => String(value || '').trim().replace(/\s+/g, ' '))
+            .filter(value => value && value.toLocaleLowerCase() !== primaryNameKey)
+            .map(value => [value.toLocaleLowerCase(), value])
+        ).values()];
 
         return {
           id: entry.id || `name-${Date.now()}-${index}`,
@@ -1083,6 +1105,7 @@ function normalizeNamingData(data = {}) {
           missingNameMentionMeta: entry.missingNameMentionMeta || entry.missing_name_mention_meta || null,
           sourceState: entry.sourceState || entry.namingSourceState || '',
           name: entry.name,
+          similarNames,
           description: entry.description || entry.details || '',
           createdAt,
           updatedAt: entry.updatedAt || createdAt,
@@ -1208,19 +1231,17 @@ function normalizeChapter(chapter, index = 0, partIndex = 0, chapterIndex = inde
     partIndex: Number.isInteger(source.partIndex) ? source.partIndex : partIndex,
     chapterNo: source.chapterNo || source.no || chapterIndex + 1,
     createdAt: source.createdAt || source.created_at || source.created || new Date().toISOString(),
-    alignment: normalizeEditorAlignment(source.alignment || source.align || 'justify'),
-    lineHeight: normalizeOptionalEditorLineHeight(source.lineHeight ?? source.line_height),
-    paragraphGap: normalizeOptionalEditorParagraphGap(source.paragraphGap ?? source.paragraph_gap),
-    paragraphMargin: normalizeOptionalEditorParagraphMargin(source.paragraphMargin ?? source.paragraph_margin),
-    fontFamily: normalizeEditorFontFamily(source.fontFamily || source.font_family || source.font || EDITOR_FONT_FAMILIES[0]),
-    fontSize: normalizeEditorFontSize(source.fontSize || source.font_size || 16),
+    ...editorGlobalTextFormattingDefaults(),
     editorSettings: source.editorSettings && typeof source.editorSettings === 'object'
       ? { ...source.editorSettings }
       : source.editor_settings && typeof source.editor_settings === 'object'
         ? { ...source.editor_settings }
         : null,
     wordCount: wordVal,
-    _wordCount: wordVal
+    _wordCount: wordVal,
+    _wordCountVerifiedSignature: typeof source._wordCountVerifiedSignature === 'string'
+      ? source._wordCountVerifiedSignature
+      : ''
   };
 }
 
@@ -1242,19 +1263,17 @@ function normalizeDraft(draft, index = 0) {
     contentHandle: source.contentHandle || null,
     draftNo: source.draftNo || source.no || index + 1,
     createdAt: source.createdAt || source.created_at || source.created || new Date().toISOString(),
-    alignment: normalizeEditorAlignment(source.alignment || source.align || 'justify'),
-    lineHeight: normalizeOptionalEditorLineHeight(source.lineHeight ?? source.line_height),
-    paragraphGap: normalizeOptionalEditorParagraphGap(source.paragraphGap ?? source.paragraph_gap),
-    paragraphMargin: normalizeOptionalEditorParagraphMargin(source.paragraphMargin ?? source.paragraph_margin),
-    fontFamily: normalizeEditorFontFamily(source.fontFamily || source.font_family || source.font || EDITOR_FONT_FAMILIES[0]),
-    fontSize: normalizeEditorFontSize(source.fontSize || source.font_size || 16),
+    ...editorGlobalTextFormattingDefaults(),
     editorSettings: source.editorSettings && typeof source.editorSettings === 'object'
       ? { ...source.editorSettings }
       : source.editor_settings && typeof source.editor_settings === 'object'
         ? { ...source.editor_settings }
         : null,
     wordCount: wordVal,
-    _wordCount: wordVal
+    _wordCount: wordVal,
+    _wordCountVerifiedSignature: typeof source._wordCountVerifiedSignature === 'string'
+      ? source._wordCountVerifiedSignature
+      : ''
   };
 }
 
@@ -1302,12 +1321,7 @@ function normalizeChapterEditDraft(draft = {}, fallbackKey = '') {
     contentPath: source.contentPath || source.content_path || chapterEditDraftFilePath(pathIndex),
     contentHandle: source.contentHandle || null,
     draftNo: source.draftNo || source.no || pathIndex + 1,
-    alignment: normalizeEditorAlignment(source.alignment || 'justify'),
-    lineHeight: normalizeOptionalEditorLineHeight(source.lineHeight ?? source.line_height),
-    paragraphGap: normalizeOptionalEditorParagraphGap(source.paragraphGap ?? source.paragraph_gap),
-    paragraphMargin: normalizeOptionalEditorParagraphMargin(source.paragraphMargin ?? source.paragraph_margin),
-    fontFamily: normalizeEditorFontFamily(source.fontFamily || source.font_family || source.font || EDITOR_FONT_FAMILIES[0]),
-    fontSize: normalizeEditorFontSize(source.fontSize || source.font_size || 16),
+    ...editorGlobalTextFormattingDefaults(),
     editorSettings: source.editorSettings && typeof source.editorSettings === 'object'
       ? { ...source.editorSettings }
       : source.editor_settings && typeof source.editor_settings === 'object'

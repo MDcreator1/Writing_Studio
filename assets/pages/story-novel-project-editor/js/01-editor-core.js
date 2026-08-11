@@ -11,13 +11,13 @@ function lmChevronSpan(direction = 'right', extraClass = '') {
   return `<span class="part-chevron">${lmChevronIcon(direction, extraClass)}</span>`;
 }
 
-const FOCUS_WIDTH_ACTIVE_IDLE_MS = 5000;
-const EDITOR_CARET_AUTO_SCROLL_SUPPRESS_MS = 260;
-const EDITOR_MANUAL_SCROLL_OVERRIDE_MS = 1200;
-const EDITOR_MANUAL_SCROLL_INTENT_MS = 700;
-const EDITOR_PROGRAMMATIC_SCROLL_EVENT_MS = 160;
-const EDITOR_AUTO_SCROLL_MARKER_DRAG_THRESHOLD_PX = 4;
-const EDITOR_AUTO_SCROLL_MARKER_CLICK_DELAY_MS = 240;
+const FOCUS_WIDTH_ACTIVE_IDLE_MS = lmEditorAdvancedNumber('focusIdleDelay', 5000);
+const EDITOR_CARET_AUTO_SCROLL_SUPPRESS_MS = lmEditorAdvancedNumber('caretScrollSuppress', 260);
+const EDITOR_MANUAL_SCROLL_OVERRIDE_MS = lmEditorAdvancedNumber('manualScrollOverride', 1200);
+const EDITOR_MANUAL_SCROLL_INTENT_MS = lmEditorAdvancedNumber('manualScrollIntent', 700);
+const EDITOR_PROGRAMMATIC_SCROLL_EVENT_MS = lmEditorAdvancedNumber('programmaticScrollWindow', 160);
+const EDITOR_AUTO_SCROLL_MARKER_DRAG_THRESHOLD_PX = lmEditorAdvancedNumber('markerDragThreshold', 4);
+const EDITOR_AUTO_SCROLL_MARKER_CLICK_DELAY_MS = lmEditorAdvancedNumber('markerClickDelay', 240);
 const FOCUS_HOVER_INTENT_DELAY_MS = 500;
 const FOCUS_HOVER_INTENT_STATIONARY_PX = 4;
 let focusWidthActiveHideTimer = null;
@@ -297,6 +297,18 @@ function applyPlainTextParagraphGapToEditor(editor, paragraphGap) {
 
 function renderEditorDocumentContent(editor, documentItem) {
   if (!editor) return;
+  if (activeVirtualEditorDocument && !shouldActivateRestrictedEditorRendering(documentItem)) {
+    clearVirtualEditorDocument();
+  }
+  if (
+    documentItem &&
+    typeof shouldVirtualizeEditorDocument === 'function' &&
+    shouldVirtualizeEditorDocument(documentItem) &&
+    activeVirtualEditorDocument?.documentItem !== documentItem
+  ) {
+    startVirtualEditorDocument(documentItem, editorDocumentLoadSequence);
+    return;
+  }
   const sourceText = editorHTMLToText(documentItem?.content || '');
   const canEdit = typeof canEditActiveDocument === 'function' ? canEditActiveDocument() : true;
   setEditorRenderMode(editor, canEdit ? 'plain' : 'review');
@@ -307,6 +319,7 @@ function renderEditorDocumentContent(editor, documentItem) {
 function getCleanEditorHTML() {
   const editor = document.getElementById('editor');
   if (!editor) return '';
+  if (activeVirtualEditorDocument) return activeEditorHTMLBuffer || activeVirtualEditorDocument.html || '';
   if (isEditorPlainTextMode(editor)) {
     const plainText = cleanPlainTextEditorValue(editor);
     if (!plainText.trim()) return '';
@@ -449,6 +462,7 @@ function countWordsFromText(value) {
 function getCleanEditorText() {
   const editor = document.getElementById('editor');
   if (!editor) return '';
+  if (activeVirtualEditorDocument) return editorHTMLToText(activeEditorHTMLBuffer || activeVirtualEditorDocument.html || '');
   if (isEditorPlainTextMode(editor)) return cleanPlainTextEditorValue(editor);
 
   const clone = editor.cloneNode(true);
@@ -515,10 +529,10 @@ function editorHTMLToText(html) {
 
 const EDITOR_HISTORY_STORAGE_KEY = 'lm_editor_history_v1';
 const EDITOR_HISTORY_PERSIST_TO_BROWSER_STORAGE = false;
-const EDITOR_HISTORY_LIMIT = 120;
-const EDITOR_HISTORY_MAX_DOCUMENTS = 16;
-const EDITOR_HISTORY_INPUT_GROUP_MS = 4500;
-const EDITOR_HISTORY_INPUT_DEBOUNCE_MS = 650;
+const EDITOR_HISTORY_LIMIT = lmEditorAdvancedNumber('historyLimit', 120);
+const EDITOR_HISTORY_MAX_DOCUMENTS = lmEditorAdvancedNumber('historyDocuments', 16);
+const EDITOR_HISTORY_INPUT_GROUP_MS = lmEditorAdvancedNumber('historyTypingGroup', 4500);
+const EDITOR_HISTORY_INPUT_DEBOUNCE_MS = lmEditorAdvancedNumber('historyDebounce', 650);
 
 let editorHistoryDocKey = '';
 let editorHistoryStack = [];
@@ -918,6 +932,10 @@ function flushEditorHistorySnapshot(reason = 'flush') {
 function restoreEditorHistorySnapshot(snapshot, options = {}) {
   const editor = document.getElementById('editor');
   if (!editor || !snapshot) return false;
+  // Full-document history snapshots must never replace a bounded virtual DOM.
+  // Virtual undo needs paragraph/revision history and is intentionally disabled
+  // until that representation is available.
+  if (activeVirtualEditorDocument) return false;
 
   isApplyingEditorHistorySnapshot = true;
   try {
@@ -1042,6 +1060,43 @@ function namingEntryNameKey(name) {
   return normalizeScanText(name).toLocaleLowerCase();
 }
 
+function namingEntrySearchNames(entry = {}) {
+  const candidates = [entry.name, ...(Array.isArray(entry.similarNames) ? entry.similarNames : [])];
+  const unique = new Map();
+  candidates.forEach(candidate => {
+    const cleaned = normalizeScanText(candidate);
+    const key = namingEntryNameKey(cleaned);
+    if (cleaned.length >= 2 && key && !unique.has(key)) unique.set(key, cleaned);
+  });
+  return [...unique.values()];
+}
+
+function isNamingEntryUsedInText(entry = {}, documentText = '') {
+  return namingEntrySearchNames(entry).some(name => isSavedNameUsedInText(name, documentText));
+}
+
+function countNamingEntryUsesInText(entry = {}, documentText = '') {
+  const cleanedText = normalizeScanText(documentText);
+  if (!cleanedText) return 0;
+  const ranges = [];
+  namingEntrySearchNames(entry)
+    .sort((left, right) => right.length - left.length)
+    .forEach(name => {
+      try {
+        const namePattern = name.split(/\s+/).map(escapeRegExp).join('\\s+');
+        const matcher = new RegExp(`(^|[^\\p{L}\\p{N}_])(${namePattern})(?=$|[^\\p{L}\\p{N}_])`, 'giu');
+        for (const match of cleanedText.matchAll(matcher)) {
+          const start = (match.index || 0) + (match[1]?.length || 0);
+          const end = start + (match[2]?.length || name.length);
+          if (!ranges.some(range => start < range.end && end > range.start)) ranges.push({ start, end });
+        }
+      } catch (_error) {
+        // The normal Unicode-regex path handles supported browsers.
+      }
+    });
+  return ranges.length;
+}
+
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -1159,7 +1214,7 @@ function resolveUndefinedNamingEntriesForDocument(documentText = getCleanEditorT
 
   namingData.entries.forEach(entry => {
     if (!isUndefinedNamingEntry(entry)) return;
-    if (!isSavedNameUsedInText(entry.name, documentText)) return;
+    if (!isNamingEntryUsedInText(entry, documentText)) return;
     didResolve = applyNamingEntryDocumentMeta(entry, documentMeta, savedAt) || didResolve;
   });
 
@@ -1178,7 +1233,7 @@ function resolveDraftNamingEntriesForChapter(chapterIndex = curChap, chapterText
 
   namingData.entries.forEach(entry => {
     if (!isDraftNamingEntry(entry)) return;
-    if (!isSavedNameUsedInText(entry.name, chapterText)) return;
+    if (!isNamingEntryUsedInText(entry, chapterText)) return;
 
     const draftMeta = entry.resolvedFromDraft || {
       draftKey: entry.draftKey || entry.chapterKey || null,
@@ -1236,7 +1291,7 @@ function scanNamingUsesForDocument(documentKey = currentNamingChapterKey(), docu
   const detectedIds = namingData.entries
     .filter(entry => !isUndefinedNamingEntry(entry))
     .filter(entry => entry.chapterKey !== documentKey && !currentDocumentEntryIds.has(entry.id))
-    .filter(entry => isSavedNameUsedInText(entry.name, documentText))
+    .filter(entry => isNamingEntryUsedInText(entry, documentText))
     .map(entry => entry.id);
 
   const detectedByChapter = {
@@ -1261,9 +1316,9 @@ function scanCurrentChapterForNamingUses(chapterIndex = curChap, chapterText = g
   return scanNamingUsesForDocument(chapterKey, chapterText, documentMeta, savedAt) || resolvedDraft;
 }
 
-function scanActiveEditorForNamingUses(savedAt = new Date().toISOString()) {
+function scanActiveEditorForNamingUses(savedAt = new Date().toISOString(), documentText = getCleanEditorText()) {
   if (!namingData.entries?.length) return false;
-  return scanNamingUsesForDocument(currentNamingChapterKey(), getCleanEditorText(), activeNamingDocumentMeta(savedAt), savedAt);
+  return scanNamingUsesForDocument(currentNamingChapterKey(), documentText, activeNamingDocumentMeta(savedAt), savedAt);
 }
 
 function syncEditorPlaceholderState() {
@@ -2327,42 +2382,6 @@ function runEditorCaretBandAutoScroll(editor, caretRect) {
   setEditorAutoScrollTop(editor, nextScrollTop);
 }
 
-function isEditorAutoScrollDepthTextStart(editor = document.getElementById('editor')) {
-  const canRunAutoScroll = typeof isEditorAutoScrollSystemActive === 'function'
-    ? isEditorAutoScrollSystemActive()
-    : isEditorAutoScrollEnabled;
-  return Boolean(
-    editor &&
-    canRunAutoScroll &&
-    !isEditorAutoScrollBandMode() &&
-    document.activeElement === editor &&
-    isCollapsedEditorSelectionAtTextStart(editor)
-  );
-}
-
-function syncEditorAutoScrollDepthTextStart(editor = document.getElementById('editor'), options = {}) {
-  if (!isEditorAutoScrollDepthTextStart(editor)) return false;
-  const hasActiveScrollAnimation = Boolean(editorAutoScrollAnimationFrame);
-  markEditorCaretAutoScroll();
-  editor.classList.remove('is-scrolling');
-  if (editor.scrollTop > 0.5) {
-    if (hasActiveScrollAnimation && options.retarget === false) {
-      if (typeof updateEditorScrollThumb === 'function') updateEditorScrollThumb(false);
-    } else {
-      setEditorAutoScrollTop(editor, 0);
-    }
-  } else {
-    markEditorProgrammaticScrollEvent();
-    editor.scrollTop = 0;
-    if (typeof updateEditorScrollThumb === 'function') updateEditorScrollThumb(false);
-  }
-  return true;
-}
-
-function runEditorCaretTextStartAutoScroll(editor) {
-  return syncEditorAutoScrollDepthTextStart(editor);
-}
-
 function runEditorCaretAutoScroll() {
   editorCaretAutoScrollFrame = null;
   const editor = document.getElementById('editor');
@@ -2380,8 +2399,6 @@ function runEditorCaretAutoScroll() {
   ) {
     return;
   }
-
-  if (!isBandMode && runEditorCaretTextStartAutoScroll(editor)) return;
 
   const caretRect = editorCaretRect(editor);
   if (!caretRect) return;
@@ -2420,10 +2437,6 @@ function scheduleEditorCaretAutoScroll() {
   }
   if (isEditorManualScrollOverrideActive()) {
     cancelEditorCaretAutoScroll();
-    return;
-  }
-  if (!isEditorAutoScrollBandMode() && syncEditorAutoScrollDepthTextStart()) {
-    cancelAnimationFrame(editorCaretAutoScrollFrame);
     return;
   }
   if (!isEditorAutoScrollBandMode() && isEditorCaretPointerPlacementActive()) {
@@ -2529,7 +2542,7 @@ function scheduleEditorAutoScrollDepthMarkerCaretSync(options = {}) {
   editorAutoScrollCaretPlacementSyncTimer = setTimeout(() => {
     editorAutoScrollCaretPlacementSyncTimer = null;
     runSync();
-  }, 90);
+  }, lmEditorAdvancedNumber('caretSyncDelay', 90));
 }
 
 function editorSelectionVisualRect(editor) {
@@ -2863,6 +2876,20 @@ function handleEditorPaste(event) {
   const editor = document.getElementById('editor');
   if (!editor) return;
 
+  if (activeVirtualEditorDocument && !activeVirtualEditorDocument.temporarilyMaterialized) {
+    const preservedSelection = captureVirtualEditorGlobalSelection(editor, activeVirtualEditorDocument);
+    const pasteText = typeof editorTextFromPaste === 'function'
+      ? editorTextFromPaste(plainText, html)
+      : plainText.replace(/\r\n?/g, '\n');
+    event.preventDefault();
+    expandVirtualEditorForSelection(preservedSelection).then(materialized => {
+      if (!materialized) return;
+      editor.focus({ preventScroll: true });
+      if (insertPlainTextAtEditorSelection(editor, pasteText)) commitPlainTextEditorManualInput();
+    });
+    return;
+  }
+
   if (isEditorPlainTextMode(editor)) {
     const pasteText = typeof editorTextFromPaste === 'function'
       ? editorTextFromPaste(plainText, html)
@@ -2883,7 +2910,25 @@ function handleEditorPaste(event) {
   document.execCommand('insertHTML', false, pasteHTML);
   syncEditorPlaceholderState();
   scheduleEditorCaretAutoScroll();
-  updateStats();
+  stageEditorHTMLForMemoryCommit();
+}
+
+function handleVirtualEditorCut(event) {
+  const state = activeVirtualEditorDocument;
+  const editor = document.getElementById('editor');
+  const selection = window.getSelection();
+  if (!state || state.temporarilyMaterialized || !editor || !selection?.rangeCount || selection.isCollapsed) return;
+  const preservedSelection = captureVirtualEditorGlobalSelection(editor, state);
+  const selectedText = selection.toString();
+  if (!preservedSelection || !selectedText) return;
+  event.preventDefault();
+  event.clipboardData?.setData('text/plain', selectedText);
+  expandVirtualEditorForSelection(preservedSelection).then(materialized => {
+    if (!materialized) return;
+    editor.focus({ preventScroll: true });
+    document.execCommand('delete', false);
+    commitPlainTextEditorManualInput();
+  });
 }
 
 function guardLockedEditorMutation(event) {
@@ -3083,6 +3128,7 @@ async function init() {
     scheduleEditorCaretAutoScroll();
   });
   editor.addEventListener('blur', () => {
+    endRestrictedInputRendering('editor-blur');
     flushEditorHistorySnapshot('blur');
     clearFocusWidthActiveIdleTimer();
     document.body.classList.remove('is-focus-editor-active');
@@ -3091,6 +3137,8 @@ async function init() {
   });
   editor.addEventListener('input', syncEditorPlaceholderState);
   editor.addEventListener('input', handleEditorParagraphGapInput);
+  editor.addEventListener('beforeinput', captureVirtualEditorBeforeInputContext, true);
+  window.addEventListener('keydown', handleRestrictedInputSessionKeydown, true);
   editor.addEventListener('beforeinput', guardLockedEditorMutation);
   editor.addEventListener('beforeinput', handlePlainTextEditorBeforeInput, true);
   if (window.LmHindiUnicodeEditing?.initHindiUnicodeEditing) {
@@ -3113,6 +3161,7 @@ async function init() {
     });
   }
   editor.addEventListener('paste', handleEditorPaste);
+  editor.addEventListener('cut', handleVirtualEditorCut);
   document.getElementById('smartCopyBtn')?.addEventListener('mousedown', event => event.preventDefault());
   document.addEventListener('copy', handleEditorCopy, true);
   editor.addEventListener('drop', guardLockedEditorMutation);
@@ -3120,11 +3169,17 @@ async function init() {
   editor.addEventListener('touchstart', handleEditorManualScrollIntent, { passive: true });
   editor.addEventListener('touchmove', handleEditorManualScrollIntent, { passive: true });
   editor.addEventListener('keydown', handleEditorManualScrollKeydown);
+  document.addEventListener('keydown', handleVirtualEditorClipboardShortcut, true);
   editor.addEventListener('keydown', handleEditorCaretNavigationKeydown);
   editor.addEventListener('scroll', handleEditorManualScrollEvent, { passive: true });
   editor.addEventListener('scroll', handleEditorScrollReveal, { passive: true });
+  editor.addEventListener('scroll', handleVirtualEditorScroll, { passive: true });
+  editor.addEventListener('wheel', handleVirtualEditorScrollStartIntent, { passive: true });
+  editor.addEventListener('touchstart', handleVirtualEditorScrollStartIntent, { passive: true });
   editor.addEventListener('pointerenter', event => updateFocusWidthPointerState(event.target));
   editor.addEventListener('pointerdown', handleEditorCaretPointerPlacementStart);
+  document.addEventListener('pointerdown', endRestrictedInputRenderingBeforePointerAction, true);
+  document.addEventListener('mousemove', endRestrictedInputRenderingOnMouseMove, { capture: true, passive: true });
   editor.addEventListener('pointerup', handleEditorCaretPointerPlacement);
   editor.addEventListener('pointerleave', () => {
     document.body.classList.remove('is-focus-editor-pointer-inside');
@@ -3183,10 +3238,15 @@ async function init() {
   editor.addEventListener('mouseup', scheduleEditorCaretAutoScroll);
   editor.addEventListener('input', updateFormattingButtons);
   document.addEventListener('selectionchange', () => {
+    handleVirtualEditorSelectionExpansion();
     updateFormattingButtons();
     syncEditorSelectionWordStatus({ revealFocus: true });
-    scheduleEditorCaretAutoScroll();
+    // Replacing the virtual/full DOM can emit a synthetic selectionchange.
+    // Keep caret-window tracking alive, but do not let that synthetic event
+    // start auto-scroll before the preserved viewport anchor is restored.
+    if (!isVirtualEditorDOMSelectionTransaction) scheduleEditorCaretAutoScroll();
   });
+  initRestrictedInputFloatingPanelObserver();
   window.addEventListener('resize', () => {
     renderFindMarkerRail();
     positionEditorAutoScrollDepthMarker();
@@ -3282,17 +3342,6 @@ async function init() {
       range.addEventListener('input', () => setter(range.value));
       range.addEventListener('change', () => setter(range.value));
     });
-    const cgRange = document.getElementById('copyParagraphGapsRange');
-    if (cgRange) {
-      cgRange.addEventListener('input', () => {
-        const val = Number(cgRange.value) || 0;
-        if (typeof copyParagraphGaps !== 'undefined') copyParagraphGaps = val;
-        const el = document.getElementById('copyParagraphGapsValue');
-        if (el) el.textContent = String(val);
-        if (typeof syncCopyGapsRangeFill === 'function') syncCopyGapsRangeFill(cgRange);
-      });
-      cgRange.addEventListener('change', () => { if (typeof setCopyParagraphGaps === 'function') setCopyParagraphGaps(cgRange.value); });
-    }
   })();
   document.getElementById('fsize')?.addEventListener('blur', closeToolDockAfterControlBlur);
   document.getElementById('fontSel')?.addEventListener('blur', closeToolDockAfterControlBlur);
@@ -3844,6 +3893,7 @@ function applyLanguage() {
   setPlaceholder('newNamingCategoryInp', copy.addCategoryPlaceholder);
   setPlaceholder('newNamingCategoryInfoInp', copy.categoryInfoPlaceholder);
   setPlaceholder('namingNameInp', copy.namePlaceholder);
+  setPlaceholder('namingSimilarNameInp', copy.similarNamePlaceholder || 'Similar name');
   setPlaceholder('namingDescriptionInp', copy.nameDescriptionPlaceholder);
   setPlaceholder('factSearchInp', copy.factSearchPlaceholder);
   setPlaceholder('factKeywordInp', copy.factKeywordPlaceholder);
@@ -4613,12 +4663,7 @@ function ensureChapterAfterDelete(manifest, preferredPartIndex = 0) {
     partIndex,
     chapterNo: 1,
     createdAt: new Date().toISOString(),
-    alignment: 'justify',
-    lineHeight: null,
-    paragraphGap: null,
-    paragraphMargin: null,
-    fontFamily: EDITOR_FONT_FAMILIES[0],
-    fontSize: 16
+    ...editorGlobalTextFormattingDefaults()
   }, 0, partIndex, 0)];
 }
 
@@ -7323,6 +7368,7 @@ function renderDrafts() {
     </div>
     ${chapterDrafts.map((draft, index) => `
       <div class="chap-item draft-item ${isDraftActive() && index === curDraft ? 'active' : ''} ${selectedDraftIndexes.has(index) ? 'is-selected' : ''}"
+        data-editor-document="draft" data-editor-document-index="${index}"
         onclick="handleDraftItemClick(event, ${index})" aria-selected="${selectedDraftIndexes.has(index)}">
         <div class="chap-title-row">
             <span class="chap-file-icon draft-icon">D${index + 1}</span>
@@ -7427,10 +7473,10 @@ function sidebarScrollTarget(kind = 'chapters') {
   return document.getElementById('chapter-list');
 }
 
-const CHAPTER_PANEL_MIN_LIST_HEIGHT = 160;
-const DRAFT_COMPACT_VISIBLE_ITEMS = 2.5;
-const DRAFT_COMPACT_MIN_ITEMS = 3;
-const DRAFT_COMPACT_FALLBACK_HEIGHT = 190;
+const CHAPTER_PANEL_MIN_LIST_HEIGHT = lmEditorAdvancedNumber('sidebarMinHeight', 160);
+const DRAFT_COMPACT_VISIBLE_ITEMS = lmEditorAdvancedNumber('draftVisibleItems', 2.5);
+const DRAFT_COMPACT_MIN_ITEMS = lmEditorAdvancedNumber('draftCompactMinimum', 3);
+const DRAFT_COMPACT_FALLBACK_HEIGHT = lmEditorAdvancedNumber('draftFallbackHeight', 190);
 
 function sidebarScrollKindKey(kind = 'chapters') {
   return kind === 'draft' || kind === 'raw' ? kind : 'chapters';
@@ -7906,6 +7952,7 @@ function renderRawChapterSection(rawChapterSection, flatChapterItems = [], copy 
     <div class="part-children raw-chapter-children raw-chapter-list" id="rawChapterList">
       ${isExpanded ? flatChapterItems.map(({ chapter, index }) => `
         <div class="chap-item ${!isDraftActive() && index === curChap ? 'active' : ''} ${selectedChapterIndexes.has(index) ? 'is-selected' : ''}"
+          data-editor-document="chapter" data-editor-document-index="${index}"
           onclick="handleChapterItemClick(event, ${index})" aria-selected="${selectedChapterIndexes.has(index)}">
           <div class="chap-title-row">
             <span class="chap-file-icon">${chapterDisplayNumber(chapter, index)}</span>
@@ -8068,6 +8115,7 @@ function renderChapters() {
     chapterList.innerHTML = chapters.length
       ? chapters.map((chapter, index) => `
           <div class="chap-item ${!isDraftActive() && index === curChap ? 'active' : ''} ${selectedChapterIndexes.has(index) ? 'is-selected' : ''}"
+            data-editor-document="chapter" data-editor-document-index="${index}"
             onclick="handleChapterItemClick(event, ${index})" aria-selected="${selectedChapterIndexes.has(index)}">
             <div class="chap-title-row">
                 <span class="chap-file-icon">${chapterDisplayNumber(chapter, index)}</span>
@@ -8115,6 +8163,7 @@ function renderChapters() {
     const chapterItems = isExpanded && partChapters.length
       ? partChapters.map(({ chapter, index }, chapterIndex) => `
           <div class="chap-item ${!isDraftActive() && index === curChap ? 'active' : ''} ${selectedChapterIndexes.has(index) ? 'is-selected' : ''}"
+            data-editor-document="chapter" data-editor-document-index="${index}"
             onclick="handleChapterItemClick(event, ${index})" aria-selected="${selectedChapterIndexes.has(index)}">
             <div class="chap-title-row">
                 <span class="chap-file-icon">${chapterDisplayNumber(chapter, index)}</span>
@@ -8166,6 +8215,1623 @@ function renderChapters() {
   syncSidebarScrollThumbs();
 }
 
+let editorDocumentLoadSequence = 0;
+let activeEditorHTMLBuffer = '';
+let activeEditorHTMLBufferVersion = 0;
+let committedEditorHTMLBufferVersion = 0;
+let editorHTMLMemoryCommitTimer = null;
+let activeEditorHTMLAnalysisPromise = null;
+let activeEditorHTMLBridgePromise = null;
+let editorInputBridgeSequence = 0;
+let completedEditorInputBridgeSequence = 0;
+let persistedEditorInputSequence = 0;
+const switchedDocumentSnapshots = new Map();
+let switchedDocumentSnapshotSequence = 0;
+const EDITOR_READING_WORDS_PER_MINUTE = lmEditorAdvancedNumber('readingWordsPerMinute', 200);
+const EDITOR_PROCESSING_WORKER_URL = `assets/pages/story-novel-project-editor/js/editor-processing-worker.js?v=20260811-naming-similar-names&readingWpm=${EDITOR_READING_WORDS_PER_MINUTE}`;
+const EDITOR_HTML_BRIDGE_WORKER_URL = `assets/pages/story-novel-project-editor/js/editor-html-bridge-worker.js?v=20260811-configured-window&readingWpm=${EDITOR_READING_WORDS_PER_MINUTE}&maxWindow=${lmEditorAdvancedNumber('workerWindowMaximum', 40)}`;
+let editorWorkerJobSequence = 0;
+
+function editorWorkerNamesPayload() {
+  return (namingData?.entries || []).map(entry => ({ id: entry.id, names: namingEntrySearchNames(entry) }));
+}
+
+function fallbackEditorWorkerAnalysis(payload = {}) {
+  const normalizedHTML = payload.plainTextMode
+    ? (payload.rawText?.trim() ? textToEditorHTML(String(payload.rawText).replace(/\r\n?/g, '\n').trimEnd()) : '')
+    : String(payload.html || payload.rawHTML || '');
+  const textValue = payload.plainTextMode
+    ? String(payload.rawText || '').replace(/\r\n?/g, '\n').trimEnd()
+    : editorHTMLToText(normalizedHTML);
+  const words = countWordsFromText(textValue);
+  return {
+    normalizedHTML,
+    text: textValue,
+    stats: {
+      words,
+      characters: textValue.replace(/\s/g, '').length,
+      paragraphs: textValue.split(/\n+/).filter(part => part.trim()).length || (textValue.trim() ? 1 : 0),
+      sentences: textValue.split(/[।.!?]+/).filter(sentence => sentence.trim()).length,
+      readingTime: Math.max(1, Math.round(words / EDITOR_READING_WORDS_PER_MINUTE))
+    },
+    nameMatches: []
+  };
+}
+
+function createEditorWorkerLane({
+  cancelPrevious = false,
+  workerUrl = EDITOR_PROCESSING_WORKER_URL,
+  fallbackHandler = fallbackEditorWorkerAnalysis
+} = {}) {
+  let worker = null;
+  const pending = new Map();
+  const responseTimeout = lmEditorAdvancedNumber('workerResponseTimeout', 8000);
+
+  function rejectPending(reason = 'Worker restarted') {
+    pending.forEach(({ reject, timeoutId }) => {
+      clearTimeout(timeoutId);
+      reject(new DOMException(reason, 'AbortError'));
+    });
+    pending.clear();
+  }
+
+  function stop() {
+    worker?.terminate();
+    worker = null;
+  }
+
+  function start() {
+    if (worker || typeof Worker !== 'function') return worker;
+    worker = new Worker(workerUrl);
+    worker.onmessage = event => {
+      const message = event.data || {};
+      const task = pending.get(message.id);
+      if (!task) return;
+      pending.delete(message.id);
+      clearTimeout(task.timeoutId);
+      if (message.ok) task.resolve(message.result);
+      else task.reject(new Error(message.error?.message || 'Editor worker task failed'));
+    };
+    worker.onerror = error => {
+      const failure = new Error(error?.message || 'Editor processing worker failed');
+      pending.forEach(({ reject, timeoutId }) => {
+        clearTimeout(timeoutId);
+        reject(failure);
+      });
+      pending.clear();
+      stop();
+    };
+    return worker;
+  }
+
+  return {
+    async run(payload = {}, type = 'analyze') {
+      if (cancelPrevious && pending.size) {
+        rejectPending('Superseded by a newer editor analysis');
+        stop();
+      }
+      const activeWorker = start();
+      if (!activeWorker) return fallbackHandler(payload);
+      const id = ++editorWorkerJobSequence;
+      return new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          const timedOutTask = pending.get(id);
+          if (!timedOutTask) return;
+          pending.delete(id);
+          timedOutTask.reject(new Error(`Editor Worker timed out after ${responseTimeout} ms`));
+          rejectPending('Worker restarted after timeout');
+          stop();
+        }, responseTimeout);
+        pending.set(id, { resolve, reject, timeoutId });
+        activeWorker.postMessage({ id, type, payload });
+      });
+    },
+    stop() {
+      rejectPending('Editor worker stopped');
+      stop();
+    }
+  };
+}
+
+const editorSurfaceWorkerLane = createEditorWorkerLane({ cancelPrevious: true });
+const editorSnapshotWorkerLane = createEditorWorkerLane({ cancelPrevious: false });
+const editorHTMLBridgeWorkerLane = createEditorWorkerLane({
+  cancelPrevious: false,
+  workerUrl: EDITOR_HTML_BRIDGE_WORKER_URL,
+  fallbackHandler: payload => ({
+    html: payload.plainTextMode
+      ? (String(payload.rawText || '').trim() ? textToEditorHTML(String(payload.rawText).replace(/\r\n?/g, '\n').trimEnd()) : '')
+      : String(payload.rawHTML || ''),
+    inputSequence: payload.inputSequence,
+    capturedAt: payload.capturedAt
+  })
+});
+const VIRTUAL_EDITOR_WORD_THRESHOLD = lmEditorAdvancedNumber('virtualWordThreshold', 3000);
+const VIRTUAL_EDITOR_WINDOW_SIZE = lmEditorAdvancedNumber('virtualWindowSize', 25);
+let activeVirtualEditorDocument = null;
+let virtualEditorScrollFrame = null;
+let virtualEditorWindowRequest = 0;
+let virtualEditorBeforeInputContext = null;
+let virtualEditorMaterializeTimer = null;
+let virtualEditorFullAnalysisTimer = null;
+let virtualEditorPatchBatchTimer = null;
+let virtualEditorPendingPatchBatch = null;
+let virtualEditorProgrammaticScrollGuard = 0;
+let isExpandingVirtualEditorSelection = false;
+let virtualEditorSelectionExpansionPromise = null;
+let isVirtualEditorDOMSelectionTransaction = false;
+const VIRTUAL_EDITOR_PATCH_BATCH_MS = lmEditorAdvancedNumber('patchBatchDelay', 75);
+const VIRTUAL_EDITOR_MATERIALIZE_DELAY_MS = lmEditorAdvancedNumber('materializeDelay', 700);
+const VIRTUAL_EDITOR_FULL_ANALYSIS_DELAY_MS = lmEditorAdvancedNumber('fullAnalysisDelay', 2200);
+const EDITOR_MEMORY_COMMIT_DELAY_MS = lmEditorAdvancedNumber('memoryCommitDelay', 180);
+const EDITOR_AUTOSAVE_DELAY_MS = lmEditorAdvancedNumber('autosaveDelay', 1500);
+const RESTRICTED_INPUT_IDLE_DELAY_MS = lmEditorAdvancedNumber('restrictedInputIdleDelay', 3000);
+const SAVE_BUTTON_TYPING_IDLE_CHECK_MS = lmEditorAdvancedNumber('autosaveInputIdleDelay', 750);
+const SAVE_BUTTON_STATE_POLL_MS = 120;
+let isRestrictedInputRenderingActive = false;
+let restrictedInputIdleTimer = null;
+let saveButtonTypingIdleTimer = null;
+
+function activeEditorSaveBaselineHTML() {
+  const chapterEditDraft = typeof activeChapterEditDraft === 'function' ? activeChapterEditDraft() : null;
+  return chapterEditDraft ? chapterEditDraft.lastAutosavedHTML || '' : lastSavedChapterHTML;
+}
+
+function markActiveEditorInputPersisted() {
+  persistedEditorInputSequence = editorInputBridgeSequence;
+  setSaveButtonSaved(true);
+}
+
+function reconcileSaveButtonAfterTyping(inputSequence, documentSequence) {
+  if (inputSequence !== editorInputBridgeSequence || documentSequence !== editorDocumentLoadSequence) return;
+  if (!isAutoSaveEnabled || !canEditActiveDocument()) return;
+
+  const baselineHTML = activeEditorSaveBaselineHTML();
+  const memoryIsCurrent = committedEditorHTMLBufferVersion === activeEditorHTMLBufferVersion;
+  const snapshotIsSaved = persistedEditorInputSequence === inputSequence ||
+    (memoryIsCurrent && activeEditorHTMLBuffer === baselineHTML);
+
+  // Re-apply the state even when data-save-state already says "saved". This
+  // repairs an icon/class that was left visually stale by an earlier async UI
+  // callback and also synchronises the focus-mode save button.
+  if (snapshotIsSaved) {
+    setSaveButtonSaved(true);
+    return;
+  }
+
+  saveButtonTypingIdleTimer = setTimeout(() => {
+    saveButtonTypingIdleTimer = null;
+    reconcileSaveButtonAfterTyping(inputSequence, documentSequence);
+  }, SAVE_BUTTON_STATE_POLL_MS);
+}
+
+function scheduleSaveButtonTypingIdleCheck() {
+  clearTimeout(saveButtonTypingIdleTimer);
+  const inputSequence = editorInputBridgeSequence;
+  const documentSequence = editorDocumentLoadSequence;
+  saveButtonTypingIdleTimer = setTimeout(() => {
+    saveButtonTypingIdleTimer = null;
+    if (
+      inputSequence === editorInputBridgeSequence &&
+      documentSequence === editorDocumentLoadSequence &&
+      isAutoSaveEnabled &&
+      canEditActiveDocument()
+    ) {
+      // This timeout has already fired, so a subsequent input must not cancel
+      // this save or its non-cancelling HTML bridge lane. That later input will
+      // simply schedule/queue the next autosave generation.
+      runAutoSave('typing-idle-750');
+    }
+    reconcileSaveButtonAfterTyping(inputSequence, documentSequence);
+  }, SAVE_BUTTON_TYPING_IDLE_CHECK_MS);
+}
+
+function virtualEditorLogicalParagraphs(text) {
+  const normalized = String(text || '').replace(/\r\n?/g, '\n').trimEnd();
+  return normalized ? normalized.split(/\n+/) : [''];
+}
+
+function virtualEditorLogicalParagraphIndexForTextOffset(text, offset) {
+  const source = String(text || '').replace(/\r\n?/g, '\n');
+  const safeOffset = Math.max(0, Math.min(source.length, Number(offset) || 0));
+  return Math.max(0, source.slice(0, safeOffset).split(/\n+/).length - 1);
+}
+
+function virtualEditorParagraphSeparator(state = activeVirtualEditorDocument) {
+  const configuredGap = typeof normalizeEditorParagraphGap === 'function'
+    ? normalizeEditorParagraphGap(state?.documentItem?.paragraphGap)
+    : Math.max(0, Math.min(3, Number(state?.documentItem?.paragraphGap) || 0));
+  return '\n'.repeat(configuredGap + 1);
+}
+
+function captureVirtualEditorGlobalSelection(editor, state) {
+  const snapshot = currentEditorHistorySelection(editor);
+  if (!snapshot) return null;
+  const textValue = editor.textContent || '';
+  const endpoint = offset => {
+    const localParagraph = virtualEditorLogicalParagraphIndexForTextOffset(textValue, offset);
+    const paragraphStart = virtualEditorParagraphStartOffset(textValue, localParagraph);
+    return {
+      paragraph: localParagraph + (state.temporarilyMaterialized ? 0 : state.start),
+      offsetInParagraph: Math.max(0, offset - paragraphStart)
+    };
+  };
+  return {
+    start: endpoint(snapshot.startTextOffset),
+    end: endpoint(snapshot.endTextOffset),
+    collapsed: snapshot.collapsed
+  };
+}
+
+function restoreVirtualEditorGlobalSelection(editor, snapshot) {
+  if (!editor || !snapshot) return false;
+  const textValue = editor.textContent || '';
+  const positionFor = endpoint => {
+    const paragraphStart = virtualEditorParagraphStartOffset(textValue, endpoint.paragraph);
+    return editorHistoryPositionForTextOffset(editor, paragraphStart + endpoint.offsetInParagraph);
+  };
+  const start = positionFor(snapshot.start);
+  const end = positionFor(snapshot.end);
+  if (!start?.node || !end?.node) return false;
+  const range = document.createRange();
+  range.setStart(start.node, start.offset);
+  range.setEnd(end.node, end.offset);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  savedEditorRange = range.cloneRange();
+  return true;
+}
+
+function expandVirtualEditorForSelection(snapshot = null) {
+  const state = activeVirtualEditorDocument;
+  const editor = document.getElementById('editor');
+  if (!state || !editor) return Promise.resolve(false);
+  if (state.temporarilyMaterialized) return Promise.resolve(true);
+  if (virtualEditorSelectionExpansionPromise) return virtualEditorSelectionExpansionPromise;
+  const preserved = snapshot || captureVirtualEditorGlobalSelection(editor, state);
+  isExpandingVirtualEditorSelection = true;
+  virtualEditorSelectionExpansionPromise = Promise.resolve(temporarilyMaterializeVirtualEditor('selection'))
+    .then(materialized => {
+      if (materialized && preserved) restoreVirtualEditorGlobalSelection(editor, preserved);
+      return materialized;
+    })
+    .finally(() => {
+      isExpandingVirtualEditorSelection = false;
+      virtualEditorSelectionExpansionPromise = null;
+    });
+  return virtualEditorSelectionExpansionPromise;
+}
+
+function waitForVirtualEditorFullDOM(editor, state, attempts = 8) {
+  return new Promise(resolve => {
+    let readyFrames = 0;
+    const check = () => {
+      const currentState = activeVirtualEditorDocument;
+      const expectedLength = Math.max(0, Number(state.fullTextCharacterCount) || 0);
+      const renderedLength = String(editor.textContent || '').replace(/\r\n?/g, '\n').length;
+      const isReady = Boolean(
+        currentState?.key === state.key &&
+        currentState.temporarilyMaterialized &&
+        renderedLength >= expectedLength
+      );
+      readyFrames = isReady ? readyFrames + 1 : 0;
+      if (readyFrames >= 2 || attempts <= 1) {
+        resolve(readyFrames >= 2);
+        return;
+      }
+      attempts -= 1;
+      requestAnimationFrame(check);
+    };
+    requestAnimationFrame(check);
+  });
+}
+
+function handleVirtualEditorClipboardShortcut(event) {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+  const key = typeof shortcutKey === 'function'
+    ? shortcutKey(event)
+    : String(event.key || '').toLowerCase();
+  if (!['a', 'c', 'x', 'v'].includes(key) || !activeVirtualEditorDocument) return;
+  if (activeVirtualEditorDocument.temporarilyMaterialized && !isRestrictedInputRenderingActive) return;
+  const editor = document.getElementById('editor');
+  if (!editor || (event.target !== editor && !editor.contains(event.target)) || document.activeElement !== editor) return;
+  if (key === 'a') {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    const state = activeVirtualEditorDocument;
+    expandVirtualEditorForSelection().then(async materialized => {
+      if (!materialized) return;
+      const fullDOMReady = await waitForVirtualEditorFullDOM(editor, state);
+      if (!fullDOMReady || activeVirtualEditorDocument?.key !== state.key) return;
+      isVirtualEditorDOMSelectionTransaction = true;
+      const range = document.createRange();
+      range.selectNodeContents(editor);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      savedEditorRange = range.cloneRange();
+      requestAnimationFrame(() => { isVirtualEditorDOMSelectionTransaction = false; });
+    });
+    return;
+  }
+  if (activeVirtualEditorDocument.temporarilyMaterialized) return;
+  expandVirtualEditorForSelection();
+}
+
+function handleVirtualEditorSelectionExpansion() {
+  const state = activeVirtualEditorDocument;
+  const editor = document.getElementById('editor');
+  const selection = window.getSelection();
+  if (!state || !editor || state.temporarilyMaterialized || isExpandingVirtualEditorSelection || !selection?.rangeCount || selection.isCollapsed) return;
+  const snapshot = currentEditorHistorySelection(editor);
+  if (!snapshot) return;
+  const textLength = (editor.textContent || '').length;
+  const reachesWindowBoundary = snapshot.startTextOffset <= 0 || snapshot.endTextOffset >= textLength;
+  const selectedParagraphs = virtualEditorLogicalParagraphIndexForTextOffset(editor.textContent || '', snapshot.endTextOffset) -
+    virtualEditorLogicalParagraphIndexForTextOffset(editor.textContent || '', snapshot.startTextOffset) + 1;
+  if (reachesWindowBoundary || selectedParagraphs >= VIRTUAL_EDITOR_WINDOW_SIZE) {
+    expandVirtualEditorForSelection(captureVirtualEditorGlobalSelection(editor, state));
+  }
+}
+
+function virtualEditorParagraphStartOffset(text, paragraphIndex) {
+  const source = String(text || '').replace(/\r\n?/g, '\n');
+  if (paragraphIndex <= 0) return 0;
+  let index = 0;
+  let paragraph = 0;
+  const separators = /\n+/g;
+  let match;
+  while ((match = separators.exec(source))) {
+    paragraph += 1;
+    index = match.index + match[0].length;
+    if (paragraph >= paragraphIndex) return index;
+  }
+  return source.length;
+}
+
+function virtualEditorTextOffsetViewportTop(editor, textOffset) {
+  if (!editor || typeof editorHistoryPositionForTextOffset !== 'function') return null;
+  const position = editorHistoryPositionForTextOffset(editor, textOffset);
+  if (!position?.node) return null;
+  const range = document.createRange();
+  const maxOffset = position.node.nodeType === Node.TEXT_NODE
+    ? position.node.nodeValue?.length || 0
+    : position.node.childNodes?.length || 0;
+  const safeOffset = Math.max(0, Math.min(maxOffset, position.offset || 0));
+  range.setStart(position.node, safeOffset);
+  if (position.node.nodeType === Node.TEXT_NODE && safeOffset < maxOffset) range.setEnd(position.node, safeOffset + 1);
+  else range.collapse(true);
+  const rect = range.getClientRects()[0] || range.getBoundingClientRect();
+  return Number.isFinite(rect?.top) ? rect.top : null;
+}
+
+function createVirtualEditorVisualShield(editor) {
+  const wrap = document.getElementById('editor-wrap');
+  if (!editor || !wrap) return null;
+  wrap.querySelector('.virtual-editor-visual-shield')?.remove();
+  const editorRect = editor.getBoundingClientRect();
+  const wrapRect = wrap.getBoundingClientRect();
+  const shield = editor.cloneNode(true);
+  shield.removeAttribute('id');
+  shield.removeAttribute('contenteditable');
+  shield.setAttribute('aria-hidden', 'true');
+  shield.classList.remove('is-empty');
+  shield.classList.add('virtual-editor-visual-shield');
+  shield.style.left = `${editorRect.left - wrapRect.left}px`;
+  shield.style.top = `${editorRect.top - wrapRect.top}px`;
+  shield.style.width = `${editorRect.width}px`;
+  shield.style.height = `${editorRect.height}px`;
+  wrap.appendChild(shield);
+  shield.scrollTop = editor.scrollTop;
+  shield.scrollLeft = editor.scrollLeft;
+  return shield;
+}
+
+function releaseVirtualEditorVisualShield(shield, editor, anchor, localOffset) {
+  if (!shield) return;
+  requestAnimationFrame(() => {
+    // Recheck after fonts/layout and the virtual pseudo-spacers have settled.
+    const settledTop = virtualEditorTextOffsetViewportTop(editor, localOffset);
+    if (Number.isFinite(settledTop) && Number.isFinite(anchor?.top)) {
+      editor.scrollTop += settledTop - anchor.top;
+    }
+    updateEditorScrollThumb(false);
+    requestAnimationFrame(() => shield.remove());
+  });
+}
+
+function virtualEditorSelectionParagraphRange(editor, text, selectionSnapshot = currentEditorHistorySelection(editor)) {
+  const paragraphs = virtualEditorLogicalParagraphs(text);
+  if (!selectionSnapshot) return { start: 0, end: Math.min(1, paragraphs.length), paragraphCount: paragraphs.length };
+  const startLine = virtualEditorLogicalParagraphIndexForTextOffset(text, selectionSnapshot.startTextOffset);
+  const adjustedEndOffset = selectionSnapshot.collapsed
+    ? selectionSnapshot.endTextOffset
+    : Math.max(selectionSnapshot.startTextOffset, selectionSnapshot.endTextOffset - 1);
+  const endLine = virtualEditorLogicalParagraphIndexForTextOffset(text, adjustedEndOffset);
+
+  if (!selectionSnapshot.collapsed) {
+    return {
+      start: Math.max(0, startLine - 2),
+      end: Math.min(paragraphs.length, endLine + 3),
+      paragraphCount: paragraphs.length
+    };
+  }
+
+  if (!(paragraphs[startLine] || '').trim()) {
+    return {
+      start: Math.max(0, startLine - 1),
+      end: Math.min(paragraphs.length, startLine + 2),
+      paragraphCount: paragraphs.length
+    };
+  }
+
+  return { start: startLine, end: startLine + 1, paragraphCount: paragraphs.length };
+}
+
+function captureVirtualEditorBeforeInputContext() {
+  const editor = document.getElementById('editor');
+  if (!activeVirtualEditorDocument || !editor) {
+    virtualEditorBeforeInputContext = null;
+    return;
+  }
+  const textValue = editor.textContent || '';
+  virtualEditorBeforeInputContext = virtualEditorSelectionParagraphRange(editor, textValue);
+}
+
+function virtualEditorPatchPayload(editor, state) {
+  const textValue = String(editor?.textContent || '').replace(/\r\n?/g, '\n');
+  const paragraphs = virtualEditorLogicalParagraphs(textValue);
+  if (state.temporarilyMaterialized) {
+    virtualEditorBeforeInputContext = null;
+    return {
+      start: 0,
+      end: state.total,
+      paragraphs,
+      windowStart: 0
+    };
+  }
+  const before = virtualEditorBeforeInputContext;
+  virtualEditorBeforeInputContext = null;
+
+  if (!before) {
+    const current = virtualEditorSelectionParagraphRange(editor, textValue);
+    return {
+      start: state.start + current.start,
+      end: state.start + current.end,
+      paragraphs: paragraphs.slice(current.start, current.end),
+      windowStart: state.start
+    };
+  }
+
+  const paragraphDelta = paragraphs.length - before.paragraphCount;
+  const replacementEnd = Math.max(before.start, Math.min(paragraphs.length, before.end + paragraphDelta));
+  return {
+    start: state.start + before.start,
+    end: state.start + before.end,
+    paragraphs: paragraphs.slice(before.start, replacementEnd),
+    windowStart: state.start
+  };
+}
+
+function flushVirtualEditorPatchBatch() {
+  clearTimeout(virtualEditorPatchBatchTimer);
+  virtualEditorPatchBatchTimer = null;
+  const batch = virtualEditorPendingPatchBatch;
+  virtualEditorPendingPatchBatch = null;
+  if (!batch?.patches?.length) return activeEditorHTMLBridgePromise;
+
+  const bridgeTask = editorHTMLBridgeWorkerLane.run({
+    documentKey: batch.documentKey,
+    patches: batch.patches,
+    windowStart: batch.windowStart,
+    windowSize: VIRTUAL_EDITOR_WINDOW_SIZE
+  }, 'patch-virtual-batch');
+
+  activeEditorHTMLBridgePromise = bridgeTask
+    .then(result => {
+      if (
+        !result ||
+        batch.documentSequence !== editorDocumentLoadSequence ||
+        activeVirtualEditorDocument?.key !== batch.documentKey
+      ) return null;
+      completedEditorInputBridgeSequence = Math.max(completedEditorInputBridgeSequence, batch.inputSequence);
+      applyVirtualEditorDeltaResult(result);
+      if (batch.inputSequence === editorInputBridgeSequence && !virtualEditorPendingPatchBatch) {
+        scheduleVirtualEditorIdleStages();
+      }
+      return result;
+    })
+    .catch(error => {
+      console.warn('Virtual editor patch batch failed:', error);
+      setSaveButtonSaved(false);
+      setDefaultSaveStatus();
+      return null;
+    });
+  return activeEditorHTMLBridgePromise;
+}
+
+function queueVirtualEditorPatchBatch(editor, state, inputSequence, documentSequence) {
+  const patch = virtualEditorPatchPayload(editor, state);
+  if (Array.isArray(state.sessionParagraphs)) {
+    state.sessionParagraphs.splice(patch.start, patch.end - patch.start, ...patch.paragraphs);
+  }
+  if (
+    !virtualEditorPendingPatchBatch ||
+    virtualEditorPendingPatchBatch.documentKey !== state.key ||
+    virtualEditorPendingPatchBatch.documentSequence !== documentSequence
+  ) {
+    flushVirtualEditorPatchBatch();
+    virtualEditorPendingPatchBatch = {
+      documentKey: state.key,
+      documentSequence,
+      windowStart: state.start,
+      inputSequence,
+      patches: []
+    };
+  }
+  const previousPatch = virtualEditorPendingPatchBatch.patches.at(-1);
+  if (
+    previousPatch &&
+    previousPatch.start === patch.start &&
+    previousPatch.end === patch.end &&
+    previousPatch.windowStart === patch.windowStart
+  ) {
+    // Repeated keystrokes in the same paragraph only need the newest paragraph snapshot.
+    virtualEditorPendingPatchBatch.patches[virtualEditorPendingPatchBatch.patches.length - 1] = patch;
+  } else {
+    virtualEditorPendingPatchBatch.patches.push(patch);
+  }
+  virtualEditorPendingPatchBatch.inputSequence = inputSequence;
+  virtualEditorPendingPatchBatch.windowStart = state.start;
+  clearTimeout(virtualEditorPatchBatchTimer);
+  clearTimeout(virtualEditorMaterializeTimer);
+  clearTimeout(virtualEditorFullAnalysisTimer);
+  virtualEditorPatchBatchTimer = setTimeout(flushVirtualEditorPatchBatch, VIRTUAL_EDITOR_PATCH_BATCH_MS);
+}
+
+function virtualEditorDocumentKey(documentItem = activeEditorDocument()) {
+  return `${activeEditorStorageKey()}::${documentItem?.id || documentItem?.contentPath || 'document'}`;
+}
+
+function editorDocumentWordCountSignature(documentItem) {
+  const content = String(documentItem?.content || '');
+  let hash = 2166136261;
+  for (let index = 0; index < content.length; index += 1) {
+    hash ^= content.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${content.length}:${hash >>> 0}`;
+}
+
+// Restricted paragraph rendering is intentionally dormant. Keep its Worker,
+// windowing and restoration machinery available; the future user-defined
+// condition should be implemented only through this single activation gate.
+function shouldActivateRestrictedEditorRendering() {
+  return isRestrictedInputRenderingActive;
+}
+
+function isRestrictedInputProducingKey(event) {
+  if (!event || event.isComposing || event.keyCode === 229) return true;
+  if (event.ctrlKey || event.metaKey) {
+    return !event.altKey && ['v', 'x', 'z', 'y'].includes(typeof shortcutKey === 'function'
+      ? shortcutKey(event)
+      : String(event.key || '').toLowerCase());
+  }
+  if (event.altKey) return false;
+  return String(event.key || '').length === 1 || ['Enter', 'Backspace', 'Delete'].includes(event.key);
+}
+
+function materializeRestrictedInputDOMImmediately(state) {
+  const editor = document.getElementById('editor');
+  if (!state || !editor || state.temporarilyMaterialized || !Array.isArray(state.sessionParagraphs)) return;
+  const fullText = state.sessionParagraphs.join(virtualEditorParagraphSeparator(state));
+  const fullHTML = typeof textToEditorHTML === 'function' ? textToEditorHTML(fullText) : '';
+  state.html = fullHTML;
+  activeEditorHTMLBuffer = fullHTML;
+  activeEditorHTMLBufferVersion += 1;
+  applyTemporaryVirtualEditorFullDOM(state, editor, 'input-session-end');
+}
+
+function triggerAutoSaveAfterFullDOMRender() {
+  if (!isAutoSaveEnabled || !canEditActiveDocument()) return;
+  runAutoSave('full-dom-rendered');
+}
+
+function endRestrictedInputRendering() {
+  clearTimeout(restrictedInputIdleTimer);
+  restrictedInputIdleTimer = null;
+  if (!isRestrictedInputRenderingActive && !activeVirtualEditorDocument) return Promise.resolve(false);
+  isRestrictedInputRenderingActive = false;
+  const state = activeVirtualEditorDocument;
+  if (!state) {
+    triggerAutoSaveAfterFullDOMRender();
+    return Promise.resolve(true);
+  }
+  materializeRestrictedInputDOMImmediately(state);
+  if (virtualEditorPendingPatchBatch) flushVirtualEditorPatchBatch();
+  return Promise.resolve(activeEditorHTMLBridgePromise)
+    .then(() => state.dirty ? materializeActiveVirtualEditorDocument({ fullAnalysis: false }) : null)
+    .catch(error => console.warn('Restricted input session close failed:', error))
+    .finally(() => {
+      if (!isRestrictedInputRenderingActive) {
+        if (activeVirtualEditorDocument?.key === state.key) clearVirtualEditorDocument();
+        triggerAutoSaveAfterFullDOMRender();
+      }
+    });
+}
+
+function scheduleRestrictedInputRenderingIdle() {
+  clearTimeout(restrictedInputIdleTimer);
+  restrictedInputIdleTimer = setTimeout(() => endRestrictedInputRendering('input-idle'), RESTRICTED_INPUT_IDLE_DELAY_MS);
+}
+
+function beginRestrictedInputRendering() {
+  scheduleRestrictedInputRenderingIdle();
+  const editor = document.getElementById('editor');
+  const documentItem = activeEditorDocument();
+  if (!editor || !documentItem || !canEditActiveDocument()) return;
+  if (isRestrictedInputRenderingActive) {
+    if (activeVirtualEditorDocument) {
+      activeVirtualEditorDocument.inputCaretAnchor = temporaryVirtualEditorViewportAnchor(editor, activeVirtualEditorDocument, true);
+    }
+    return;
+  }
+  isRestrictedInputRenderingActive = true;
+  const sourceText = String(editor.textContent || '').replace(/\r\n?/g, '\n');
+  const sourceHTML = typeof textToEditorHTML === 'function' ? textToEditorHTML(sourceText) : editor.innerHTML;
+  const sequence = editorDocumentLoadSequence;
+  startVirtualEditorDocument(documentItem, sequence, sourceHTML);
+  if (activeVirtualEditorDocument) {
+    activeVirtualEditorDocument.inputCaretAnchor = temporaryVirtualEditorViewportAnchor(editor, activeVirtualEditorDocument, true);
+  }
+}
+
+function handleRestrictedInputSessionKeydown(event) {
+  if (!isRestrictedInputRenderingActive || isRestrictedInputProducingKey(event)) return;
+  materializeRestrictedInputDOMImmediately(activeVirtualEditorDocument);
+  endRestrictedInputRendering('non-input-key');
+}
+
+function endRestrictedInputRenderingBeforePointerAction() {
+  if (isRestrictedInputRenderingActive) {
+    materializeRestrictedInputDOMImmediately(activeVirtualEditorDocument);
+    endRestrictedInputRendering('pointer-action');
+  }
+}
+
+function endRestrictedInputRenderingOnMouseMove() {
+  if (isRestrictedInputRenderingActive) endRestrictedInputRendering('mouse-move');
+}
+
+function initRestrictedInputFloatingPanelObserver() {
+  if (!document.body || typeof MutationObserver !== 'function') return;
+  const observer = new MutationObserver(() => {
+    if (!isRestrictedInputRenderingActive) return;
+    const registeredPanel = typeof floatingFocusPanelElements === 'function' && typeof isFloatingFocusPanelOpen === 'function'
+      ? floatingFocusPanelElements().find(isFloatingFocusPanelOpen)
+      : null;
+    const visiblePanel = registeredPanel || Array.from(document.querySelectorAll('[role="dialog"], .floating-panel, .is-focus-center-panel, #find-bar, #floating-tools.is-expanded'))
+      .find(panel => !panel.hidden && panel.getAttribute('aria-hidden') !== 'true' && panel.getClientRects().length > 0);
+    if (visiblePanel) endRestrictedInputRendering('floating-panel');
+  });
+  observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['hidden', 'class', 'aria-hidden'] });
+}
+
+function shouldVirtualizeEditorDocument(documentItem) {
+  if (!documentItem || !shouldActivateRestrictedEditorRendering(documentItem)) return false;
+  const cachedWords = Number.isFinite(documentItem._wordCount)
+    ? Number(documentItem._wordCount)
+    : Number.isFinite(documentItem.wordCount) ? Number(documentItem.wordCount) : 0;
+  if (cachedWords >= VIRTUAL_EDITOR_WORD_THRESHOLD) return true;
+
+  const content = String(documentItem.content || '');
+  const signature = editorDocumentWordCountSignature(documentItem);
+  if (documentItem._wordCountVerifiedSignature === signature) return false;
+
+  // N words require at least N characters plus N-1 separators. If the source
+  // can possibly cross the threshold, verify it in the Worker instead of
+  // risking a stale low cache and painting the full document DOM.
+  const minimumPossibleLargeDocumentLength = Math.max(1, (VIRTUAL_EDITOR_WORD_THRESHOLD * 2) - 1);
+  return content.length >= minimumPossibleLargeDocumentLength;
+}
+
+function boundedVirtualFallbackFromHTML(documentItem) {
+  const source = String(documentItem?.content || '');
+  const decoded = source
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/?(?:address|article|aside|blockquote|div|h[1-6]|li|p|pre|section|tr)[^>]*>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\r\n?/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  const paragraphs = decoded ? decoded.split(/\n+/) : [''];
+  const words = decoded.trim().match(/[\p{L}\p{N}\p{M}]+(?:['’\-][\p{L}\p{N}\p{M}]+)*/gu)?.length || 0;
+  return {
+    paragraphs,
+    result: {
+      documentKey: virtualEditorDocumentKey(documentItem),
+      start: 0,
+      end: Math.min(paragraphs.length, VIRTUAL_EDITOR_WINDOW_SIZE),
+      total: paragraphs.length,
+      windowText: paragraphs.slice(0, VIRTUAL_EDITOR_WINDOW_SIZE).join('\n'),
+      stats: { words, characters: decoded.replace(/\s/g, '').length, paragraphs: paragraphs.filter(value => value.trim()).length }
+    }
+  };
+}
+
+function renderBoundedVirtualWorkerFallback(documentItem, sequence, error) {
+  if (sequence !== editorDocumentLoadSequence) return;
+  console.warn('Virtual editor Worker unavailable; using a bounded non-DOM fallback:', error);
+  const fallback = boundedVirtualFallbackFromHTML(documentItem);
+  const key = virtualEditorDocumentKey(documentItem);
+  if (!activeVirtualEditorDocument || activeVirtualEditorDocument.key !== key) {
+    activeVirtualEditorDocument = { key, documentItem, documentSequence: sequence, start: 0, end: 0, total: fallback.paragraphs.length, estimatedParagraphHeight: 48, workerUnavailable: true, fallbackParagraphs: fallback.paragraphs };
+  } else {
+    activeVirtualEditorDocument.workerUnavailable = true;
+    activeVirtualEditorDocument.fallbackParagraphs = fallback.paragraphs;
+  }
+  activeVirtualEditorDocument.workerReady = true;
+  if (activeVirtualEditorDocument.temporarilyMaterialized) {
+    setEditorStatValues(fallback.result.stats);
+    setSaveButtonSaved(true);
+    return;
+  }
+  applyVirtualEditorWindow(fallback.result);
+  setEditorStatValues(fallback.result.stats);
+  setSaveButtonSaved(true);
+}
+
+function clearVirtualEditorDocument({ release = true } = {}) {
+  const previous = activeVirtualEditorDocument;
+  activeVirtualEditorDocument = null;
+  cancelAnimationFrame(virtualEditorScrollFrame);
+  virtualEditorScrollFrame = null;
+  clearTimeout(virtualEditorMaterializeTimer);
+  clearTimeout(virtualEditorFullAnalysisTimer);
+  clearTimeout(virtualEditorPatchBatchTimer);
+  virtualEditorMaterializeTimer = null;
+  virtualEditorFullAnalysisTimer = null;
+  virtualEditorPatchBatchTimer = null;
+  virtualEditorPendingPatchBatch = null;
+  const editor = document.getElementById('editor');
+  document.querySelector('.virtual-editor-visual-shield')?.remove();
+  editor?.classList.remove('is-virtual-document');
+  editor?.classList.remove('is-temporarily-materialized');
+  if (editor) {
+    delete editor.dataset.virtualWindowStart;
+    delete editor.dataset.virtualWindowEnd;
+    delete editor.dataset.virtualLoadedParagraphs;
+    delete editor.dataset.virtualWindowLimit;
+  }
+  editor?.style.removeProperty('--virtual-editor-top-space');
+  editor?.style.removeProperty('--virtual-editor-bottom-space');
+  if (release && previous?.key && !previous.retainedForSnapshot) {
+    editorHTMLBridgeWorkerLane.run({ documentKey: previous.key }, 'release-virtual-document').catch(() => {});
+  }
+}
+
+function updateActiveDocumentWordCountLabel(words) {
+  const kind = isDraftActive() ? 'draft' : 'chapter';
+  const index = isDraftActive() ? curDraft : curChap;
+  const item = document.querySelector(`[data-editor-document="${kind}"][data-editor-document-index="${index}"]`);
+  const countLabel = item?.querySelector('.cn');
+  if (countLabel) countLabel.textContent = `${Math.max(0, Number(words) || 0)} ${text().words}`;
+}
+
+function applyVirtualEditorDeltaResult(result) {
+  const state = activeVirtualEditorDocument;
+  if (!state || !result || result.documentKey !== state.key) return false;
+  state.start = result.start;
+  state.end = result.end;
+  state.total = result.total;
+  state.revision = result.revision;
+  state.dirty = true;
+  setEditorStatValues(result.stats || {});
+  if (isDraftActive()) setDraftWordCache(curDraft, result.stats?.words || 0);
+  else setChapterWordCache(curChap, result.stats?.words || 0);
+  updateActiveDocumentWordCountLabel(result.stats?.words || 0);
+  return true;
+}
+
+async function materializeActiveVirtualEditorDocument(options = {}) {
+  const state = activeVirtualEditorDocument;
+  if (!state?.dirty) return null;
+  const key = state.key;
+  const expectedRevision = state.revision;
+  const result = await editorHTMLBridgeWorkerLane.run({ documentKey: key }, 'materialize-virtual-document');
+  if (
+    activeVirtualEditorDocument?.key !== key ||
+    activeVirtualEditorDocument.revision !== expectedRevision
+  ) return null;
+  activeVirtualEditorDocument.dirty = false;
+  activeVirtualEditorDocument.html = result.html;
+  activeEditorHTMLBuffer = String(result.html || '');
+  activeEditorHTMLBufferVersion += 1;
+  commitActiveEditorHTMLBuffer(activeEditorHTMLBufferVersion);
+  if (options.fullAnalysis !== false) {
+    runSurfaceEditorWorkerAnalysis(activeEditorHTMLBuffer, { sequence: editorDocumentLoadSequence });
+  }
+  return result;
+}
+
+function scheduleVirtualEditorIdleStages() {
+  clearTimeout(virtualEditorMaterializeTimer);
+  clearTimeout(virtualEditorFullAnalysisTimer);
+  virtualEditorMaterializeTimer = setTimeout(() => {
+    virtualEditorMaterializeTimer = null;
+    materializeActiveVirtualEditorDocument({ fullAnalysis: false }).catch(error => {
+      console.warn('Virtual editor materialization failed:', error);
+      setSaveButtonSaved(false);
+      setDefaultSaveStatus();
+    });
+  }, VIRTUAL_EDITOR_MATERIALIZE_DELAY_MS);
+  virtualEditorFullAnalysisTimer = setTimeout(async () => {
+    virtualEditorFullAnalysisTimer = null;
+    try {
+      if (activeVirtualEditorDocument?.dirty) {
+        await materializeActiveVirtualEditorDocument({ fullAnalysis: false });
+      }
+      if (activeVirtualEditorDocument && activeEditorHTMLBuffer) {
+        await runSurfaceEditorWorkerAnalysis(activeEditorHTMLBuffer, { sequence: editorDocumentLoadSequence });
+      }
+    } catch (error) {
+      console.warn('Virtual editor idle analysis failed:', error);
+    }
+  }, VIRTUAL_EDITOR_FULL_ANALYSIS_DELAY_MS);
+}
+
+function applyVirtualEditorWindow(result, options = {}) {
+  const editor = document.getElementById('editor');
+  if (!editor || !activeVirtualEditorDocument || result.documentKey !== activeVirtualEditorDocument.key) return;
+  const visualShield = options.viewportAnchor
+    ? createVirtualEditorVisualShield(editor)
+    : null;
+  const requestedWindowSize = Math.max(1, Number(options.windowSize || VIRTUAL_EDITOR_WINDOW_SIZE) || 1);
+  const receivedParagraphs = String(result.windowText || '').replace(/\r\n?/g, '\n').split('\n');
+  const windowParagraphs = receivedParagraphs.slice(0, requestedWindowSize);
+  const safeStart = Math.max(0, Number(result.start) || 0);
+  const safeEnd = Math.min(Number(result.total) || windowParagraphs.length, safeStart + windowParagraphs.length);
+  const previousRatio = options.preserveRatio && editor.scrollHeight > editor.clientHeight
+    ? editor.scrollTop / (editor.scrollHeight - editor.clientHeight)
+    : null;
+  activeVirtualEditorDocument.start = safeStart;
+  activeVirtualEditorDocument.end = safeEnd;
+  activeVirtualEditorDocument.total = result.total;
+  activeVirtualEditorDocument.temporarilyMaterialized = false;
+  activeVirtualEditorDocument.temporaryReason = '';
+  if (typeof result.html === 'string') activeVirtualEditorDocument.html = result.html;
+  const paragraphSpace = activeVirtualEditorDocument.estimatedParagraphHeight || 48;
+  editor.classList.add('is-virtual-document');
+  editor.classList.remove('is-temporarily-materialized');
+  editor.dataset.virtualWindowStart = String(safeStart);
+  editor.dataset.virtualWindowEnd = String(safeEnd);
+  editor.dataset.virtualLoadedParagraphs = String(windowParagraphs.length);
+  editor.dataset.virtualWindowLimit = String(requestedWindowSize);
+  editor.style.setProperty('--virtual-editor-top-space', `${Math.max(0, safeStart * paragraphSpace)}px`);
+  editor.style.setProperty('--virtual-editor-bottom-space', `${Math.max(0, ((Number(result.total) || 0) - safeEnd) * paragraphSpace)}px`);
+  setPlainTextEditorValue(editor, windowParagraphs.join(virtualEditorParagraphSeparator(activeVirtualEditorDocument)));
+  if (options.caretAnchor && Number.isFinite(options.caretAnchor.paragraph)) {
+    const localCaretParagraph = Math.max(0, options.caretAnchor.paragraph - safeStart);
+    const localParagraphStart = virtualEditorParagraphStartOffset(editor.textContent || '', localCaretParagraph);
+    const localParagraphText = windowParagraphs[localCaretParagraph] || '';
+    const localCaretOffset = localParagraphStart + Math.max(0, Math.min(
+      localParagraphText.length,
+      Number(options.caretAnchor.offsetInParagraph) || 0
+    ));
+    const caretPosition = editorHistoryPositionForTextOffset(editor, localCaretOffset);
+    if (caretPosition?.node) {
+      const caretRange = document.createRange();
+      caretRange.setStart(caretPosition.node, caretPosition.offset);
+      caretRange.collapse(true);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(caretRange);
+      savedEditorRange = caretRange.cloneRange();
+    }
+  }
+  if (options.viewportAnchor && Number.isFinite(options.viewportAnchor.paragraph)) {
+    const localParagraph = Math.max(0, options.viewportAnchor.paragraph - safeStart);
+    const localOffset = virtualEditorParagraphStartOffset(editor.textContent || '', localParagraph);
+    virtualEditorProgrammaticScrollGuard = Date.now() + 160;
+    // Force measurement and correct the scroll position in the same task. This
+    // prevents the bounded window from painting once at the wrong position.
+    const renderedTop = virtualEditorTextOffsetViewportTop(editor, localOffset);
+    if (Number.isFinite(renderedTop) && Number.isFinite(options.viewportAnchor.top)) {
+      editor.scrollTop += renderedTop - options.viewportAnchor.top;
+    }
+    updateEditorScrollThumb(false);
+    releaseVirtualEditorVisualShield(visualShield, editor, options.viewportAnchor, localOffset);
+    return;
+  }
+  visualShield?.remove();
+  if (previousRatio !== null) {
+    virtualEditorProgrammaticScrollGuard = Date.now() + 120;
+    requestAnimationFrame(() => {
+      editor.scrollTop = previousRatio * Math.max(0, editor.scrollHeight - editor.clientHeight);
+      updateEditorScrollThumb(false);
+    });
+  }
+}
+
+function startVirtualEditorDocument(documentItem, sequence, sourceHTML = documentItem?.content || '') {
+  const editor = document.getElementById('editor');
+  if (!editor) return;
+  clearVirtualEditorDocument();
+  const key = virtualEditorDocumentKey(documentItem);
+  const sessionParagraphs = virtualEditorLogicalParagraphs(editorHTMLToText(sourceHTML));
+  activeVirtualEditorDocument = {
+    key,
+    documentItem,
+    documentSequence: sequence,
+    start: 0,
+    end: 0,
+    total: sessionParagraphs.length,
+    estimatedParagraphHeight: 48,
+    workerReady: false,
+    sessionParagraphs
+  };
+  setEditorRenderMode(editor, 'plain');
+  activeVirtualEditorDocument.html = sourceHTML;
+  // The first input has already been painted into the authoritative full DOM.
+  // Do not rewrite textContent here: replacing the focused text node would
+  // invalidate the live Range and make Chromium reveal the document start.
+  activeVirtualEditorDocument.temporarilyMaterialized = true;
+  activeVirtualEditorDocument.temporaryReason = 'input-session-start';
+  activeVirtualEditorDocument.fullTextParagraphCount = activeVirtualEditorDocument.sessionParagraphs.length;
+  activeVirtualEditorDocument.fullTextCharacterCount = String(editor.textContent || '').length;
+  editor.classList.remove('is-virtual-document');
+  editor.classList.add('is-temporarily-materialized');
+  editor.dataset.placeholder = text().editorPlaceholder || 'Start writing here... your story is waiting.';
+  editorHTMLBridgeWorkerLane.run({
+    documentKey: key,
+    html: sourceHTML,
+    start: 0,
+    windowSize: VIRTUAL_EDITOR_WINDOW_SIZE
+  }, 'load-virtual-document').then(result => {
+    if (sequence !== editorDocumentLoadSequence || activeVirtualEditorDocument?.key !== key) return;
+    if (typeof result?.windowText !== 'string' || !result?.stats) {
+      throw new Error('Virtual Worker returned an incomplete document window');
+    }
+    const verifiedWords = Math.max(0, Number(result.stats?.words) || 0);
+    activeVirtualEditorDocument.workerReady = true;
+    activeVirtualEditorDocument.total = Math.max(0, Number(result.total) || 0);
+    activeVirtualEditorDocument.revision = Number(result.revision) || 0;
+    documentItem._wordCount = verifiedWords;
+    documentItem.wordCount = verifiedWords;
+    documentItem._wordCountVerifiedSignature = editorDocumentWordCountSignature(documentItem);
+    if (isDraftActive()) setDraftWordCache(curDraft, verifiedWords);
+    else setChapterWordCache(curChap, verifiedWords);
+    updateActiveDocumentWordCountLabel(verifiedWords);
+    editor.dataset.placeholder = text().editorPlaceholder || 'Start writing here... your story is waiting.';
+    if (isRestrictedInputRenderingActive) {
+      if (virtualEditorPendingPatchBatch) flushVirtualEditorPatchBatch();
+      Promise.resolve(activeEditorHTMLBridgePromise).finally(() => {
+        if (isRestrictedInputRenderingActive && activeVirtualEditorDocument?.key === key) {
+          restoreVirtualEditorWindowAroundViewport({
+            force: true,
+            preferCaret: true,
+            viewportAnchor: activeVirtualEditorDocument.inputCaretAnchor,
+            windowSize: VIRTUAL_EDITOR_WINDOW_SIZE
+          });
+        }
+      });
+    }
+  }).catch(error => {
+    renderBoundedVirtualWorkerFallback(documentItem, sequence, error);
+  });
+}
+
+function requestVirtualEditorWindow(start) {
+  const state = activeVirtualEditorDocument;
+  if (!state || state.windowPending) return;
+  const requestId = ++virtualEditorWindowRequest;
+  state.windowPending = true;
+  editorHTMLBridgeWorkerLane.run({
+    documentKey: state.key,
+    start,
+    windowSize: VIRTUAL_EDITOR_WINDOW_SIZE
+  }, 'render-virtual-window').then(result => {
+    if (requestId !== virtualEditorWindowRequest || activeVirtualEditorDocument?.key !== state.key) return;
+    applyVirtualEditorWindow(result, { preserveRatio: true });
+  }).catch(error => console.warn('Virtual editor window load failed:', error))
+    .finally(() => {
+      if (activeVirtualEditorDocument?.key === state.key) activeVirtualEditorDocument.windowPending = false;
+    });
+}
+
+function temporaryVirtualEditorViewportAnchor(editor, state, preferCaret = false) {
+  const selection = window.getSelection();
+  if (
+    preferCaret &&
+    selection?.rangeCount &&
+    selection.anchorNode &&
+    editor.contains(selection.anchorNode) &&
+    typeof editorRangeToTextOffsets === 'function'
+  ) {
+    const offsets = editorRangeToTextOffsets(selection.getRangeAt(0), editor);
+    if (offsets && Number.isFinite(offsets.start)) {
+      const localParagraph = virtualEditorLogicalParagraphIndexForTextOffset(editor.textContent || '', offsets.start);
+      const paragraph = localParagraph + (state.temporarilyMaterialized ? 0 : state.start);
+      const startOffset = virtualEditorParagraphStartOffset(editor.textContent || '', localParagraph);
+      return {
+        paragraph,
+        top: virtualEditorTextOffsetViewportTop(editor, startOffset),
+        caretAnchor: {
+          paragraph,
+          offsetInParagraph: Math.max(0, offsets.start - startOffset)
+        }
+      };
+    }
+  }
+  const editorRect = editor.getBoundingClientRect();
+  const probeX = editorRect.left + Math.min(80, Math.max(20, editorRect.width * 0.08));
+  const probeY = editorRect.top + Math.min(96, Math.max(28, editor.clientHeight * 0.18));
+  const caretPosition = document.caretPositionFromPoint?.(probeX, probeY);
+  const caretRange = !caretPosition && document.caretRangeFromPoint?.(probeX, probeY);
+  const node = caretPosition?.offsetNode || caretRange?.startContainer;
+  const offset = caretPosition?.offset ?? caretRange?.startOffset;
+  if (node && editor.contains(node)) {
+    const range = document.createRange();
+    range.setStart(node, offset || 0);
+    range.collapse(true);
+    const offsets = editorRangeToTextOffsets(range, editor);
+    if (offsets && Number.isFinite(offsets.start)) {
+      const paragraph = virtualEditorLogicalParagraphIndexForTextOffset(editor.textContent || '', offsets.start);
+      const startOffset = virtualEditorParagraphStartOffset(editor.textContent || '', paragraph);
+      return { paragraph, top: virtualEditorTextOffsetViewportTop(editor, startOffset) ?? probeY };
+    }
+  }
+  const maxScroll = Math.max(1, editor.scrollHeight - editor.clientHeight);
+  const paragraph = Math.round((editor.scrollTop / maxScroll) * Math.max(0, state.total - 1));
+  return { paragraph, top: probeY };
+}
+
+function applyTemporaryVirtualEditorFullDOM(state, editor, reason = 'scroll') {
+  if (!state || !editor || state.temporarilyMaterialized) return false;
+  const preservedSelection = captureVirtualEditorGlobalSelection(editor, state);
+  const viewportAnchor = temporaryVirtualEditorViewportAnchor(editor, state, true);
+  const maxScroll = Math.max(1, editor.scrollHeight - editor.clientHeight);
+  const scrollRatio = editor.scrollTop / maxScroll;
+  const fullHTML = activeEditorHTMLBuffer || state.html || state.documentItem?.content || '';
+  const fullText = editorHTMLToText(fullHTML);
+  state.temporarilyMaterialized = true;
+  state.temporaryReason = reason;
+  state.fullTextParagraphCount = fullText ? fullText.split(/\n+/).length : 0;
+  state.fullTextCharacterCount = fullText.length;
+  editor.classList.remove('is-virtual-document');
+  editor.classList.add('is-temporarily-materialized');
+  editor.style.removeProperty('--virtual-editor-top-space');
+  editor.style.removeProperty('--virtual-editor-bottom-space');
+  isVirtualEditorDOMSelectionTransaction = true;
+  setPlainTextEditorValue(editor, fullText);
+  if (preservedSelection) restoreVirtualEditorGlobalSelection(editor, preservedSelection);
+  virtualEditorProgrammaticScrollGuard = Date.now() + 120;
+  if (viewportAnchor && Number.isFinite(viewportAnchor.paragraph) && Number.isFinite(viewportAnchor.top)) {
+    const fullParagraphOffset = virtualEditorParagraphStartOffset(editor.textContent || '', viewportAnchor.paragraph);
+    const renderedTop = virtualEditorTextOffsetViewportTop(editor, fullParagraphOffset);
+    if (Number.isFinite(renderedTop)) editor.scrollTop += renderedTop - viewportAnchor.top;
+  } else {
+    editor.scrollTop = scrollRatio * Math.max(0, editor.scrollHeight - editor.clientHeight);
+  }
+  updateEditorScrollThumb(false);
+  requestAnimationFrame(() => {
+    isVirtualEditorDOMSelectionTransaction = false;
+    scheduleEditorCaretAutoScroll();
+  });
+  return true;
+}
+
+function temporarilyMaterializeVirtualEditor(reason = 'scroll') {
+  const state = activeVirtualEditorDocument;
+  const editor = document.getElementById('editor');
+  if (!state || !editor) return Promise.resolve(false);
+  if (state.temporarilyMaterialized) {
+    state.temporaryReason = reason === 'find' ? 'find' : state.temporaryReason;
+    return Promise.resolve(true);
+  }
+  if (state.temporaryMaterializationPromise) return state.temporaryMaterializationPromise;
+
+  const needsLatestMaterialization = Boolean(virtualEditorPendingPatchBatch || state.dirty);
+  if (!needsLatestMaterialization) {
+    return Promise.resolve(applyTemporaryVirtualEditorFullDOM(state, editor, reason));
+  }
+
+  if (virtualEditorPendingPatchBatch) flushVirtualEditorPatchBatch();
+  state.temporaryMaterializationPromise = Promise.resolve(activeEditorHTMLBridgePromise)
+    .then(() => materializeActiveVirtualEditorDocument({ fullAnalysis: false }))
+    .then(() => {
+      if (activeVirtualEditorDocument?.key !== state.key) return false;
+      if (reason === 'find' && !isFindOpen) return false;
+      return applyTemporaryVirtualEditorFullDOM(state, editor, reason);
+    })
+    .catch(error => {
+      console.warn('Temporary full editor materialization failed:', error);
+      return false;
+    })
+    .finally(() => {
+      if (activeVirtualEditorDocument?.key === state.key) state.temporaryMaterializationPromise = null;
+    });
+  return state.temporaryMaterializationPromise;
+}
+
+function restoreVirtualEditorWindowAroundViewport(options = {}) {
+  const state = activeVirtualEditorDocument;
+  const editor = document.getElementById('editor');
+  if (!state || !editor || state.windowPending) return false;
+  if (!state.temporarilyMaterialized && options.preferCaret !== true) return false;
+  if (state.temporaryReason === 'find' && isFindOpen && !options.force) return false;
+  if (state.workerUnavailable) {
+    const currentText = String(editor.textContent || '').replace(/\r\n?/g, '\n').trimEnd();
+    state.fallbackParagraphs = virtualEditorLogicalParagraphs(currentText);
+    state.total = state.fallbackParagraphs.length;
+    const currentHTML = currentText && typeof textToEditorHTML === 'function' ? textToEditorHTML(currentText) : '';
+    activeEditorHTMLBuffer = currentHTML;
+    state.html = currentHTML;
+    if (state.documentItem) state.documentItem.content = currentHTML;
+  }
+  const viewportAnchor = options.viewportAnchor || temporaryVirtualEditorViewportAnchor(editor, state, options.preferCaret === true);
+  const targetParagraph = viewportAnchor.paragraph;
+  const windowSize = Math.max(1, Number(options.windowSize || VIRTUAL_EDITOR_WINDOW_SIZE) || 1);
+  const start = Math.max(0, Math.min(
+    Math.max(0, state.total - windowSize),
+    targetParagraph - Math.floor(windowSize / 2)
+  ));
+  if (state.workerUnavailable && Array.isArray(state.fallbackParagraphs)) {
+    const paragraphs = state.fallbackParagraphs;
+    applyVirtualEditorWindow({
+      documentKey: state.key,
+      start,
+      end: Math.min(paragraphs.length, start + windowSize),
+      total: paragraphs.length,
+      windowText: paragraphs.slice(start, start + windowSize).join('\n')
+    }, { viewportAnchor, caretAnchor: viewportAnchor.caretAnchor, windowSize });
+    return true;
+  }
+  state.windowPending = true;
+  const requestId = ++virtualEditorWindowRequest;
+  editorHTMLBridgeWorkerLane.run({
+    documentKey: state.key,
+    start,
+    windowSize
+  }, 'render-virtual-window').then(result => {
+    if (requestId !== virtualEditorWindowRequest || activeVirtualEditorDocument?.key !== state.key) return;
+    const latestAnchor = viewportAnchor;
+    const resultStart = Math.max(0, Number(result.start) || 0);
+    const resultEnd = Math.max(resultStart, Number(result.end) || resultStart);
+    if (
+      options.preferCaret &&
+      latestAnchor?.caretAnchor &&
+      (latestAnchor.paragraph < resultStart || latestAnchor.paragraph >= resultEnd)
+    ) {
+      // This result belongs to an older caret position. Leave the live anchor
+      // queued; the single post-response reconciliation below will request the
+      // correct window after this request has completely released its lock.
+      return;
+    }
+    applyVirtualEditorWindow(result, { viewportAnchor: latestAnchor, caretAnchor: latestAnchor.caretAnchor, windowSize });
+  }).catch(error => console.warn('Virtual editor window restore failed:', error))
+    .finally(() => {
+      const isCurrentDocument = activeVirtualEditorDocument?.key === state.key;
+      if (isCurrentDocument) activeVirtualEditorDocument.windowPending = false;
+    });
+  return true;
+}
+
+function handleVirtualEditorScrollStartIntent() {
+  const state = activeVirtualEditorDocument;
+  if (!state) return;
+  if (state.temporarilyMaterialized) return;
+  temporarilyMaterializeVirtualEditor('scroll');
+}
+
+function handleVirtualEditorScroll() {
+  const state = activeVirtualEditorDocument;
+  const editor = document.getElementById('editor');
+  if (
+    !state ||
+    !editor ||
+    state.windowPending
+  ) return;
+  if (Date.now() < virtualEditorProgrammaticScrollGuard) return;
+  if (!state.temporarilyMaterialized) {
+    temporarilyMaterializeVirtualEditor('scroll');
+    return;
+  }
+  if (state.temporarilyMaterialized) return;
+  cancelAnimationFrame(virtualEditorScrollFrame);
+  virtualEditorScrollFrame = requestAnimationFrame(() => {
+    virtualEditorScrollFrame = null;
+    const maxScroll = Math.max(1, editor.scrollHeight - editor.clientHeight);
+    const targetParagraph = Math.round((editor.scrollTop / maxScroll) * Math.max(0, state.total - 1));
+    if (targetParagraph >= state.start + 8 && targetParagraph < state.end - 8) return;
+    const nextStart = Math.max(0, Math.min(state.total - VIRTUAL_EDITOR_WINDOW_SIZE, targetParagraph - Math.floor(VIRTUAL_EDITOR_WINDOW_SIZE / 2)));
+    if (nextStart !== state.start) requestVirtualEditorWindow(nextStart);
+  });
+}
+
+function suspendVirtualEditorForFullDOM() {
+  return temporarilyMaterializeVirtualEditor('find');
+}
+
+function captureHiddenSwitchedDocumentSnapshot() {
+  const editor = document.getElementById('editor');
+  const virtualState = activeVirtualEditorDocument;
+  if (virtualState && virtualEditorPendingPatchBatch) flushVirtualEditorPatchBatch();
+  if (virtualState) virtualState.retainedForSnapshot = true;
+  const virtualHTML = activeVirtualEditorDocument
+    ? activeEditorHTMLBuffer || activeVirtualEditorDocument.html || ''
+    : '';
+  const snapshotId = ++switchedDocumentSnapshotSequence;
+  const snapshot = {
+    id: snapshotId,
+    status: 'captured',
+    mode: isDraftActive() ? 'draft' : isChapterEditDraftActive() ? 'chapter-edit-draft' : 'chapter',
+    chapterIndex: curChap,
+    draftIndex: curDraft,
+    chapterEditKey: activeChapterEditKey,
+    documentItem: activeEditorDocument(),
+    virtualDocumentKey: virtualState?.key || '',
+    wasChapterEditUnlocked: isChapterEditUnlocked,
+    plainTextMode: virtualHTML ? false : Boolean(editor && isEditorPlainTextMode(editor)),
+    rawText: virtualHTML ? '' : editor?.textContent || '',
+    rawHTML: virtualHTML || editor?.innerHTML || '',
+    capturedAt: Date.now()
+  };
+  switchedDocumentSnapshots.set(snapshotId, snapshot);
+  return snapshot;
+}
+
+function normalizeHiddenSwitchedSnapshotHTML(snapshot) {
+  if (!snapshot) return '';
+  if (snapshot.plainTextMode) {
+    return snapshot.rawText.trim()
+      ? textToEditorHTML(snapshot.rawText.replace(/\r\n?/g, '\n'))
+      : '';
+  }
+
+  const probe = document.createElement('div');
+  probe.innerHTML = snapshot.rawHTML || '';
+  unwrapHighlights(probe);
+  probe.querySelectorAll('.hindi-pending-virama-boundary, [data-lm-pending-virama-boundary]').forEach(node => node.remove());
+  normalizeEditorGapMarkers(probe);
+  if (typeof normalizeEditorParagraphBlocks === 'function') normalizeEditorParagraphBlocks(probe);
+  return isEditorVisuallyEmpty(probe) ? '' : probe.innerHTML;
+}
+
+async function commitHiddenSwitchedSnapshotToMemory(snapshot) {
+  if (!snapshot || !switchedDocumentSnapshots.has(snapshot.id)) return snapshot;
+  snapshot.status = 'normalizing';
+  let processed;
+  try {
+    if (snapshot.virtualDocumentKey) {
+      const materialized = await editorHTMLBridgeWorkerLane.run({
+        documentKey: snapshot.virtualDocumentKey
+      }, 'materialize-virtual-document');
+      processed = await editorSnapshotWorkerLane.run({
+        html: materialized.html,
+        names: editorWorkerNamesPayload()
+      });
+    } else {
+      processed = await editorSnapshotWorkerLane.run({
+        plainTextMode: snapshot.plainTextMode,
+        rawText: snapshot.rawText,
+        rawHTML: snapshot.rawHTML,
+        names: editorWorkerNamesPayload()
+      });
+    }
+  } catch (error) {
+    console.warn('Snapshot worker fallback:', error);
+    snapshot.html = normalizeHiddenSwitchedSnapshotHTML(snapshot);
+    snapshot.text = editorHTMLToText(snapshot.html);
+    processed = fallbackEditorWorkerAnalysis({ html: snapshot.html });
+  }
+  snapshot.html = processed.normalizedHTML;
+  snapshot.text = processed.text;
+  snapshot.stats = processed.stats;
+  snapshot.nameMatches = processed.nameMatches;
+
+  if (snapshot.mode === 'draft' && snapshot.documentItem) {
+    snapshot.documentItem.content = snapshot.html;
+    setDraftWordCache(snapshot.draftIndex, snapshot.stats?.words ?? countWordsFromText(snapshot.text));
+  } else if (snapshot.mode === 'chapter-edit-draft' && snapshot.documentItem) {
+    snapshot.documentItem.content = snapshot.html;
+    snapshot.documentItem.updatedAt = new Date().toISOString();
+  } else if (
+    snapshot.mode === 'chapter' &&
+    snapshot.wasChapterEditUnlocked &&
+    hasChapterEditContentChangedFromSaved(snapshot.html, snapshot.chapterIndex)
+  ) {
+    const draft = ensureChapterEditDraft(snapshot.chapterIndex);
+    if (draft) {
+      draft.content = snapshot.html;
+      draft.updatedAt = new Date().toISOString();
+      chapterEditDrafts[draft.chapterKey] = normalizeChapterEditDraft(draft, draft.chapterKey);
+      snapshot.mode = 'chapter-edit-draft';
+      snapshot.chapterEditKey = draft.chapterKey;
+      snapshot.documentItem = chapterEditDrafts[draft.chapterKey];
+    }
+  }
+
+  snapshot.status = 'memory-saved';
+  return snapshot;
+}
+
+function releaseHiddenSwitchedSnapshot(snapshot) {
+  if (!snapshot) return;
+  snapshot.status = 'released';
+  switchedDocumentSnapshots.delete(snapshot.id);
+  if (snapshot.virtualDocumentKey) {
+    editorHTMLBridgeWorkerLane.run({
+      documentKey: snapshot.virtualDocumentKey
+    }, 'release-virtual-document').catch(() => {});
+  }
+}
+
+function resetActiveEditorHTMLBuffer(sourceHTML = '') {
+  clearTimeout(editorHTMLMemoryCommitTimer);
+  editorHTMLMemoryCommitTimer = null;
+  activeEditorHTMLBuffer = String(sourceHTML || '');
+  activeEditorHTMLBufferVersion += 1;
+  committedEditorHTMLBufferVersion = activeEditorHTMLBufferVersion;
+  activeEditorHTMLAnalysisPromise = null;
+  activeEditorHTMLBridgePromise = null;
+  completedEditorInputBridgeSequence = editorInputBridgeSequence;
+}
+
+function commitActiveEditorHTMLBuffer(version) {
+  if (version !== activeEditorHTMLBufferVersion || version === committedEditorHTMLBufferVersion) return;
+
+  if (
+    !isDraftActive() &&
+    isChapterEditUnlocked &&
+    !isChapterEditDraftActive() &&
+    hasChapterEditContentChangedFromSaved(activeEditorHTMLBuffer, curChap)
+  ) {
+    materializeChapterEditDraftForChange(activeEditorHTMLBuffer);
+  }
+
+  const documentItem = activeEditorDocument();
+  if (documentItem) documentItem.content = activeEditorHTMLBuffer;
+  committedEditorHTMLBufferVersion = version;
+  // This is only the DOM/worker -> authoritative in-memory handoff. It must
+  // not impersonate a real autosave or show the saving/saved animation.
+  setSaveButtonSaved(false);
+  setSaveStatusDot('dirty', text().unsaved);
+
+  if (isAutoSaveEnabled && canEditActiveDocument()) {
+    clearTimeout(autoSaveTimer);
+    ensureTimedAutoSave();
+    autoSaveTimer = setTimeout(() => runAutoSave('html-memory-commit'), EDITOR_AUTOSAVE_DELAY_MS);
+  }
+}
+
+async function flushEditorHTMLMemoryCommit() {
+  if (editorHTMLMemoryCommitTimer) {
+    clearTimeout(editorHTMLMemoryCommitTimer);
+    editorHTMLMemoryCommitTimer = null;
+  }
+  if (activeVirtualEditorDocument && virtualEditorPendingPatchBatch) flushVirtualEditorPatchBatch();
+  if (completedEditorInputBridgeSequence !== editorInputBridgeSequence && !activeEditorHTMLBridgePromise) {
+    activeEditorHTMLBuffer = getCleanEditorHTML();
+    activeEditorHTMLBufferVersion += 1;
+    completedEditorInputBridgeSequence = editorInputBridgeSequence;
+  }
+  try {
+    await activeEditorHTMLBridgePromise;
+  } catch (_error) {
+    // A manual save may continue with the synchronous fallback buffer.
+  }
+  try {
+    if (activeVirtualEditorDocument?.dirty) {
+      await materializeActiveVirtualEditorDocument({ fullAnalysis: false });
+    }
+  } catch (_error) {
+    // Keep the document unsaved if its authoritative worker state cannot be materialized.
+    setSaveButtonSaved(false);
+    setDefaultSaveStatus();
+    throw _error;
+  }
+  try {
+    await activeEditorHTMLAnalysisPromise;
+  } catch (_error) {
+    // Worker fallback is handled by the analysis pipeline.
+  }
+  commitActiveEditorHTMLBuffer(activeEditorHTMLBufferVersion);
+}
+
+function stageEditorHTMLForMemoryCommit() {
+  const inputSequence = ++editorInputBridgeSequence;
+  const documentSequence = editorDocumentLoadSequence;
+  const immediateEditor = document.getElementById('editor');
+  const immediateVirtualState = activeVirtualEditorDocument;
+
+  if (immediateEditor && immediateVirtualState) {
+    setSaveButtonSaved(false);
+    setSaveStatusDot('dirty', text().unsaved);
+    queueVirtualEditorPatchBatch(immediateEditor, immediateVirtualState, inputSequence, documentSequence);
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (
+        inputSequence !== editorInputBridgeSequence ||
+        inputSequence <= completedEditorInputBridgeSequence ||
+        documentSequence !== editorDocumentLoadSequence
+      ) return;
+      const editor = document.getElementById('editor');
+      if (!editor) return;
+
+      const payload = {
+        plainTextMode: isEditorPlainTextMode(editor),
+        rawText: editor.textContent || '',
+        rawHTML: editor.innerHTML || '',
+        inputSequence,
+        capturedAt: Date.now()
+      };
+
+      setSaveButtonSaved(false);
+      setSaveStatusDot('dirty', text().unsaved);
+      const virtualState = activeVirtualEditorDocument;
+      const virtualPatch = virtualState ? virtualEditorPatchPayload(editor, virtualState) : null;
+      const bridgeTask = virtualState
+        ? editorHTMLBridgeWorkerLane.run({
+            documentKey: virtualState.key,
+            ...virtualPatch,
+            windowSize: VIRTUAL_EDITOR_WINDOW_SIZE
+          }, 'patch-virtual-range')
+        : editorHTMLBridgeWorkerLane.run(payload);
+      activeEditorHTMLBridgePromise = bridgeTask
+        .catch(error => {
+          if (error?.name === 'AbortError') return null;
+          console.warn('Editor HTML bridge fallback:', error);
+          if (virtualState) {
+            const paragraphs = editorHTMLToText(activeEditorHTMLBuffer || virtualState.html || '').split(/\n+/);
+            const replacement = virtualPatch?.paragraphs || [];
+            paragraphs.splice(virtualPatch.start, virtualPatch.end - virtualPatch.start, ...replacement);
+            const fallbackHTML = textToEditorHTML(paragraphs.join('\n'));
+            const fallbackAnalysis = fallbackEditorWorkerAnalysis({ html: fallbackHTML });
+            return {
+              documentKey: virtualState.key,
+              html: fallbackHTML,
+              start: virtualState.start,
+              end: virtualState.end + replacement.length - (virtualPatch.end - virtualPatch.start),
+              total: paragraphs.length,
+              stats: fallbackAnalysis.stats,
+              revision: (virtualState.revision || 0) + 1,
+              inputSequence
+            };
+          }
+          return {
+            html: payload.plainTextMode
+              ? (payload.rawText.trim() ? textToEditorHTML(payload.rawText.replace(/\r\n?/g, '\n').trimEnd()) : '')
+              : payload.rawHTML,
+            inputSequence
+          };
+        })
+        .then(result => {
+          if (
+            !result ||
+            inputSequence !== editorInputBridgeSequence ||
+            inputSequence <= completedEditorInputBridgeSequence ||
+            documentSequence !== editorDocumentLoadSequence
+          ) return null;
+          if (virtualState && activeVirtualEditorDocument?.key === virtualState.key) {
+            completedEditorInputBridgeSequence = inputSequence;
+            applyVirtualEditorDeltaResult(result);
+            scheduleVirtualEditorIdleStages();
+            return result;
+          }
+          activeEditorHTMLBuffer = String(result.html || '');
+          activeEditorHTMLBufferVersion += 1;
+          completedEditorInputBridgeSequence = inputSequence;
+          const version = activeEditorHTMLBufferVersion;
+
+          activeEditorHTMLAnalysisPromise = runSurfaceEditorWorkerAnalysis(activeEditorHTMLBuffer, {
+            sequence: documentSequence,
+            bufferVersion: version
+          });
+
+          clearTimeout(editorHTMLMemoryCommitTimer);
+          editorHTMLMemoryCommitTimer = setTimeout(async () => {
+            editorHTMLMemoryCommitTimer = null;
+            try {
+              await activeEditorHTMLAnalysisPromise;
+            } catch (_error) {
+              // Surface analysis owns its worker fallback.
+            }
+            commitActiveEditorHTMLBuffer(version);
+          }, EDITOR_MEMORY_COMMIT_DELAY_MS);
+          return result;
+        });
+    });
+  });
+}
+
+function syncImmediateSidebarDocumentHighlight(kind, index, sequence) {
+  document.querySelectorAll('.chap-item.active').forEach(item => item.classList.remove('active'));
+  const target = document.querySelector(`[data-editor-document="${kind}"][data-editor-document-index="${index}"]`);
+  if (target) {
+    target.classList.add('active');
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    if (sequence !== editorDocumentLoadSequence) return;
+    renderChapters();
+  });
+}
+
+function applyEditorWorkerAnalysis(result, { sequence = editorDocumentLoadSequence, bufferVersion = null } = {}) {
+  if (!result || sequence !== editorDocumentLoadSequence) return false;
+  if (bufferVersion !== null && bufferVersion !== activeEditorHTMLBufferVersion) return false;
+
+  setEditorStatValues(result.stats || {});
+  if (isDraftActive()) setDraftWordCache(curDraft, result.stats?.words || 0);
+  else setChapterWordCache(curChap, result.stats?.words || 0);
+
+  const namingChanged = scanActiveEditorForNamingUses(new Date().toISOString(), result.text || '');
+  renderChapters();
+  if (activeSidePanel === 'naming' && namingChanged) renderTags();
+  updateChapterStatus();
+  return true;
+}
+
+function runSurfaceEditorWorkerAnalysis(sourceHTML, options = {}) {
+  const sequence = options.sequence ?? editorDocumentLoadSequence;
+  const bufferVersion = options.bufferVersion ?? null;
+  return editorSurfaceWorkerLane.run({
+    html: String(sourceHTML || ''),
+    names: editorWorkerNamesPayload()
+  }).then(result => {
+    applyEditorWorkerAnalysis(result, { sequence, bufferVersion });
+    return result;
+  }).catch(error => {
+    if (error?.name === 'AbortError') return null;
+    console.warn('Editor analysis worker fallback:', error);
+    if (sequence !== editorDocumentLoadSequence) return null;
+    const fallback = fallbackEditorWorkerAnalysis({ html: sourceHTML });
+    applyEditorWorkerAnalysis(fallback, { sequence, bufferVersion });
+    return fallback;
+  });
+}
+
+function scheduleEditorDocumentPostRender(sequence, documentItem, tasks = {}) {
+  requestAnimationFrame(() => {
+    const isCurrentDocument = sequence === editorDocumentLoadSequence;
+    if (isCurrentDocument) {
+      runSurfaceEditorWorkerAnalysis(documentItem.content || '', { sequence });
+      loadEditor({ phase: 'analysis-layout', documentItem });
+      renderChapters();
+      renderTags();
+      renderNotes();
+      updateChapterStatus();
+      saveToStorage(false);
+    }
+
+    Promise.resolve(tasks.commitPreviousSnapshot?.())
+      .then(() => tasks.cleanupPreviousEditDraft?.())
+      .then(previousEditDraftRemoved => tasks.savePreviousDocument?.(Boolean(previousEditDraftRemoved)))
+      .then(() => {
+        tasks.releasePreviousSnapshot?.();
+        if (isCurrentDocument) setSaveStatusDot('saved', text().saved);
+      })
+      .catch(error => {
+        console.warn('Background document save failed:', error);
+        tasks.releasePreviousSnapshot?.();
+        if (isCurrentDocument) setDefaultSaveStatus();
+      });
+  });
+}
+
 async function switchChap(index) {
   ensureChapters();
   if (index < 0 || index >= chapters.length || (!isDraftActive() && index === curChap)) return;
@@ -8173,38 +9839,13 @@ async function switchChap(index) {
     const titleCommitted = await commitChapterTitleEdit();
     if (!titleCommitted) return;
   }
-  if (
-    !isDraftActive() &&
-    isChapterEditUnlocked &&
-    !isChapterEditDraftActive() &&
-    hasChapterEditContentChangedFromSaved(getCleanEditorHTML(), curChap)
-  ) {
-    materializeChapterEditDraftForChange();
-  }
-
+  const switchedSnapshot = captureHiddenSwitchedDocumentSnapshot();
   const previousIndex = curChap;
   const previousDraftIndex = curDraft;
-  const previousText = getCleanEditorText();
   const wasDraftActive = isDraftActive();
-  const wasChapterEditDraftActive = isChapterEditDraftActive();
   const previousChapterEditKey = activeChapterEditKey;
-  if (wasDraftActive) {
-    chapterDrafts[previousDraftIndex].content = getCleanEditorHTML();
-    setDraftWordCache(previousDraftIndex, countWordsFromText(previousText));
-  } else if (wasChapterEditDraftActive) {
-    const draft = activeChapterEditDraft();
-    if (draft) {
-      draft.content = getCleanEditorHTML();
-      draft.updatedAt = new Date().toISOString();
-    }
-  }
-  if (typeof saveEditorSettings === 'function') saveEditorSettings();
   clearTimeout(autoSaveTimer);
   stopTimedAutoSave();
-  const previousEditDraftRemoved = wasChapterEditDraftActive
-    ? await cleanupActiveChapterEditDraftIfUnchanged(previousIndex, previousChapterEditKey)
-    : false;
-
   activeEditorMode = 'chapter';
   isChapterEditUnlocked = false;
   activeChapterEditKey = null;
@@ -8225,31 +9866,28 @@ async function switchChap(index) {
   closeChapterDetailsPanel();
   closeDraftActionsPanel();
   closeFactComposer();
-  loadEditor();
-  const draftNamingMentionsChanged = typeof validateNamingEntryMentionsForDraft === 'function' &&
-    validateNamingEntryMentionsForDraft(curDraft, { text: getCleanEditorText() });
-  if (draftNamingMentionsChanged && typeof saveNamingData === 'function') saveNamingData();
-  renderChapters();
-  renderTags();
-  renderNotes();
+  const documentItem = activeEditorDocument() || chapters[curChap];
+  const sequence = ++editorDocumentLoadSequence;
+  loadEditor({ phase: 'paint', documentItem });
+  syncImmediateSidebarDocumentHighlight('chapter', curChap, sequence);
   updateChapterStatus();
-  saveToStorage(false);
-
-  const backgroundSave = wasDraftActive
-    ? writeDraftToLocalFile(previousDraftIndex, previousText)
-    : wasChapterEditDraftActive && !previousEditDraftRemoved
-      ? writeChapterEditDraftToLocalFile(previousChapterEditKey, previousText)
-      : Promise.resolve();
-
-  backgroundSave
-    .then(() => setSaveStatusDot('saved', text().saved))
-    .catch(error => {
-      console.warn('Background document save failed:', error);
-      setDefaultSaveStatus();
+  scheduleEditorDocumentPostRender(sequence, documentItem, {
+    commitPreviousSnapshot: () => {
+      commitHiddenSwitchedSnapshotToMemory(switchedSnapshot);
+    },
+    cleanupPreviousEditDraft: () => switchedSnapshot.mode === 'chapter-edit-draft'
+      ? cleanupActiveChapterEditDraftIfUnchanged(previousIndex, switchedSnapshot.chapterEditKey || previousChapterEditKey)
+      : false,
+    savePreviousDocument: previousEditDraftRemoved => wasDraftActive
+      ? writeDraftToLocalFile(previousDraftIndex, switchedSnapshot.text || '')
+      : switchedSnapshot.mode === 'chapter-edit-draft' && !previousEditDraftRemoved
+        ? writeChapterEditDraftToLocalFile(switchedSnapshot.chapterEditKey || previousChapterEditKey, switchedSnapshot.text || '')
+        : Promise.resolve(),
+    releasePreviousSnapshot: () => releaseHiddenSwitchedSnapshot(switchedSnapshot)
     });
 }
 
-function loadEditor() {
+function loadEditor(options = {}) {
   if (!hasActiveStory()) {
     const editor = document.getElementById('editor');
     if (editor) {
@@ -8269,7 +9907,7 @@ function loadEditor() {
 
   ensureChapters();
   const editor = document.getElementById('editor');
-  const documentItem = activeEditorDocument() || chapters[curChap];
+  const documentItem = options.documentItem || activeEditorDocument() || chapters[curChap];
   if (!documentItem) {
     setEditorRenderMode(editor, 'plain');
     editor.dataset.placeholder = text().noSavedChapters;
@@ -8284,15 +9922,50 @@ function loadEditor() {
     resetEditorHistoryForActiveDocument();
     return;
   }
+  if (typeof applyEditorGlobalTextFormatting === 'function') {
+    applyEditorGlobalTextFormatting(documentItem);
+  }
   const usingChapterEditDraft = isChapterEditDraftActive();
+  if (!options.phase && shouldVirtualizeEditorDocument(documentItem)) {
+    const sequence = ++editorDocumentLoadSequence;
+    loadEditor({ phase: 'paint', documentItem });
+    scheduleEditorDocumentPostRender(sequence, documentItem);
+    return;
+  }
+  if (options.phase === 'paint') {
+    resetActiveEditorHTMLBuffer(documentItem.content || '');
+    if (shouldVirtualizeEditorDocument(documentItem)) {
+      startVirtualEditorDocument(documentItem, editorDocumentLoadSequence);
+    } else {
+      clearVirtualEditorDocument();
+      renderEditorDocumentContent(editor, documentItem);
+    }
+    const displayedParagraphMargin = isEditorReviewMode(editor) && typeof editorReviewModeMarginDefault === 'function'
+      ? editorReviewModeMarginDefault()
+      : null;
+    applyEditorAlignment(documentItem.alignment);
+    applyEditorSpacing(documentItem.lineHeight, documentItem.paragraphGap, displayedParagraphMargin, {
+      resetDockManualSelection: true
+    });
+    if (typeof applyEditorFontFamily === 'function') applyEditorFontFamily(documentItem.fontFamily);
+    if (typeof applyEditorFontSize === 'function') applyEditorFontSize(documentItem.fontSize);
+    if (!usingChapterEditDraft) lastSavedChapterHTML = documentItem.content || '';
+    setSaveButtonSaved(!usingChapterEditDraft);
+    syncDraftPromoteButton();
+    syncActiveEditorEditState();
+    return;
+  }
   if (typeof applyActiveEditorSettingsForDocument === 'function') {
     applyActiveEditorSettingsForDocument(documentItem);
   }
-  const spacingProbe = document.createElement('div');
-  spacingProbe.innerHTML = documentItem.content || '';
-  normalizeEditorGapMarkers(spacingProbe);
-  if (typeof normalizeEditorParagraphBlocks === 'function') normalizeEditorParagraphBlocks(spacingProbe);
-  const detectedParagraphGap = detectEditorParagraphGap(spacingProbe);
+  let detectedParagraphGap = 0;
+  if (!activeVirtualEditorDocument) {
+    const spacingProbe = document.createElement('div');
+    spacingProbe.innerHTML = documentItem.content || '';
+    normalizeEditorGapMarkers(spacingProbe);
+    if (typeof normalizeEditorParagraphBlocks === 'function') normalizeEditorParagraphBlocks(spacingProbe);
+    detectedParagraphGap = detectEditorParagraphGap(spacingProbe);
+  }
   const savedParagraphGap = typeof normalizeOptionalEditorParagraphGap === 'function'
     ? normalizeOptionalEditorParagraphGap(documentItem.paragraphGap)
     : (documentItem.paragraphGap === undefined || documentItem.paragraphGap === null || String(documentItem.paragraphGap).trim() === ''
@@ -8301,26 +9974,29 @@ function loadEditor() {
   if (detectedParagraphGap > 0 && savedParagraphGap === null) {
     documentItem.paragraphGap = detectedParagraphGap;
   }
-  renderEditorDocumentContent(editor, documentItem);
+  if (!String(options.phase || '').startsWith('analysis')) renderEditorDocumentContent(editor, documentItem);
+  const displayedParagraphMargin = isEditorReviewMode(editor) && typeof editorReviewModeMarginDefault === 'function'
+    ? editorReviewModeMarginDefault()
+    : null;
   applyEditorAlignment(documentItem.alignment);
-  applyEditorSpacing(documentItem.lineHeight, documentItem.paragraphGap, documentItem.paragraphMargin, {
+  applyEditorSpacing(documentItem.lineHeight, documentItem.paragraphGap, displayedParagraphMargin, {
     resetDockManualSelection: true
   });
   if (typeof applyEditorFontFamily === 'function') applyEditorFontFamily(documentItem.fontFamily);
   if (typeof applyEditorFontSize === 'function') applyEditorFontSize(documentItem.fontSize);
   if (!usingChapterEditDraft) lastSavedChapterHTML = getCleanEditorHTML();
-  updateStats();
+  if (options.phase !== 'analysis-layout') updateStats(options.phase === 'analysis' ? { sourceHTML: documentItem.content || '' } : {});
   if (!usingChapterEditDraft) setSaveButtonSaved(true);
   syncDraftPromoteButton();
   updateEditorScrollThumb(false);
   positionEditorAutoScrollDepthMarker();
   resetEditorHistoryForActiveDocument();
-  validateNamingMentionsAfterEditorLoad();
+  if (options.phase !== 'analysis-layout') validateNamingMentionsAfterEditorLoad(documentItem.content || '');
 }
 
-function validateNamingMentionsAfterEditorLoad() {
+function validateNamingMentionsAfterEditorLoad(sourceHTML = '') {
   if (!hasActiveStory() || typeof validateNamingEntriesWithoutStoryMentions !== 'function') return;
-  const activeText = getCleanEditorText();
+  const activeText = editorHTMLToText(sourceHTML);
   const scanOptions = { activeText };
 
   if (isDraftActive()) scanOptions.activeDraftIndex = curDraft;
@@ -8456,38 +10132,13 @@ async function switchDraft(index) {
     const titleCommitted = await commitChapterTitleEdit();
     if (!titleCommitted) return;
   }
-  if (
-    !isDraftActive() &&
-    isChapterEditUnlocked &&
-    !isChapterEditDraftActive() &&
-    hasChapterEditContentChangedFromSaved(getCleanEditorHTML(), curChap)
-  ) {
-    materializeChapterEditDraftForChange();
-  }
-
+  const switchedSnapshot = captureHiddenSwitchedDocumentSnapshot();
   const previousChapterIndex = curChap;
   const previousDraftIndex = curDraft;
-  const previousText = getCleanEditorText();
   const wasDraftActive = isDraftActive();
-  const wasChapterEditDraftActive = isChapterEditDraftActive();
   const previousChapterEditKey = activeChapterEditKey;
-  if (wasDraftActive) {
-    chapterDrafts[previousDraftIndex].content = getCleanEditorHTML();
-    setDraftWordCache(previousDraftIndex, countWordsFromText(previousText));
-  } else if (wasChapterEditDraftActive) {
-    const draft = activeChapterEditDraft();
-    if (draft) {
-      draft.content = getCleanEditorHTML();
-      draft.updatedAt = new Date().toISOString();
-    }
-  }
-  if (typeof saveEditorSettings === 'function') saveEditorSettings();
   clearTimeout(autoSaveTimer);
   stopTimedAutoSave();
-  const previousEditDraftRemoved = wasChapterEditDraftActive
-    ? await cleanupActiveChapterEditDraftIfUnchanged(previousChapterIndex, previousChapterEditKey)
-    : false;
-
   activeEditorMode = 'draft';
   isChapterEditUnlocked = false;
   activeChapterEditKey = null;
@@ -8501,24 +10152,24 @@ async function switchDraft(index) {
   closeChapterDetailsPanel();
   closeDraftActionsPanel();
   closeFactComposer();
-  loadEditor();
-  renderChapters();
-  renderTags();
-  renderNotes();
+  const documentItem = activeEditorDocument() || chapterDrafts[curDraft];
+  const sequence = ++editorDocumentLoadSequence;
+  loadEditor({ phase: 'paint', documentItem });
+  syncImmediateSidebarDocumentHighlight('draft', curDraft, sequence);
   updateChapterStatus();
-  saveToStorage(false);
-
-  const backgroundSave = wasDraftActive
-    ? writeDraftToLocalFile(previousDraftIndex, previousText)
-    : wasChapterEditDraftActive && !previousEditDraftRemoved
-      ? writeChapterEditDraftToLocalFile(previousChapterEditKey, previousText)
-      : Promise.resolve();
-
-  backgroundSave
-    .then(() => setSaveStatusDot('saved', text().saved))
-    .catch(error => {
-      console.warn('Background document save failed:', error);
-      setDefaultSaveStatus();
+  scheduleEditorDocumentPostRender(sequence, documentItem, {
+    commitPreviousSnapshot: () => {
+      commitHiddenSwitchedSnapshotToMemory(switchedSnapshot);
+    },
+    cleanupPreviousEditDraft: () => switchedSnapshot.mode === 'chapter-edit-draft'
+      ? cleanupActiveChapterEditDraftIfUnchanged(previousChapterIndex, switchedSnapshot.chapterEditKey || previousChapterEditKey)
+      : false,
+    savePreviousDocument: previousEditDraftRemoved => wasDraftActive
+      ? writeDraftToLocalFile(previousDraftIndex, switchedSnapshot.text || '')
+      : switchedSnapshot.mode === 'chapter-edit-draft' && !previousEditDraftRemoved
+        ? writeChapterEditDraftToLocalFile(switchedSnapshot.chapterEditKey || previousChapterEditKey, switchedSnapshot.text || '')
+        : Promise.resolve(),
+    releasePreviousSnapshot: () => releaseHiddenSwitchedSnapshot(switchedSnapshot)
     });
 }
 
@@ -9232,12 +10883,7 @@ async function addChapterToPart() {
     partIndex: curPart,
     chapterNo: partChapterCount + 1,
     createdAt: new Date().toISOString(),
-    alignment: 'justify',
-    lineHeight: null,
-    paragraphGap: null,
-    paragraphMargin: null,
-    fontFamily: EDITOR_FONT_FAMILIES[0],
-    fontSize: 16,
+    ...editorGlobalTextFormattingDefaults(),
     _wordCount: 0
   }, nextIndex, curPart, partChapterCount);
 
@@ -9408,7 +11054,7 @@ function setEditorStatValues({ words = 0, characters = 0, paragraphs = 0, senten
   syncEditorSelectionWordStatus();
 }
 
-function updateStats() {
+function updateStats(options = {}) {
   if (!hasActiveStory()) {
     const editor = document.getElementById('editor');
     if (editor) syncEditorPlaceholderState();
@@ -9422,7 +11068,9 @@ function updateStats() {
   ensureChapters();
   const editor = document.getElementById('editor');
   syncEditorPlaceholderState();
-  const currentContent = getCleanEditorHTML();
+  const hasSourceHTML = Object.prototype.hasOwnProperty.call(options, 'sourceHTML');
+  const deferMemoryCommit = options.deferMemoryCommit === true;
+  const currentContent = hasSourceHTML ? String(options.sourceHTML || '') : getCleanEditorHTML();
   if (isTrashDraftActive()) {
     const value = getCleanEditorText();
     const words = countWordsFromText(value);
@@ -9435,7 +11083,7 @@ function updateStats() {
       characters: chars,
       paragraphs: paras,
       sentences,
-      readingTime: Math.max(1, Math.round(words / 200))
+      readingTime: Math.max(1, Math.round(words / EDITOR_READING_WORDS_PER_MINUTE))
     });
     stopTimedAutoSave();
     setSaveButtonSaved(true);
@@ -9445,6 +11093,7 @@ function updateStats() {
     return;
   }
   if (
+    !deferMemoryCommit &&
     !isDraftActive() &&
     isChapterEditUnlocked &&
     !isChapterEditDraftActive() &&
@@ -9453,26 +11102,28 @@ function updateStats() {
     materializeChapterEditDraftForChange(currentContent);
   }
   const documentItem = activeEditorDocument();
-  if (documentItem && (isDraftActive() || isChapterEditDraftActive() || isChapterEditUnlocked)) {
+  if (!deferMemoryCommit && documentItem && (isDraftActive() || isChapterEditDraftActive() || isChapterEditUnlocked)) {
     documentItem.content = currentContent;
   }
   const chapterEditDraft = activeChapterEditDraft();
   const chapterEditDraftMatchesChapter = chapterEditDraft && isChapterEditDraftSameAsChapter(chapterEditDraft, curChap);
-  const isContentSaved = chapterEditDraft
+  const isContentSaved = deferMemoryCommit ? false : chapterEditDraft
     ? currentContent === (chapterEditDraft.lastAutosavedHTML || '') || chapterEditDraftMatchesChapter
     : currentContent === lastSavedChapterHTML;
   const needsAutoSave = chapterEditDraft
     ? !isContentSaved
     : !isContentSaved;
   setSaveButtonSaved(isContentSaved);
-  const value = getCleanEditorText();
+  const value = hasSourceHTML ? editorHTMLToText(currentContent) : getCleanEditorText();
   const words = countWordsFromText(value);
   if (isDraftActive()) setDraftWordCache(curDraft, words);
   else setChapterWordCache(curChap, words);
-  const namingChanged = scanActiveEditorForNamingUses();
+  const namingChanged = scanActiveEditorForNamingUses(new Date().toISOString(), value);
   const chars = value.replace(/\s/g, '').length;
   const sentences = value.split(/[à¥¤.!?]+/).filter(sentence => sentence.trim()).length;
-  const domParagraphs = getEditorParagraphBlocks(editor).filter(block => !isEditorVisuallyEmpty(block)).length;
+  const paragraphProbe = hasSourceHTML ? document.createElement('div') : null;
+  if (paragraphProbe) paragraphProbe.innerHTML = currentContent;
+  const domParagraphs = getEditorParagraphBlocks(paragraphProbe || editor).filter(block => !isEditorVisuallyEmpty(block)).length;
   const paras = domParagraphs || value.split(/\n+/).filter(para => para.trim()).length || (value.trim() ? 1 : 0);
   const copy = text();
 
@@ -9481,18 +11132,28 @@ function updateStats() {
     characters: chars,
     paragraphs: paras,
     sentences,
-    readingTime: Math.max(1, Math.round(words / 200))
+    readingTime: Math.max(1, Math.round(words / EDITOR_READING_WORDS_PER_MINUTE))
   });
+
+  if (deferMemoryCommit) {
+    clearTimeout(autoSaveTimer);
+    stopTimedAutoSave();
+    setSaveButtonSaved(false);
+    renderChapters();
+    if (activeSidePanel === 'naming' && namingChanged) renderTags();
+    updateChapterStatus();
+    return;
+  }
 
   clearTimeout(autoSaveTimer);
   if (!isContentSaved) {
-    showUnsavedSaveStatus(isAutoSaveEnabled ? copy.saving : copy.unsaved);
+    showUnsavedSaveStatus(copy.unsaved);
 
     if (needsAutoSave && isAutoSaveEnabled && canEditActiveDocument()) {
       ensureTimedAutoSave();
       autoSaveTimer = setTimeout(() => {
         runAutoSave('idle');
-      }, 1500);
+      }, EDITOR_AUTOSAVE_DELAY_MS);
     } else if (!needsAutoSave) {
       stopTimedAutoSave();
     }
@@ -9511,24 +11172,16 @@ function handleEditorContentInput() {
   if (editor && !isEditorPlainTextMode(editor) && typeof normalizeEditorParagraphBlocks === 'function') {
     normalizeEditorParagraphBlocks(editor);
   }
-  if (
-    !isDraftActive() &&
-    isChapterEditUnlocked &&
-    !isChapterEditDraftActive()
-  ) {
-    const currentContent = getCleanEditorHTML();
-    if (hasChapterEditContentChangedFromSaved(currentContent, curChap)) {
-      materializeChapterEditDraftForChange(currentContent);
-    }
-  }
-  updateStats();
+  stageEditorHTMLForMemoryCommit();
+  scheduleSaveButtonTypingIdleCheck();
+  beginRestrictedInputRendering();
   if (!isApplyingEditorHistorySnapshot) scheduleEditorHistorySnapshot('input');
 }
 
 // ── Smart Copy ──────────────────────────────────────────────────────────────
 const SMART_COPY_DEFAULT_ICON = 'smartCopyDefault';
 const SMART_COPY_SUCCESS_ICON = 'smartCopySuccess';
-const SMART_COPY_SUCCESS_RESET_MS = 3500;
+const SMART_COPY_SUCCESS_RESET_MS = lmEditorAdvancedNumber('smartCopyReset', 3500);
 let smartCopyIconResetTimer = null;
 
 function setSmartCopyIcon(iconName = SMART_COPY_DEFAULT_ICON) {

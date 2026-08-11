@@ -155,7 +155,7 @@
     const delay = typeof options.logicalRefreshDelay === 'function'
       ? Number(options.logicalRefreshDelay())
       : Number(options.logicalRefreshDelay);
-    return Number.isFinite(delay) && delay > 0 ? delay : 650;
+    return Number.isFinite(delay) && delay > 0 ? delay : lmEditorAdvancedNumber('hindiLogicalRefresh', 650);
   }
 
   function scheduleEditorLogicalInputSequenceRefresh(editor, state = editorLogicalState(editor), options = {}) {

@@ -2925,6 +2925,39 @@
   white-space: pre-wrap;
 }
 
+.lm-id-editor.is-virtual-document {
+  padding-top: 54px;
+  padding-bottom: max(var(--editor-padding-bottom), var(--editor-auto-scroll-linked-padding, 0px));
+  overflow-anchor: none;
+}
+
+.lm-id-editor.is-virtual-document:not(.is-empty)::before,
+.lm-id-editor.is-virtual-document::after {
+  content: '';
+  display: block;
+  width: 1px;
+  max-width: 1px;
+  pointer-events: none;
+}
+
+.lm-id-editor.is-virtual-document:not(.is-empty)::before {
+  height: var(--virtual-editor-top-space, 0px);
+}
+
+.lm-id-editor.is-virtual-document::after {
+  height: var(--virtual-editor-bottom-space, 0px);
+}
+
+.virtual-editor-visual-shield {
+  position: absolute !important;
+  z-index: 7;
+  margin: 0 !important;
+  pointer-events: none;
+  user-select: none;
+  contain: strict;
+  transition: none !important;
+}
+
 .lm-id-editor.is-review-mode {
   white-space: pre-wrap;
 }
@@ -3334,26 +3367,29 @@ body.focus-mode .lm-id-editor.is-focus-save-saved {
 
 /* "Apply Styles Globally" container row */
 #applyStylesGloballyContainer {
-  padding: 0;
-  max-height: 36px;
-  display: flex;
-  align-items: center;
-  background: var(--accent-soft, rgba(224, 86, 253, 0.08));
-  border-radius: var(--radius-md);
-  border: none;
   margin-top: 8px;
 }
 
 /* "Apply Styles Globally" main button */
 #applySmartPasteStylesGloballyBtn {
+  width: auto;
+  min-width: 0;
+  min-height: 26px;
   border: none;
-  flex-grow: 1;
-  padding: 10px 12px;
+  border-radius: 0;
+  flex: 1 1 auto;
+  padding: 0;
   margin: 0;
+  justify-content: flex-start;
   text-align: left;
-  background: none;
-  font-weight: bold;
-  color: var(--accent, #e056fd);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: inherit;
+}
+
+#applySmartPasteStylesGloballyBtn:hover {
+  background: transparent;
 }
 
 
@@ -3361,26 +3397,16 @@ body.focus-mode .lm-id-editor.is-focus-save-saved {
 .smart-paste-auto-apply-wrapper {
   display: flex;
   align-items: center;
-  padding: 0 12px;
-  border-left: 1px solid var(--border-color);
-  height: 100%;
-  min-height: 48px;
+  flex: 0 0 auto;
+  padding: 0;
+  border-left: 0;
+  height: auto;
+  min-height: 0;
 }
 
 /* Auto-apply toggle button */
 #autoApplySmartPasteToggleBtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   gap: 6px;
-  min-width: 68px;
-  height: 26px;
-  padding: 0 10px;
-  border-radius: var(--radius-pill);
-  font-size: var(--font-size-sm);
-  border: none;
-  cursor: pointer;
-  font-family: inherit;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
@@ -3426,33 +3452,6 @@ body.focus-mode .lm-id-editor.is-focus-save-saved {
   font-size: var(--font-size-sm);
   color: var(--ink);
   cursor: pointer;
-}
-
-/* Stepper control wrapper */
-#copyParagraphGapsRow .dock-fsize-control {
-  height: 27px;
-  margin-right: 4px;
-}
-
-/* Numeric input inside the stepper */
-#copyParagraphGapsInput {
-  font-size: 16px;
-}
-
-/* Stepper column width */
-#copyParagraphGapsRow .dock-fsize-stepper {
-  width: 14px;
-}
-
-/* Each stepper chevron button height */
-#copyParagraphGapsRow .dock-fsize-step {
-  height: 30px;
-}
-
-/* Chevron icon size */
-#copyParagraphGapsRow .dock-fsize-step span[data-lm-icon] {
-  width: 8px;
-  height: 8px;
 }
 
 /* Custom Gap On/Off toggle button */

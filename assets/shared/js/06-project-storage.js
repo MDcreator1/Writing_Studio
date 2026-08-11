@@ -1487,7 +1487,10 @@ function chaptersForStorage() {
     fontFamily: normalizeEditorFontFamily(chapter.fontFamily),
     fontSize: normalizeEditorFontSize(chapter.fontSize),
     editorSettings: normalizeEditorSettings(chapter.editorSettings),
-    _wordCount: Number.isFinite(chapter._wordCount) ? chapter._wordCount : null
+    _wordCount: Number.isFinite(chapter._wordCount) ? chapter._wordCount : null,
+    _wordCountVerifiedSignature: typeof chapter._wordCountVerifiedSignature === 'string'
+      ? chapter._wordCountVerifiedSignature
+      : ''
   }));
 }
 
@@ -1508,7 +1511,10 @@ function draftsForStorage(includeContent = true) {
     fontFamily: normalizeEditorFontFamily(draft.fontFamily),
     fontSize: normalizeEditorFontSize(draft.fontSize),
     editorSettings: normalizeEditorSettings(draft.editorSettings),
-    _wordCount: Number.isFinite(draft._wordCount) ? draft._wordCount : null
+    _wordCount: Number.isFinite(draft._wordCount) ? draft._wordCount : null,
+    _wordCountVerifiedSignature: typeof draft._wordCountVerifiedSignature === 'string'
+      ? draft._wordCountVerifiedSignature
+      : ''
   }));
 }
 
@@ -2254,10 +2260,13 @@ async function writeChapterEditDraftToLocalFile(draftKey, textValue) {
   draft.contentHandle = fileHandle;
   draft.content = draft.content || textToEditorHTML(textValue);
   draft.updatedAt = new Date().toISOString();
-  draft.lastAutosavedHTML = draft.content;
-  draft.lastAutosavedText = String(textValue || '').replace(/\r\n?/g, '\n').trimEnd();
+  const savedHTML = draft.content;
+  const savedText = String(textValue || '').replace(/\r\n?/g, '\n').trimEnd();
   chapterEditDrafts[draftKey] = draft;
-  await writeFileText(fileHandle, draft.lastAutosavedText);
+  await writeFileText(fileHandle, savedText);
+  // Advance the persisted baseline only after the actual file write succeeds.
+  draft.lastAutosavedHTML = savedHTML;
+  draft.lastAutosavedText = savedText;
   await writeChapterEditDraftsToProject();
 }
 
@@ -2315,6 +2324,7 @@ async function chapterEditDraftFileMatchesSavedChapter(index = curChap) {
 async function saveCurrentProject() {
   if (!hasActiveStory()) return;
   if (isTrashDraftActive()) return;
+  if (typeof flushEditorHTMLMemoryCommit === 'function') await flushEditorHTMLMemoryCommit();
   if (typeof flushEditorInputStatsUpdate === 'function') flushEditorInputStatsUpdate();
   if (typeof flushEditorHistorySnapshot === 'function') flushEditorHistorySnapshot('save');
   if (
@@ -2338,12 +2348,6 @@ async function saveCurrentProject() {
   if (isChapterEditDraftActive()) {
     const namingChanged = scanActiveEditorForNamingUses(new Date().toISOString());
     saveToStorage();
-    const draft = activeChapterEditDraft();
-    if (draft) {
-      draft.updatedAt = new Date().toISOString();
-      draft.lastAutosavedHTML = getCleanEditorHTML();
-      draft.lastAutosavedText = getCleanEditorText();
-    }
     await writeActiveChapterEditDraftToLocalFile();
     await writeNamingDataToProject();
     if (activeSidePanel === 'naming' && namingChanged) renderTags();
@@ -2369,22 +2373,66 @@ function ensureTimedAutoSave() {
   if (autoSaveIntervalTimer || !isAutoSaveEnabled || !canEditActiveDocument()) return;
   autoSaveIntervalTimer = setInterval(() => {
     runAutoSave('interval');
-  }, 3000);
+  }, typeof lmEditorAdvancedNumber === 'function' ? lmEditorAdvancedNumber('autosaveIntervalDelay', 3000) : 3000);
+}
+
+function finishAutoSaveRun() {
+  isAutoSaveRunning = false;
+  if (!autoSaveRerunRequested) return;
+  autoSaveRerunRequested = false;
+  setTimeout(() => runAutoSave('queued'), 0);
 }
 
 async function runAutoSave(source = 'idle') {
-  if (!isAutoSaveEnabled || isAutoSaveRunning || !canEditActiveDocument()) return;
+  if (!isAutoSaveEnabled || !canEditActiveDocument()) return;
+  if (isAutoSaveRunning) {
+    // Do not drop an autosave request that arrives while a slower file write is
+    // still running. The latest editor generation must get its own pass as soon
+    // as the current write settles.
+    autoSaveRerunRequested = true;
+    return;
+  }
+  // Lock before the bridge/memory flush. A new input may continue its bridge
+  // work, but any additional autosave request is queued instead of starting a
+  // competing flush/save transaction.
+  isAutoSaveRunning = true;
 
+  // Restricted input rendering can still have paragraph patches or a newer
+  // innerHTML buffer in flight. Capture the autosave baseline only after that
+  // authoritative state reaches memory; otherwise a successful save is
+  // incorrectly compared with a stale pre-flush snapshot and marked unsaved.
+  if (typeof flushEditorHTMLMemoryCommit === 'function') {
+    try {
+      await flushEditorHTMLMemoryCommit();
+    } catch (error) {
+      console.warn(`Autosave (${source}) preflush failed:`, error);
+      setSaveButtonSaved(false);
+      setSaveStatusDot('dirty', text().unsaved);
+      finishAutoSaveRun();
+      return;
+    }
+  }
   const saveSnapshot = getCleanEditorHTML();
   const chapterEditDraft = activeChapterEditDraft();
   const autoSaveBaseline = chapterEditDraft ? chapterEditDraft.lastAutosavedHTML || '' : lastSavedChapterHTML;
   if (saveSnapshot === autoSaveBaseline) {
+    // A preceding memory-buffer flush may have completed the same autosave
+    // transaction before this runner reaches the disk-write branch. This is a
+    // successful, clean state—not an indeterminate state—so synchronise the
+    // visible save button as well as the timers/status line.
+    if (typeof markActiveEditorInputPersisted === 'function') markActiveEditorInputPersisted();
+    else setSaveButtonSaved(true);
+    clearTimeout(autoSaveTimer);
     stopTimedAutoSave();
     setDefaultSaveStatus();
+    finishAutoSaveRun();
     return;
   }
 
-  isAutoSaveRunning = true;
+  setSaveButtonSaved(false);
+  // The blinking dot begins only now: everything before this point was an
+  // editor/innerHTML/memory transfer, while the next operation persists data.
+  setSaveStatusDot('busy', text().saving);
   try {
     await saveCurrentProject();
     const currentSnapshot = getCleanEditorHTML();
@@ -2397,6 +2445,9 @@ async function runAutoSave(source = 'idle') {
       } else {
         rememberCurrentChapterSaved(saveSnapshot);
       }
+      if (typeof markActiveEditorInputPersisted === 'function') markActiveEditorInputPersisted();
+      else setSaveButtonSaved(true);
+      clearTimeout(autoSaveTimer);
       stopTimedAutoSave();
       setSaveStatusDot('saved', text().saved);
     } else {
@@ -2405,15 +2456,15 @@ async function runAutoSave(source = 'idle') {
         currentChapterEditDraft.lastAutosavedText = editorHTMLToText(saveSnapshot);
       } else lastSavedChapterHTML = saveSnapshot;
       setSaveButtonSaved(false);
-      showUnsavedSaveStatus(text().saving);
+      showUnsavedSaveStatus(text().unsaved);
       ensureTimedAutoSave();
     }
   } catch (error) {
     console.warn(`Autosave (${source}) failed:`, error);
     setSaveButtonSaved(false);
-    setDefaultSaveStatus();
+    setSaveStatusDot('dirty', text().unsaved);
   } finally {
-    isAutoSaveRunning = false;
+    finishAutoSaveRun();
   }
 }
 
@@ -2505,11 +2556,18 @@ function renderCommittedChapterSnapshotInEditor(chapter, editorHTML) {
   const editor = document.getElementById('editor');
   if (!editor || !chapter) return;
 
+  if (typeof shouldVirtualizeEditorDocument === 'function' && shouldVirtualizeEditorDocument(chapter)) {
+    const sequence = ++editorDocumentLoadSequence;
+    resetActiveEditorHTMLBuffer(editorHTML || chapter.content || '');
+    startVirtualEditorDocument(chapter, sequence);
+    return;
+  }
+
   editor.innerHTML = editorHTML || '';
   normalizeEditorGapMarkers(editor);
   if (typeof normalizeEditorParagraphBlocks === 'function') normalizeEditorParagraphBlocks(editor);
   applyEditorAlignment(chapter.alignment);
-  applyEditorSpacing(chapter.lineHeight, chapter.paragraphGap, chapter.paragraphMargin);
+  applyEditorSpacing(chapter.lineHeight, chapter.paragraphGap, null);
   if (typeof applyEditorFontFamily === 'function') applyEditorFontFamily(chapter.fontFamily);
   if (typeof applyEditorFontSize === 'function') applyEditorFontSize(chapter.fontSize);
   syncActiveEditorEditState();
@@ -2523,6 +2581,7 @@ function renderCommittedChapterSnapshotInEditor(chapter, editorHTML) {
 async function manualSave() {
   if (!hasActiveStory()) return;
   if (isTrashDraftActive()) return;
+  if (typeof flushEditorHTMLMemoryCommit === 'function') await flushEditorHTMLMemoryCommit();
   if (typeof flushEditorInputStatsUpdate === 'function') flushEditorInputStatsUpdate();
   if (typeof flushEditorHistorySnapshot === 'function') flushEditorHistorySnapshot('manual-save');
   const titleInput = document.getElementById('chapterTitleInput');
@@ -3737,7 +3796,8 @@ function setSaveStatusDot(state = 'idle', label = defaultSaveStatusText()) {
   syncFocusSaveStatusIndicator(state, label);
 
   if (state === 'saved') {
-    saveStatusHideTimer = setTimeout(() => setSaveStatusDot('idle', label), 2500);
+    const savedDuration = typeof lmEditorAdvancedNumber === 'function' ? lmEditorAdvancedNumber('savedStatusDuration', 2500) : 2500;
+    saveStatusHideTimer = setTimeout(() => setSaveStatusDot('idle', label), savedDuration);
   }
 }
 
@@ -3753,7 +3813,8 @@ function setSidePanelSaveLine(state = 'idle', label = text().saved) {
   saveLine.classList.toggle('is-saved', state === 'saved');
 
   if (state === 'saved') {
-    sidePanelSaveLineHideTimer = setTimeout(() => setSidePanelSaveLine('idle', label), 1600);
+    const sideSaveDuration = typeof lmEditorAdvancedNumber === 'function' ? lmEditorAdvancedNumber('sideSaveDuration', 1600) : 1600;
+    sidePanelSaveLineHideTimer = setTimeout(() => setSidePanelSaveLine('idle', label), sideSaveDuration);
   }
 }
 
@@ -3762,12 +3823,9 @@ function showSidePanelSaveLine(label = text().saved) {
 }
 
 function showUnsavedSaveStatus(label = text().unsaved) {
-  setSaveStatusDot('busy', label);
-  saveStatusSettleTimer = setTimeout(() => {
-    if (isChapterEditDraftActive() || getCleanEditorHTML() !== lastSavedChapterHTML) {
-      setSaveStatusDot('dirty', text().unsaved);
-    }
-  }, 650);
+  // Dirty means data has changed but no real persistence write is running.
+  // Reserve the animated busy state for runAutoSave/manualSave file writes.
+  setSaveStatusDot('dirty', label || text().unsaved);
 }
 
 function setDefaultSaveStatus() {
@@ -3947,6 +4005,7 @@ function updateEditorSettingsUI() {
   const autoScrollModeBtn = document.getElementById('editorAutoScrollModeToggleBtn');
   const findSettingsBtn = document.getElementById('findSettingsToggleBtn');
   const replaceSettingsBtn = document.getElementById('replaceSettingsToggleBtn');
+  const globalFormattingBtn = document.getElementById('applyStylesGloballyContainer');
   const statusBtn = document.getElementById('statusVisibilityToggleBtn');
   const autoScrollModePanel = document.getElementById('editorAutoScrollModeSelectorPanel');
   const findSettingsPanel = document.getElementById('findSettingsSelectorPanel');
@@ -3964,6 +4023,10 @@ function updateEditorSettingsUI() {
   const activeReplaceScope = currentEditorReplaceScope();
   const isChapterReviewMode = isChapterReviewModeForEditorSettings();
   const autoScrollActive = isEditorAutoScrollEnabled && !isChapterReviewMode;
+  const autoScrollPinned = typeof isEditorQuickSettingPinned === 'function' ? isEditorQuickSettingPinned('autoscroll') : true;
+  const findPinned = typeof isEditorQuickSettingPinned === 'function' ? isEditorQuickSettingPinned('find') : true;
+  const replacePinned = typeof isEditorQuickSettingPinned === 'function' ? isEditorQuickSettingPinned('replace') : true;
+  const globalFormattingPinned = typeof isEditorQuickSettingPinned === 'function' ? isEditorQuickSettingPinned('globalFormatting') : true;
 
   if (isChapterReviewMode || isTrashMode) {
     isFindSettingsSelectorOpen = false;
@@ -3981,28 +4044,33 @@ function updateEditorSettingsUI() {
     autosaveBtn.setAttribute('aria-pressed', String(isAutoSaveEnabled));
   }
   if (autoScrollModeBtn) {
-    autoScrollModeBtn.hidden = isTrashMode || isChapterReviewMode;
+    autoScrollModeBtn.hidden = isTrashMode || isChapterReviewMode || !autoScrollPinned;
     autoScrollModeBtn.setAttribute('aria-expanded', String(isEditorAutoScrollModeSelectorOpen));
     autoScrollModeBtn.setAttribute('aria-pressed', String(autoScrollActive));
   }
   if (findSettingsBtn) {
-    findSettingsBtn.hidden = isTrashMode || isChapterReviewMode;
+    findSettingsBtn.hidden = isTrashMode || isChapterReviewMode || !findPinned;
     findSettingsBtn.setAttribute('aria-expanded', String(isFindSettingsSelectorOpen));
     findSettingsBtn.setAttribute('aria-pressed', 'true');
   }
   if (replaceSettingsBtn) {
-    replaceSettingsBtn.hidden = isTrashMode || isChapterReviewMode;
+    replaceSettingsBtn.hidden = isTrashMode || isChapterReviewMode || !replacePinned;
     replaceSettingsBtn.setAttribute('aria-expanded', String(isReplaceSettingsSelectorOpen));
     replaceSettingsBtn.setAttribute('aria-pressed', 'true');
+  }
+  if (globalFormattingBtn) {
+    const showGlobalFormatting = !isTrashMode && globalFormattingPinned;
+    globalFormattingBtn.hidden = !showGlobalFormatting;
+    globalFormattingBtn.style.display = showGlobalFormatting ? 'flex' : 'none';
   }
   if (statusBtn) {
     statusBtn.hidden = false;
     statusBtn.setAttribute('aria-expanded', String(isStatusSelectorOpen && canShowStatusOptions));
     statusBtn.setAttribute('aria-pressed', String(activeStatusCount > 0));
   }
-  if (autoScrollModePanel) autoScrollModePanel.hidden = isTrashMode || isChapterReviewMode || !isEditorAutoScrollModeSelectorOpen;
-  if (findSettingsPanel) findSettingsPanel.hidden = isTrashMode || isChapterReviewMode || !isFindSettingsSelectorOpen;
-  if (replaceSettingsPanel) replaceSettingsPanel.hidden = isTrashMode || isChapterReviewMode || !isReplaceSettingsSelectorOpen;
+  if (autoScrollModePanel) autoScrollModePanel.hidden = isTrashMode || isChapterReviewMode || !autoScrollPinned || !isEditorAutoScrollModeSelectorOpen;
+  if (findSettingsPanel) findSettingsPanel.hidden = isTrashMode || isChapterReviewMode || !findPinned || !isFindSettingsSelectorOpen;
+  if (replaceSettingsPanel) replaceSettingsPanel.hidden = isTrashMode || isChapterReviewMode || !replacePinned || !isReplaceSettingsSelectorOpen;
   if (statusSelectorPanel) statusSelectorPanel.hidden = !isStatusSelectorOpen || !canShowStatusOptions;
   statusOptionRows.forEach(optionRow => {
     optionRow.hidden = !canShowStatusOptions || !availableStatusKeys.includes(optionRow.dataset.statusOption);
@@ -4114,19 +4182,21 @@ function updatePasteSettingsUI() {
   const reviewMarginRow = document.getElementById('reviewMarginSettingRow');
   const copy = text();
   const isReviewMode = isChapterReviewModeForEditorSettings();
+  const smartPastePinned = typeof isEditorQuickSettingPinned === 'function' ? isEditorQuickSettingPinned('smartPaste') : true;
+  const reviewMarginPinned = typeof isEditorQuickSettingPinned === 'function' ? isEditorQuickSettingPinned('reviewMargin') : true;
 
   // ── Mode-based row swap ───────────────────────────────────────
   // Review mode → show margin row, hide paste toggle + panel
   // Edit / Draft → hide margin row, show paste toggle
-  if (reviewMarginRow) reviewMarginRow.hidden = !isReviewMode;
-  if (pasteBtn) pasteBtn.hidden = isReviewMode;
-  if (isReviewMode && isPasteSettingsSelectorOpen) {
+  if (reviewMarginRow) reviewMarginRow.hidden = !isReviewMode || !reviewMarginPinned;
+  if (pasteBtn) pasteBtn.hidden = isReviewMode || !smartPastePinned;
+  if ((isReviewMode || !smartPastePinned) && isPasteSettingsSelectorOpen) {
     isPasteSettingsSelectorOpen = false;
   }
 
   // ── 1. Main panel toggle button and panel visibility ─────────
-  if (pastePanel) pastePanel.hidden = !isPasteSettingsSelectorOpen;
-  if (!isReviewMode) {
+  if (pastePanel) pastePanel.hidden = !smartPastePinned || !isPasteSettingsSelectorOpen;
+  if (!isReviewMode && smartPastePinned) {
     if (pasteBtn) {
       pasteBtn.setAttribute('aria-expanded', String(isPasteSettingsSelectorOpen));
       pasteBtn.setAttribute('aria-pressed', String(Boolean(isPasteSettingsEnabled)));
@@ -4139,8 +4209,14 @@ function updatePasteSettingsUI() {
 
   // ── Sync active margin button ─────────────────────────────────
   if (isReviewMode) {
-    const currentDoc = typeof activeEditorDocument === 'function' ? activeEditorDocument() : null;
-    const activeMargin = currentDoc?.paragraphMargin != null ? String(currentDoc.paragraphMargin) : '';
+    const activeMargin = String(typeof editorReviewModeMarginDefault === 'function' ? editorReviewModeMarginDefault() : 0);
+    const customMarginButton = document.getElementById('reviewMarginBtnCustom');
+    const hasPresetMargin = ['0', '8', '16', '24'].includes(activeMargin);
+    if (customMarginButton) {
+      customMarginButton.hidden = hasPresetMargin;
+      customMarginButton.dataset.marginValue = activeMargin;
+      customMarginButton.textContent = activeMargin;
+    }
     document.querySelectorAll('.review-margin-btn').forEach(btn => {
       const isActive = btn.dataset.marginValue === activeMargin;
       btn.classList.toggle('is-active', isActive);
@@ -4159,23 +4235,7 @@ function updatePasteSettingsUI() {
     row.style.pointerEvents = isPasteSettingsEnabled ? 'auto' : 'none';
   });
 
-  // ── 3. "Apply Globally" button visibility ────────────────────
-  const isDraft = activeEditorMode === 'draft';
-  const isChapterEdit = activeEditorMode === 'chapter' && isChapterEditUnlocked;
-  const container = document.getElementById('applyStylesGloballyContainer');
-  if (container) {
-    if (isDraft || isChapterEdit) {
-      container.hidden = false;
-      container.style.display = 'flex';
-    } else {
-      container.hidden = true;
-      container.style.display = 'none';
-    }
-  }
-
-
-
-  // ── 4. Auto-apply toggle state ───────────────────────────────
+  // ── 3. Independent global-format auto-apply state ────────────
   if (autoApplyToggleBtn) {
     autoApplyToggleBtn.setAttribute('aria-pressed', String(smartPasteAutoApply));
     autoApplyToggleBtn.classList.toggle('is-active', smartPasteAutoApply);
@@ -4183,6 +4243,7 @@ function updatePasteSettingsUI() {
   if (autoApplyState) {
     autoApplyState.textContent = smartPasteAutoApply ? (copy.settingOn || 'On') : (copy.settingOff || 'Off');
   }
+  if (typeof syncAdvancedQuickControlsFromRuntime === 'function') syncAdvancedQuickControlsFromRuntime();
 }
 
 function togglePasteSettings() {
@@ -4228,74 +4289,66 @@ function scheduleSmartPasteAutoApply() {
   clearTimeout(smartPasteAutoApplyTimer);
   if (!smartPasteAutoApply) return;
   smartPasteAutoApplyTimer = setTimeout(() => {
-    const isDraft = activeEditorMode === 'draft';
-    const isChapterEdit = activeEditorMode === 'chapter' && isChapterEditUnlocked;
-    if (isDraft || isChapterEdit) {
-      if (typeof applySmartPasteStylesGlobally === 'function') {
-        applySmartPasteStylesGlobally();
-      }
+    if (typeof applySmartPasteStylesGlobally === 'function') {
+      applySmartPasteStylesGlobally();
     }
-  }, 120000); // 2 minutes
+  }, typeof lmEditorAdvancedNumber === 'function'
+    ? lmEditorAdvancedNumber('smartPasteAutoApplyDelay', 120000)
+    : 120000);
 }
 
 async function applySmartPasteStylesGlobally() {
-  const lineSpacing = normalizeSmartPasteLineSpacing(typeof smartPasteLineSpacing === 'undefined' ? 0 : smartPasteLineSpacing);
-  const gap = normalizeSmartPasteParagraphGap(typeof smartPasteParagraphGap === 'undefined' ? 0 : smartPasteParagraphGap);
-  const fontSize = normalizeSmartPasteFontSize(typeof smartPasteFontSize === 'undefined' ? 0 : smartPasteFontSize);
-
-  const targetLineHeight = getClosestEditorLineHeight(lineSpacing);
-  const targetFontSize = fontSize <= 0 ? 16 : fontSize;
-
+  const globalFormatting = typeof editorGlobalTextFormattingDefaults === 'function'
+    ? editorGlobalTextFormattingDefaults()
+    : { alignment: 'justify', lineHeight: null, paragraphGap: 0, fontFamily: EDITOR_FONT_FAMILIES[0], fontSize: 16 };
   // Update in-memory drafts
   if (Array.isArray(chapterDrafts)) {
     chapterDrafts.forEach(draft => {
-      draft.lineHeight = targetLineHeight;
-      draft.paragraphGap = gap;
-      draft.fontSize = targetFontSize;
+      Object.assign(draft, globalFormatting);
     });
   }
 
   // Update in-memory chapters
   if (Array.isArray(chapters)) {
     chapters.forEach(chapter => {
-      chapter.lineHeight = targetLineHeight;
-      chapter.paragraphGap = gap;
-      chapter.fontSize = targetFontSize;
+      Object.assign(chapter, globalFormatting);
     });
   }
 
   // Update in-memory chapter edit drafts
   if (chapterEditDrafts && typeof chapterEditDrafts === 'object') {
     Object.values(chapterEditDrafts).forEach(draft => {
-      draft.lineHeight = targetLineHeight;
-      draft.paragraphGap = gap;
-      draft.fontSize = targetFontSize;
+      Object.assign(draft, globalFormatting);
     });
   }
 
   // Apply to active document in editor if present
   const doc = activeEditorDocument();
   if (doc) {
-    doc.lineHeight = targetLineHeight;
-    doc.paragraphGap = gap;
-    doc.fontSize = targetFontSize;
+    Object.assign(doc, globalFormatting);
     
     // Apply styling to active editor
-    applyEditorSpacing(targetLineHeight, gap, doc.paragraphMargin);
-    applyEditorFontSize(targetFontSize, { clearSelectionScopedStyles: true });
+    const editor = document.getElementById('editor');
+    const displayedParagraphMargin = typeof isEditorReviewMode === 'function' && isEditorReviewMode(editor)
+      ? (typeof editorReviewModeMarginDefault === 'function' ? editorReviewModeMarginDefault() : 0)
+      : null;
+    applyEditorAlignment(globalFormatting.alignment, { clearSelectionScopedStyles: true });
+    applyEditorSpacing(globalFormatting.lineHeight, globalFormatting.paragraphGap, displayedParagraphMargin);
+    applyEditorFontFamily(globalFormatting.fontFamily, { clearSelectionScopedStyles: true });
+    applyEditorFontSize(globalFormatting.fontSize, { clearSelectionScopedStyles: true });
 
     // Update active control states
     const lineSelect = document.getElementById('lineSpacingSel');
     if (lineSelect) {
-      lineSelect.value = String(targetLineHeight || '');
+      lineSelect.value = String(globalFormatting.lineHeight || '');
       if (typeof syncDockSelect === 'function') syncDockSelect('lineSpacingSel');
     }
     if (typeof setParagraphGapSelectValue === 'function') {
-      setParagraphGapSelectValue(gap);
+      setParagraphGapSelectValue(globalFormatting.paragraphGap);
     }
     const fsizeInp = document.getElementById('fsize');
     if (fsizeInp) {
-      fsizeInp.value = targetFontSize || 16;
+      fsizeInp.value = globalFormatting.fontSize;
     }
   }
 
@@ -4342,12 +4395,14 @@ function updateCopySettingsUI() {
   const copyBtn = document.getElementById('copySettingsToggleBtn');
   const copyPanel = document.getElementById('copySettingsSelectorPanel');
   const copyState = document.getElementById('copySettingsState');
-  const copyGapsInput = document.getElementById('copyParagraphGapsInput');
   const customGapRow = document.getElementById('copyParagraphGapsRow');
   const copy = text();
+  const smartCopyPinned = typeof isEditorQuickSettingPinned === 'function' ? isEditorQuickSettingPinned('smartCopy') : true;
 
-  if (copyPanel) copyPanel.hidden = !isCopySettingsSelectorOpen;
+  if (!smartCopyPinned && isCopySettingsSelectorOpen) isCopySettingsSelectorOpen = false;
+  if (copyPanel) copyPanel.hidden = !smartCopyPinned || !isCopySettingsSelectorOpen;
   if (copyBtn) {
+    copyBtn.hidden = !smartCopyPinned;
     copyBtn.setAttribute('aria-expanded', String(isCopySettingsSelectorOpen));
     copyBtn.setAttribute('aria-pressed', String(Boolean(isCopySettingsEnabled)));
     copyBtn.classList.toggle('is-active', Boolean(isCopySettingsEnabled));
@@ -4358,10 +4413,6 @@ function updateCopySettingsUI() {
 
   updateCopyParaModeOptionState('gap', 'copyParaModeGapState');
   updateCopyParaModeOptionState('single', 'copyParaModeSingleState');
-
-  if (copyGapsInput) {
-    copyGapsInput.value = String(copyParagraphGaps);
-  }
 
   // Set opacity/pointer-events based on global enable and mode selection
   const optionRows = document.querySelectorAll('#copySettingsSelectorPanel .status-option-row');
@@ -4379,6 +4430,7 @@ function updateCopySettingsUI() {
       customGapRow.style.pointerEvents = 'auto';
     }
   }
+  if (typeof syncAdvancedQuickControlsFromRuntime === 'function') syncAdvancedQuickControlsFromRuntime();
 }
 
 function updateCopyParaModeOptionState(mode, stateId) {
@@ -4425,32 +4477,6 @@ function setCopyParaMode(mode) {
   }
   savePasteCopySettings();
   updateCopySettingsUI();
-}
-
-// Helper functions for spacing gap settings
-function setCopyParagraphGaps(value) {
-  copyParagraphGaps = Math.max(0, Math.min(4, Number(value) || 0));
-  copyParaMode = 'gap';
-  savePasteCopySettings();
-  updateCopySettingsUI();
-}
-
-function adjustCopyParagraphGapsInput(change) {
-  if (typeof isCopySettingsEnabled !== 'undefined' && !isCopySettingsEnabled) return;
-  const input = document.getElementById('copyParagraphGapsInput');
-  if (!input) return;
-  let val = (Number(input.value) || 0) + change;
-  val = Math.max(0, Math.min(4, val));
-  input.value = val;
-  setCopyParagraphGaps(val);
-}
-
-function changeCopyParagraphGapsFromInput(value) {
-  if (typeof isCopySettingsEnabled !== 'undefined' && !isCopySettingsEnabled) return;
-  let val = Math.max(0, Math.min(4, Math.round(Number(value) || 0)));
-  const input = document.getElementById('copyParagraphGapsInput');
-  if (input) input.value = val;
-  setCopyParagraphGaps(val);
 }
 
 function savePasteCopySettings() {
@@ -4879,9 +4905,12 @@ function customSelectBoundaryElement(shell) {
     '.draft-details-panel',
     '.draft-actions-panel',
     '.draft-promote-destination-panel',
+    '.advanced-promote-panel',
     '.chapter-to-draft-panel',
     '.part-details-panel',
     '.chapter-details-panel',
+    '.advanced-editor-settings-content',
+    '.advanced-editor-settings-card',
     '.side-workspace',
     '.modal-card',
     '.project-gate-card'
@@ -4903,15 +4932,30 @@ function updateCustomSelectMenuHeight(select, shell, trigger, menu) {
   const boundaryBottom = boundaryRect?.height
     ? Math.min(boundaryRect.bottom, viewportBottom)
     : viewportBottom;
+  const boundaryTop = boundaryRect?.height
+    ? Math.max(boundaryRect.top, 12)
+    : 12;
   const gap = 7;
   const padding = 12;
   const availableBelow = Math.floor(boundaryBottom - triggerRect.bottom - gap - padding);
+  const availableAbove = Math.floor(triggerRect.top - boundaryTop - gap - padding);
   const boundaryHeight = boundaryRect?.height || window.innerHeight;
   const availableByBox = Math.floor(boundaryHeight - triggerRect.height - gap - (padding * 2));
-  const preferredMaxHeight = Number(select?.dataset?.menuMaxHeight) || 230;
-  const availableHeight = availableBelow > 0 ? availableBelow : availableByBox;
+  const isAdvancedSettingsMenu = Boolean(select.closest('.advanced-editor-settings-card'));
+  const visibleOptionCount = Array.from(select.options || []).filter((option, optionIndex) =>
+    !option.hidden && !isCustomSelectPlaceholderOption(select, option, optionIndex)
+  ).length;
+  const allOptionsHeight = Math.max(48, (visibleOptionCount * 34) + (Math.max(0, visibleOptionCount - 1) * 4) + 14);
+  const configuredMaxHeight = Number(select?.dataset?.menuMaxHeight) || 0;
+  const preferredMaxHeight = isAdvancedSettingsMenu
+    ? Math.max(configuredMaxHeight, allOptionsHeight)
+    : configuredMaxHeight || 230;
+  const openUpwards = isAdvancedSettingsMenu && availableBelow < allOptionsHeight && availableAbove > availableBelow;
+  const directionalSpace = openUpwards ? availableAbove : availableBelow;
+  const availableHeight = directionalSpace > 0 ? directionalSpace : availableByBox;
   const usableHeight = Math.min(preferredMaxHeight, Math.max(48, availableHeight));
 
+  menu.classList.toggle('opens-upward', openUpwards);
   menu.style.setProperty('--lm-custom-select-menu-max-height', `${Math.floor(usableHeight)}px`);
 }
 

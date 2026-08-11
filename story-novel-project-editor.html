@@ -9,17 +9,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lekhak Manch — Story/Novel Project Editor</title>
   <link rel="stylesheet" href="assets/shared/css/00-base.css?v=20260610-project-library">
-  <link rel="stylesheet" href="assets/shared/css/01-find-modals.css?v=20260608-story-info-edit-hover-icon">
+  <link rel="stylesheet" href="assets/shared/css/01-find-modals.css?v=20260811-advanced-select-menu-height">
   <link rel="stylesheet"
-    href="assets/pages/story-novel-project-editor/css/00-editor-layout.css?v=20260712-smart-paste-copy">
+    href="assets/pages/story-novel-project-editor/css/00-editor-layout.css?v=20260811-advanced-title-action">
   <link rel="stylesheet"
     href="assets/pages/story-novel-project-editor/css/01-floating-tools.css?v=20260610-review-dock-panel">
   <link rel="stylesheet"
-    href="assets/pages/story-novel-project-editor/css/02-side-panels.css?v=20260610-ai-connection-floating">
+    href="assets/pages/story-novel-project-editor/css/02-side-panels.css?v=20260811-inline-similar-name-input">
   <link rel="stylesheet"
     href="assets/pages/story-novel-project-editor/css/03-focus-responsive.css?v=20260609-dock-row-layout">
   <link rel="stylesheet"
     href="assets/pages/story-novel-project-editor/css/04-advanced-draft-promote.css?v=20260705-advanced-promote">
+  <link rel="stylesheet"
+    href="assets/pages/story-novel-project-editor/css/05-text-import.css?v=20260810-import-panel-stages">
+  <link rel="stylesheet"
+    href="assets/pages/story-novel-project-editor/css/06-advanced-editor-settings.css?v=20260811-centered-close-icon">
   <link rel="stylesheet" href="assets/shared/css/99-theme-overrides.css?v=20260608-theme-option-previews">
 </head>
 
@@ -140,6 +144,12 @@
       <div class="draft-action-row">
         <button class="add-chap lm-id-addChapterBtn" id="addChapterBtn" type="button" onclick="addChapter()">+ New
           Chapter</button>
+        <button class="text-import-trigger lm-id-textImportTrigger" id="textImportTrigger" type="button"
+          onclick="openTextImportPanel()" title="Import or paste text" aria-label="Import or paste text">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3v11m0 0 4-4m-4 4-4-4M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
+          </svg>
+        </button>
       </div>
       <div class="draft-box lm-id-draftBox" id="draftBox" hidden></div>
       <div class="parts-heading lm-id-partsHeading" id="partsHeading">Parts</div>
@@ -202,7 +212,13 @@
           <span data-lm-icon="settings"></span>
         </button>
         <div class="editor-settings-panel lm-id-editorSettingsPanel" id="editorSettingsPanel" hidden>
-          <div class="editor-settings-title lm-id-editorSettingsTitle" id="editorSettingsTitle">Editor Settings</div>
+          <div class="editor-settings-title-row">
+            <div class="editor-settings-title lm-id-editorSettingsTitle" id="editorSettingsTitle">Editor Settings</div>
+            <button class="editor-advanced-settings-icon-btn lm-id-advancedEditorSettingsBtn" id="advancedEditorSettingsBtn" type="button"
+              onclick="openAdvancedEditorSettings()" title="Advanced settings" aria-label="Open advanced settings">
+              <span data-lm-icon="advancedSettings"></span>
+            </button>
+          </div>
           <button class="editor-setting-row lm-id-autosaveToggleBtn" id="autosaveToggleBtn" type="button">
             <span id="autosaveSettingLabel" class="lm-id-autosaveSettingLabel">Autosave</span>
             <span class="setting-state lm-id-autosaveSettingState" id="autosaveSettingState">On</span>
@@ -264,6 +280,8 @@
                 type="button" data-margin-value="16" onclick="setReviewMargin('16')">16</button>
               <button class="setting-state review-margin-btn lm-id-reviewMarginBtn24" id="reviewMarginBtn24"
                 type="button" data-margin-value="24" onclick="setReviewMargin('24')">24</button>
+              <button class="setting-state review-margin-btn lm-id-reviewMarginBtnCustom" id="reviewMarginBtnCustom"
+                type="button" data-margin-value="" onclick="setReviewMargin(this.dataset.marginValue)" hidden>0</button>
             </div>
           </div>
 
@@ -313,19 +331,20 @@
               <button class="setting-state editor-setting-range-value lm-id-smartPasteFontSizeValue"
                 id="smartPasteFontSizeValue" type="button" aria-label="Smart Paste font size value">Default</button>
             </div>
-            <div class="editor-setting-row lm-id-applySmartPasteStylesGloballyBtn" id="applyStylesGloballyContainer">
-              <button class="status-option-row editor-setting-option-row" type="button"
-                id="applySmartPasteStylesGloballyBtn">
-                <span id="applySmartPasteStylesGloballyLabel" class="lm-id-applySmartPasteStylesGloballyLabel">Apply
-                  Styles Globally</span>
+          </div>
+          <div
+            class="editor-setting-row lm-id-applySmartPasteStylesGloballyBtn lm-id-applyStylesGloballyContainer"
+            id="applyStylesGloballyContainer">
+            <button class="status-option-row editor-setting-option-row" type="button"
+              id="applySmartPasteStylesGloballyBtn">
+              <span id="applySmartPasteStylesGloballyLabel" class="lm-id-applySmartPasteStylesGloballyLabel">Global Text Formatting</span>
+            </button>
+            <div class="smart-paste-auto-apply-wrapper">
+              <button class="setting-state lm-id-autoApplySmartPasteToggleBtn" id="autoApplySmartPasteToggleBtn"
+                type="button" title="Auto apply after 2 minutes">
+                <span class="smart-paste-auto-label">Auto</span>
+                <span id="autoApplySmartPasteState" class="lm-id-autoApplySmartPasteState">Off</span>
               </button>
-              <div class="smart-paste-auto-apply-wrapper">
-                <button class="setting-state lm-id-autoApplySmartPasteToggleBtn" id="autoApplySmartPasteToggleBtn"
-                  type="button" title="Auto apply after 2 minutes">
-                  <span class="smart-paste-auto-label">Auto</span>
-                  <span id="autoApplySmartPasteState" class="lm-id-autoApplySmartPasteState">Off</span>
-                </button>
-              </div>
             </div>
           </div>
           <!-- Smart Copy Toggle -->
@@ -340,21 +359,7 @@
               <!-- Label -->
               <span id="copyParaModeGapLabel" class="lm-id-copyParaModeGapLabel"
                 data-copy-para-mode="gap">Custom Gap</span>
-              <div class=".copy-custom-settings-btn">
-                <!-- Adjuster (stepper input) -->
-                <div class="dock-fsize-control" title="Custom Gap Spacing">
-                  <input type="number" class="dock-fsize-inp" id="copyParagraphGapsInput" value="1" min="0" max="4"
-                    onchange="changeCopyParagraphGapsFromInput(this.value)">
-                  <div class="dock-fsize-stepper">
-                    <button class="dock-fsize-step" type="button" onclick="adjustCopyParagraphGapsInput(1)">
-                      <span data-lm-icon="collapseChevron" data-lm-icon-class="step-chevron-svg lm-chevron-up"></span>
-                    </button>
-                    <button class="dock-fsize-step" type="button" onclick="adjustCopyParagraphGapsInput(-1)">
-                      <span data-lm-icon="collapseChevron" data-lm-icon-class="step-chevron-svg lm-chevron-down"></span>
-                    </button>
-                  </div>
-                </div>
-                <!-- Toggle Button (On/Off) -->
+              <div class="copy-custom-settings-btn">
                 <button class="setting-state lm-id-copyParaModeGapState" id="copyParaModeGapState" type="button"
                   data-copy-para-mode="gap">On</button>
               </div>
@@ -448,8 +453,7 @@
           <span data-lm-icon="smartCopyDefault"></span>
         </button>
         <div id="editor" class="lm-id-editor" contenteditable="true"
-          data-placeholder="Start writing here... your story is waiting." oninput="handleEditorContentInput(event)"
-          onkeyup="updateStats()">
+          data-placeholder="Start writing here... your story is waiting." oninput="handleEditorContentInput(event)">
           <p><br></p>
         </div>
         <button id="editorAutoScrollDepthMarker"
@@ -945,7 +949,17 @@
             <span data-lm-icon="close"></span>
           </button>
         </div>
-        <input type="text" id="namingNameInp" class="lm-id-namingNameInp" placeholder="Name">
+        <div class="naming-similar-names-field">
+          <div class="naming-name-input-row" id="namingNameInputRow">
+            <input type="text" id="namingNameInp" class="lm-id-namingNameInp" placeholder="Name">
+            <input type="text" id="namingSimilarNameInp" placeholder="Similar name"
+              onkeydown="handleNamingSimilarNameKey(event)" onblur="handleNamingSimilarNameBlur()" hidden>
+            <button type="button" class="naming-similar-name-add" onpointerdown="event.preventDefault()"
+              onclick="addNamingSimilarName()"
+              title="Add similar name" aria-label="Add similar name">+</button>
+          </div>
+          <div id="namingSimilarNamesList" class="naming-similar-names-list" aria-live="polite"></div>
+        </div>
         <textarea id="namingDescriptionInp" class="lm-id-namingDescriptionInp"
           placeholder="Description / details"></textarea>
         <button class="add-tag-btn lm-id-namingSaveBtn" id="namingSaveBtn" type="button"
@@ -1183,23 +1197,25 @@
     </div>
   </div>
 
-  <script src="assets/shared/js/00-icon-registry.js?v=20260712-smart-copy-icons"></script>
+  <script src="assets/shared/js/00-icon-registry.js?v=20260811-advanced-settings-icon"></script>
   <script src="assets/shared/js/01-shortcut-tooltips.js?v=20260608-file-renames"></script>
   <script src="assets/shared/js/02-floating-panel-focus-return.js?v=20260608-file-renames"></script>
   <script src="assets/shared/js/03-theme-controller.js?v=20260608-file-renames"></script>
-  <script src="assets/shared/js/04-state-normalize.js?v=20260712-smart-paste-copy"></script>
+  <script src="assets/shared/js/04-state-normalize.js?v=20260811-review-margin-only"></script>
   <script src="assets/shared/js/05-floating-panel-positions.js?v=20260610-ai-connection-floating"></script>
-  <script src="assets/shared/js/06-project-storage.js?v=20260712-smart-paste-copy"></script>
+  <script src="assets/shared/js/05a-editor-advanced-config.js?v=20260811-advanced-panel-icons"></script>
+  <script src="assets/shared/js/06-project-storage.js?v=20260811-review-margin-only"></script>
   <script
     src="assets/pages/story-novel-project-editor/js/00-hindi-unicode-input.js?v=20260619-large-input-defer"></script>
-  <script src="assets/pages/story-novel-project-editor/js/01-editor-core.js?v=20260712-smart-paste-copy"></script>
+  <script src="assets/pages/story-novel-project-editor/js/01-editor-core.js?v=20260811-review-margin-only"></script>
   <script
-    src="assets/pages/story-novel-project-editor/js/02-find-replace-ai-tools.js?v=20260619-large-input-defer"></script>
+    src="assets/pages/story-novel-project-editor/js/02-find-replace-ai-tools.js?v=20260811-review-margin-only"></script>
   <script
-    src="assets/pages/story-novel-project-editor/js/03-side-panels-naming-facts.js?v=20260611-fact-description-history"></script>
+    src="assets/pages/story-novel-project-editor/js/03-side-panels-naming-facts.js?v=20260811-dominant-detected-alias"></script>
   <script src="assets/pages/story-novel-project-editor/js/04-editor-boot.js?v=20260608-file-renames"></script>
   <script
-    src="assets/pages/story-novel-project-editor/js/05-advanced-draft-promote.js?v=20260705-advanced-promote"></script>
+    src="assets/pages/story-novel-project-editor/js/05-advanced-draft-promote.js?v=20260810-import-raw-threshold"></script>
+  <script src="assets/pages/story-novel-project-editor/js/06-text-import.js?v=20260810-import-panel-stages"></script>
 </body>
 
 </html>

@@ -1,3 +1,79 @@
+let activeNamingSimilarNames = [];
+
+function normalizeSimilarNameValue(value = '') {
+  return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function renderNamingSimilarNames() {
+  const list = document.getElementById('namingSimilarNamesList');
+  if (!list) return;
+  list.innerHTML = activeNamingSimilarNames.map((name, index) => `
+    <span class="naming-similar-name-chip">
+      <span>${escapeHtml(name)}</span>
+      <button type="button" onclick="removeNamingSimilarName(${index})" aria-label="Remove ${escapeHtml(name)}">&times;</button>
+    </span>`).join('');
+}
+
+function setNamingSimilarNameInputOpen(open) {
+  const row = document.getElementById('namingNameInputRow');
+  const input = document.getElementById('namingSimilarNameInp');
+  if (!row || !input) return;
+  const isOpen = Boolean(open);
+  input.hidden = !isOpen;
+  row.classList.toggle('is-similar-input-open', isOpen);
+  if (!isOpen) input.value = '';
+}
+
+function addNamingSimilarName() {
+  const input = document.getElementById('namingSimilarNameInp');
+  if (input?.hidden) {
+    setNamingSimilarNameInputOpen(true);
+    requestAnimationFrame(() => input.focus());
+    return;
+  }
+  const primaryName = normalizeSimilarNameValue(document.getElementById('namingNameInp')?.value);
+  const candidate = normalizeSimilarNameValue(input?.value);
+  if (!candidate) {
+    input?.focus();
+    return;
+  }
+  const candidateKey = candidate.toLocaleLowerCase();
+  if (
+    candidateKey === primaryName.toLocaleLowerCase() ||
+    activeNamingSimilarNames.some(name => name.toLocaleLowerCase() === candidateKey)
+  ) {
+    if (input) input.value = '';
+    input?.focus();
+    return;
+  }
+  activeNamingSimilarNames.push(candidate);
+  if (input) input.value = '';
+  renderNamingSimilarNames();
+  input?.focus();
+}
+
+function removeNamingSimilarName(index) {
+  if (!Number.isInteger(index) || index < 0 || index >= activeNamingSimilarNames.length) return;
+  activeNamingSimilarNames.splice(index, 1);
+  renderNamingSimilarNames();
+}
+
+function handleNamingSimilarNameKey(event) {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  event.stopPropagation();
+  addNamingSimilarName();
+}
+
+function handleNamingSimilarNameBlur() {
+  // Defer one frame so a completed +/Enter add can settle first. The plus
+  // button prevents pointer focus from leaving the input while it is clicked.
+  requestAnimationFrame(() => {
+    const input = document.getElementById('namingSimilarNameInp');
+    if (document.activeElement !== input) setNamingSimilarNameInputOpen(false);
+  });
+}
+
 function addTag() {
   activeNamingCategoryId = activeNamingCategoryId || expandedNamingCategoryId || namingData.categories[0]?.id;
   saveNamingEntry();
@@ -1076,9 +1152,22 @@ function namingEntryNameInText(entry = {}, textValue = activeNamingPanelText()) 
   return Boolean(
     entry?.name &&
     textValue &&
-    typeof isSavedNameUsedInText === 'function' &&
-    isSavedNameUsedInText(entry.name, textValue)
+    typeof isNamingEntryUsedInText === 'function' &&
+    isNamingEntryUsedInText(entry, textValue)
   );
+}
+
+function namingEntryMatchedName(entry = {}, textValue = activeNamingPanelText()) {
+  if (!textValue || typeof namingEntrySearchNames !== 'function' || typeof isSavedNameUsedInText !== 'function') return '';
+  return namingEntrySearchNames(entry).find(name => isSavedNameUsedInText(name, textValue)) || '';
+}
+
+function namingEntryDetectedAliasMatches(entry = {}, textValue = activeNamingPanelText()) {
+  if (!textValue || typeof countSavedNameUsesInText !== 'function') return [];
+  return (Array.isArray(entry.similarNames) ? entry.similarNames : [])
+    .map((name, index) => ({ name, index, count: countSavedNameUsesInText(name, textValue) }))
+    .filter(match => match.count > 0)
+    .sort((left, right) => right.count - left.count || left.index - right.index);
 }
 
 function normalizeNamingMatchTitle(value = '') {
@@ -2473,6 +2562,10 @@ function openNamingEntryPanel(categoryId, anchor = null) {
   setText('namingEntryTitle', text().addNameTitle);
   setText('namingSaveBtn', text().saveName);
   document.getElementById('namingNameInp').value = '';
+  document.getElementById('namingSimilarNameInp').value = '';
+  setNamingSimilarNameInputOpen(false);
+  activeNamingSimilarNames = [];
+  renderNamingSimilarNames();
   document.getElementById('namingDescriptionInp').value = '';
   const panel = document.getElementById('namingEntryPanel');
   if (isFocus) {
@@ -2501,6 +2594,10 @@ function openNameDetailEditPanel(anchor = null) {
   setText('namingEntryTitle', text().editNameTitle);
   setText('namingSaveBtn', text().saveName);
   document.getElementById('namingNameInp').value = entry.name || '';
+  document.getElementById('namingSimilarNameInp').value = '';
+  setNamingSimilarNameInputOpen(false);
+  activeNamingSimilarNames = [...(Array.isArray(entry.similarNames) ? entry.similarNames : [])];
+  renderNamingSimilarNames();
   document.getElementById('namingDescriptionInp').value = entry.description || '';
   closeNameDetailPanel();
   activeFloatingAnchor = anchor;
@@ -2526,6 +2623,9 @@ function closeNamingEntryPanel(options = {}) {
   restoreNamingEntryPanelHome(panel);
   activeFloatingAnchor = null;
   activeEditingNamingEntryId = null;
+  setNamingSimilarNameInputOpen(false);
+  activeNamingSimilarNames = [];
+  renderNamingSimilarNames();
   if (!preserveFocusSidePanels) hideFocusNamingCategoryPanel();
   if (shouldRestoreFocusEditor && !suppressFocusRestore) {
     requestAnimationFrame(restoreFocusNamingEntryEditorFocus);
@@ -2537,16 +2637,21 @@ function saveNamingEntry() {
   const descriptionInput = document.getElementById('namingDescriptionInp');
   const name = nameInput.value.trim();
   if (!name || !activeNamingCategoryId) return;
+  const similarNames = activeNamingSimilarNames.filter(alias => alias.toLocaleLowerCase() !== normalizeSimilarNameValue(name).toLocaleLowerCase());
 
   const editingEntry = namingData.entries.find(entry => entry.id === activeEditingNamingEntryId);
   if (editingEntry) {
     const description = descriptionInput.value.trim();
     const editedAt = new Date().toISOString();
     const descriptionMeta = currentDescriptionChapterMeta(editedAt);
-    const changed = editingEntry.name !== name || editingEntry.description !== description;
+    const previousSimilarNames = Array.isArray(editingEntry.similarNames) ? editingEntry.similarNames : [];
+    const similarNamesChanged = previousSimilarNames.length !== similarNames.length ||
+      previousSimilarNames.some((alias, index) => alias !== similarNames[index]);
+    const changed = editingEntry.name !== name || editingEntry.description !== description || similarNamesChanged;
 
     if (changed) {
       editingEntry.name = name;
+      editingEntry.similarNames = [...similarNames];
       editingEntry.description = description;
       editingEntry.updatedAt = editedAt;
       editingEntry.descriptionMeta = descriptionMeta;
@@ -2565,8 +2670,8 @@ function saveNamingEntry() {
   }
 
   const createdAt = new Date().toISOString();
-  const shouldAttachToActiveDocument = typeof isSavedNameUsedInText === 'function' &&
-    isSavedNameUsedInText(name, getCleanEditorText());
+  const shouldAttachToActiveDocument = typeof isNamingEntryUsedInText === 'function' &&
+    isNamingEntryUsedInText({ name, similarNames }, getCleanEditorText());
   const descriptionMeta = shouldAttachToActiveDocument
     ? currentDescriptionChapterMeta(createdAt)
     : undefinedDescriptionChapterMeta(createdAt);
@@ -2585,6 +2690,7 @@ function saveNamingEntry() {
     draftTitle: descriptionMeta.draftTitle || '',
     contentPath: descriptionMeta.contentPath,
     name,
+    similarNames: [...similarNames],
     description: descriptionInput.value.trim(),
     createdAt,
     updatedAt: createdAt,
@@ -2606,7 +2712,7 @@ function namingEntryMentionCount(entry = {}, activeText = null) {
       : activeNamingPanelText()
   );
   return typeof countSavedNameUsesInText === 'function'
-    ? countSavedNameUsesInText(entry.name, textValue)
+    ? countNamingEntryUsesInText(entry, textValue)
     : 0;
 }
 
@@ -2911,6 +3017,22 @@ function deepScanAllNamingEntries(buttonElement = null) {
 function namingEntryItemHtml(entry, extraClass = '', activeText = null) {
   const isExistingEntry = String(extraClass).split(/\s+/).includes('naming-existing-entry');
   const isOrphanEntry = String(extraClass).split(/\s+/).includes('naming-orphan-entry');
+  const isDetectedEntry = String(extraClass).split(/\s+/).includes('naming-detected-entry');
+  const matchedName = isDetectedEntry ? namingEntryMatchedName(entry, activeText) : entry.name;
+  const detectedAliasMatches = isDetectedEntry ? namingEntryDetectedAliasMatches(entry, activeText) : [];
+  const dominantAlias = detectedAliasMatches.length >= 2 ? detectedAliasMatches[0] : null;
+  const aliasTriggered = isDetectedEntry && matchedName && namingEntryNameKey(matchedName) !== namingEntryNameKey(entry.name);
+  // A single alias match keeps the canonical title display. When two or more
+  // aliases are present, the most frequent alias temporarily becomes the blue
+  // item label; editor text and persisted naming metadata remain untouched.
+  const detectedDisplayName = matchedName || entry.name;
+  const displayName = dominantAlias?.name || (aliasTriggered ? entry.name : detectedDisplayName);
+  const displayTitle = dominantAlias
+    ? `Most frequent similar name: ${dominantAlias.name} (${dominantAlias.count})`
+    : aliasTriggered
+      ? `Found as ${matchedName}; shown as ${entry.name}`
+      : '';
+  const temporarySearchName = dominantAlias?.name || matchedName || entry.name;
   const mentionCount = isExistingEntry ? 0 : namingEntryMentionCount(entry, activeText);
   const deepFindingLabel = namingEntryDeepFindingLabel();
   return `
@@ -2918,8 +3040,8 @@ function namingEntryItemHtml(entry, extraClass = '', activeText = null) {
       onpointerenter="handleNamingEntryItemPointerEnter(event, '${escapeJsString(entry.id)}')"
       onpointerleave="scheduleNamingEntryDescriptionInfoClose()"
       onclick="showNameDetail('${escapeJsString(entry.id)}', this)">
-      <span class="tname">
-        <span>${escapeHtml(entry.name)}</span>
+      <span class="tname ${aliasTriggered || dominantAlias ? 'is-alias-title-substitution' : ''}"${displayTitle ? ` title="${escapeHtml(displayTitle)}"` : ''}>
+        <span>${escapeHtml(displayName)}</span>
       </span>
       ${isOrphanEntry ? `
         <span class="tag-refresh-btn" onclick="event.stopPropagation();scanStoryForNamingEntry('${escapeJsString(entry.id)}')" title="Scan story for this name" aria-label="Scan story for this name">
@@ -2929,7 +3051,7 @@ function namingEntryItemHtml(entry, extraClass = '', activeText = null) {
         <span class="tag-find-meta" title="${escapeHtml(namingEntryDeepFindingTitle(mentionCount))}">
           <span class="tag-find-meta-count">${mentionCount}</span>
         </span>
-        <span class="tag-find-btn" onclick="event.stopPropagation();findTag('${escapeJsString(entry.name)}')" title="${escapeHtml(text().findTitle)}">${searchIconSvg()}</span>`}
+        <span class="tag-find-btn" onclick="event.stopPropagation();findTag('${escapeJsString(temporarySearchName)}')" title="${escapeHtml(text().findTitle)}">${searchIconSvg()}</span>`}
     </button>`;
 }
 
@@ -3319,7 +3441,7 @@ function showNameDetail(entryId, anchor = null) {
   if (!entry) return;
   anchor?.closest?.('.naming-entry-item')?.classList.add('is-detail-active');
   const category = namingData.categories.find(item => item.id === entry.categoryId);
-  const mentionCount = countSavedNameUsesInText(entry.name, activeChapterTextForNameCount());
+  const mentionCount = countNamingEntryUsesInText(entry, activeChapterTextForNameCount());
   const editedAtLabel = nameDetailTimeLabel(entry);
   setText('nameDetailTitle', entry.name);
   setText('nameDetailUsage', mentionCount);

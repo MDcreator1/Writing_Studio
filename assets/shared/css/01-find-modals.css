@@ -597,6 +597,11 @@ select.lm-native-select:not(.dock-native-select) {
   scrollbar-color: var(--lm-scroll-thumb) var(--lm-scroll-track);
 }
 
+.lm-custom-select-menu.opens-upward {
+  top: auto;
+  bottom: calc(100% + 7px);
+}
+
 .story-info-card .lm-custom-select-menu {
   background-color: var(--muted-soft);
   background: var(--muted-soft);
