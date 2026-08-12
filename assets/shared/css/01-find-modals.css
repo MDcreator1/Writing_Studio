@@ -498,6 +498,8 @@ select.lm-native-select:not(.dock-native-select) {
 .lm-custom-select-trigger {
   width: 100%;
   min-height: auto;
+  max-height: 44px;
+  overflow: hidden;
   border: 1px solid var(--lm-border-info-color);
   border-radius: var(--radius-lg);
   padding: 8px 12px;

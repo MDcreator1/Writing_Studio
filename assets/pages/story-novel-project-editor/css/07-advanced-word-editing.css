@@ -113,7 +113,6 @@
   display: grid;
   gap: 10px;
   padding: 16px;
-  overflow: auto;
   scrollbar-color: var(--scroll-thumb, var(--border)) transparent;
   scrollbar-width: thin;
 }
@@ -189,6 +188,35 @@
 
 .awe-threshold-field input:disabled {
   opacity: .5;
+}
+
+.awe-unmatched-category-field {
+  padding: 0 4px;
+}
+
+.awe-unmatched-category-field .lm-custom-select {
+  height: 26px;
+}
+
+.awe-unmatched-category-field .lm-custom-select-trigger {
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.awe-unmatched-category-field select {
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  outline: 0;
+  border-radius: 5px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 750;
+  cursor: pointer;
 }
 
 .awe-unmatched-controls>button {
@@ -1232,6 +1260,11 @@
   box-shadow: var(--lm-shadow-cloud-panel, 0 24px 80px rgba(0, 0, 0, .3));
   -webkit-backdrop-filter: var(--lm-floating-panel-backdrop-filter, blur(18px));
   backdrop-filter: var(--lm-floating-panel-backdrop-filter, blur(18px));
+  overflow: visible !important;
+}
+
+.awe-rule-entry-panel .lm-custom-select-menu {
+  z-index: 9999;
 }
 
 .awe-rule-entry-panel.is-dragging {

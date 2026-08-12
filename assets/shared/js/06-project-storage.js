@@ -590,6 +590,30 @@ function createProjectManifest(folderName = 'Untitled Story') {
     synopsis: '',
     createdAt,
     updatedAt: createdAt,
+    globalTextFormatting: {
+      globalFontSize: 16,
+      globalLineSpacing: 0,
+      globalParagraphGap: 1,
+      reviewModeMargin: 0,
+      globalAlignment: 'justify',
+      globalFontFamily: 'Lora'
+    },
+    smartPaste: {
+      enabled: true,
+      lineSpacing: 0,
+      paragraphGap: 1,
+      fontSize: 16
+    },
+    autoScroll: {
+      enabled: true,
+      emptyOnly: false,
+      mode: 'depth',
+      focusTime: 320,
+      depth: 72,
+      bandTop: 34,
+      bandBottom: 78,
+      bandMinGap: 22
+    },
     facts: [],
     chapters: [],
     parts: []
@@ -634,6 +658,30 @@ function chaptersToManifest() {
     synopsis: baseManifest.synopsis || '',
     createdAt: baseManifest.createdAt,
     updatedAt: baseManifest.updatedAt || baseManifest.createdAt,
+    globalTextFormatting: baseManifest.globalTextFormatting || {
+      globalFontSize: 16,
+      globalLineSpacing: 0,
+      globalParagraphGap: 1,
+      reviewModeMargin: 0,
+      globalAlignment: 'justify',
+      globalFontFamily: 'Lora'
+    },
+    smartPaste: baseManifest.smartPaste || {
+      enabled: Boolean(typeof isPasteSettingsEnabled !== 'undefined' ? isPasteSettingsEnabled : true),
+      lineSpacing: typeof smartPasteLineSpacing !== 'undefined' ? smartPasteLineSpacing : 0,
+      paragraphGap: typeof smartPasteParagraphGap !== 'undefined' ? smartPasteParagraphGap : 1,
+      fontSize: typeof smartPasteFontSize !== 'undefined' ? smartPasteFontSize : 16
+    },
+    autoScroll: baseManifest.autoScroll || {
+      enabled: Boolean(typeof isEditorAutoScrollEnabled !== 'undefined' ? isEditorAutoScrollEnabled : true),
+      emptyOnly: Boolean(typeof isEditorAutoScrollEmptyParagraphOnly !== 'undefined' ? isEditorAutoScrollEmptyParagraphOnly : false),
+      mode: typeof editorAutoScrollMode !== 'undefined' ? editorAutoScrollMode : 'depth',
+      focusTime: typeof currentEditorAutoScrollFocusTimeMs === 'function' ? currentEditorAutoScrollFocusTimeMs() : 320,
+      depth: typeof advancedStoredPercent === 'function' ? advancedStoredPercent(EDITOR_AUTO_SCROLL_DEPTH_KEY, 72) : 72,
+      bandTop: typeof advancedStoredPercent === 'function' ? advancedStoredPercent(EDITOR_AUTO_SCROLL_BAND_TOP_KEY, 34) : 34,
+      bandBottom: typeof advancedStoredPercent === 'function' ? advancedStoredPercent(EDITOR_AUTO_SCROLL_BAND_BOTTOM_KEY, 78) : 78,
+      bandMinGap: typeof lmEditorAdvancedNumber === 'function' ? lmEditorAdvancedNumber('autoScrollBandMinGap', 22) : 22
+    },
     facts: normalizeStoryFacts(storyFacts)
   };
 
@@ -820,6 +868,37 @@ async function writeNamingDataToProject() {
   const namingHandle = await getProjectFileHandle(PROJECT_NAMING_FILE, { create: true });
   await writeFileText(namingHandle, JSON.stringify(namingData, null, 2));
   localStorage.setItem(NAMING_STORAGE_KEY, JSON.stringify(namingData));
+}
+
+async function readWordEditingDataFromProject() {
+  if (!projectDirectoryHandle) return null;
+  try {
+    const fileHandle = await getProjectFileHandle(PROJECT_WORD_EDITING_FILE);
+    const content = await readFileText(fileHandle);
+    if (!content) return null;
+    const parsed = JSON.parse(content);
+    if (parsed && typeof parsed === 'object') {
+      if (window.lmAdvancedWordEditing && typeof window.lmAdvancedWordEditing.loadDictionaryPayload === 'function') {
+        window.lmAdvancedWordEditing.loadDictionaryPayload(parsed);
+      }
+      return parsed;
+    }
+  } catch (error) {
+    /* File might not exist in project yet. */
+  }
+  return null;
+}
+
+async function writeWordEditingDataToProject(payload) {
+  if (!projectDirectoryHandle || !payload) return false;
+  try {
+    const fileHandle = await getProjectFileHandle(PROJECT_WORD_EDITING_FILE, { create: true });
+    await writeFileText(fileHandle, JSON.stringify(payload, null, 2));
+    return true;
+  } catch (error) {
+    console.error('Error writing word editing dictionary to project:', error);
+    return false;
+  }
 }
 
 function normalizeNamingDocumentPath(path = '') {
@@ -1327,13 +1406,16 @@ async function loadLocalProject(handle, shouldStoreHandle = true, options = {}) 
     setActiveProjectTypeFolderName('');
     return false;
   }
+  loadPasteCopySettings();
+  loadAutoScrollSettingsFromManifest();
   chapters = chaptersFromManifest(projectManifest);
   storyFacts = normalizeStoryFacts(projectManifest.facts);
   await Promise.all([
     readDraftsDataFromProject(),
     readTrashDraftsDataFromProject(),
     readChapterEditDraftsFromProject(),
-    readNamingDataFromProject()
+    readNamingDataFromProject(),
+    readWordEditingDataFromProject()
   ]);
   if (savedEditorTarget) {
     restoreSavedActiveEditorTarget(savedEditorTarget);
@@ -4488,26 +4570,66 @@ function savePasteCopySettings() {
   localStorage.setItem(getStoryStorageKey(SMART_PASTE_PARAGRAPH_GAP_KEY), String(smartPasteParagraphGap));
   localStorage.setItem(getStoryStorageKey(SMART_PASTE_FONT_SIZE_KEY), String(smartPasteFontSize));
   localStorage.setItem(getStoryStorageKey(SMART_PASTE_AUTO_APPLY_KEY), String(smartPasteAutoApply));
+
+  if (typeof projectManifest !== 'undefined' && projectManifest) {
+    projectManifest.smartPaste = {
+      enabled: Boolean(isPasteSettingsEnabled),
+      lineSpacing: smartPasteLineSpacing,
+      paragraphGap: smartPasteParagraphGap,
+      fontSize: smartPasteFontSize
+    };
+    if (typeof persistProjectManifestSnapshot === 'function') persistProjectManifestSnapshot();
+  }
 }
 
 function loadPasteCopySettings() {
-  const storedPaste = localStorage.getItem(getStoryStorageKey(PASTE_SETTINGS_ENABLED_KEY));
+  if (typeof projectManifest !== 'undefined' && projectManifest?.smartPaste) {
+    const sp = projectManifest.smartPaste;
+    if (sp.enabled !== undefined) isPasteSettingsEnabled = Boolean(sp.enabled);
+    if (sp.lineSpacing !== undefined) smartPasteLineSpacing = normalizeSmartPasteLineSpacing(sp.lineSpacing);
+    if (sp.paragraphGap !== undefined) smartPasteParagraphGap = normalizeSmartPasteParagraphGap(sp.paragraphGap);
+    if (sp.fontSize !== undefined) smartPasteFontSize = normalizeSmartPasteFontSize(sp.fontSize);
+  } else {
+    const storedPaste = localStorage.getItem(getStoryStorageKey(PASTE_SETTINGS_ENABLED_KEY));
+    const storedPasteLineSpacing = localStorage.getItem(getStoryStorageKey(SMART_PASTE_LINE_SPACING_KEY));
+    const storedPasteGap = localStorage.getItem(getStoryStorageKey(SMART_PASTE_PARAGRAPH_GAP_KEY));
+    const storedPasteFontSize = localStorage.getItem(getStoryStorageKey(SMART_PASTE_FONT_SIZE_KEY));
+
+    if (storedPaste !== null) isPasteSettingsEnabled = storedPaste === 'true';
+    if (storedPasteLineSpacing !== null) smartPasteLineSpacing = normalizeSmartPasteLineSpacing(storedPasteLineSpacing);
+    if (storedPasteGap !== null) smartPasteParagraphGap = normalizeSmartPasteParagraphGap(storedPasteGap);
+    if (storedPasteFontSize !== null) smartPasteFontSize = normalizeSmartPasteFontSize(storedPasteFontSize);
+  }
+
   const storedCopyEnabled = localStorage.getItem(getStoryStorageKey(COPY_SETTINGS_ENABLED_KEY));
   const storedCopyMode = localStorage.getItem(getStoryStorageKey(COPY_PARA_MODE_KEY));
   const storedCopyGaps = localStorage.getItem(getStoryStorageKey(COPY_PARAGRAPH_GAPS_KEY));
-  const storedPasteLineSpacing = localStorage.getItem(getStoryStorageKey(SMART_PASTE_LINE_SPACING_KEY));
-  const storedPasteGap = localStorage.getItem(getStoryStorageKey(SMART_PASTE_PARAGRAPH_GAP_KEY));
-  const storedPasteFontSize = localStorage.getItem(getStoryStorageKey(SMART_PASTE_FONT_SIZE_KEY));
   const storedAutoApply = localStorage.getItem(getStoryStorageKey(SMART_PASTE_AUTO_APPLY_KEY));
 
-  if (storedPaste !== null) isPasteSettingsEnabled = storedPaste === 'true';
   if (storedCopyEnabled !== null) isCopySettingsEnabled = storedCopyEnabled === 'true';
   if (storedCopyMode !== null) copyParaMode = EDITOR_COPY_PARA_MODES.includes(storedCopyMode) ? storedCopyMode : 'gap';
   if (storedCopyGaps !== null) copyParagraphGaps = Math.max(0, Math.min(4, Number(storedCopyGaps) || 0));
-  if (storedPasteLineSpacing !== null) smartPasteLineSpacing = normalizeSmartPasteLineSpacing(storedPasteLineSpacing);
-  if (storedPasteGap !== null) smartPasteParagraphGap = normalizeSmartPasteParagraphGap(storedPasteGap);
-  if (storedPasteFontSize !== null) smartPasteFontSize = normalizeSmartPasteFontSize(storedPasteFontSize);
   if (storedAutoApply !== null) smartPasteAutoApply = storedAutoApply === 'true';
+}
+
+function loadAutoScrollSettingsFromManifest() {
+  if (typeof projectManifest === 'undefined' || !projectManifest?.autoScroll) return;
+  const as = projectManifest.autoScroll;
+  if (as.enabled !== undefined) isEditorAutoScrollEnabled = Boolean(as.enabled);
+  if (as.emptyOnly !== undefined) isEditorAutoScrollEmptyParagraphOnly = Boolean(as.emptyOnly);
+  if (as.mode !== undefined && ['depth', 'band'].includes(as.mode)) editorAutoScrollMode = as.mode;
+  if (as.focusTime !== undefined && typeof setEditorAutoScrollFocusTime === 'function') {
+    setEditorAutoScrollFocusTime(as.focusTime);
+  }
+  if (as.depth !== undefined) localStorage.setItem(EDITOR_AUTO_SCROLL_DEPTH_KEY, `${as.depth}%`);
+  if (as.bandTop !== undefined) localStorage.setItem(EDITOR_AUTO_SCROLL_BAND_TOP_KEY, `${as.bandTop}%`);
+  if (as.bandBottom !== undefined) localStorage.setItem(EDITOR_AUTO_SCROLL_BAND_BOTTOM_KEY, `${as.bandBottom}%`);
+  if (as.bandMinGap !== undefined && document.documentElement) {
+    document.documentElement.style.setProperty('--editor-auto-scroll-band-min-gap', `${as.bandMinGap}%`);
+  }
+
+  if (typeof positionEditorAutoScrollDepthMarker === 'function') positionEditorAutoScrollDepthMarker();
+  if (typeof updateEditorSettingsUI === 'function') updateEditorSettingsUI();
 }
 
 function updateStatusOptionState(statusKey, stateId) {
@@ -4926,37 +5048,79 @@ function updateCustomSelectMenuHeight(select, shell, trigger, menu) {
     return;
   }
 
-  const boundary = customSelectBoundaryElement(shell);
-  const boundaryRect = boundary?.getBoundingClientRect?.();
-  const viewportBottom = Math.max(0, window.innerHeight - 12);
-  const boundaryBottom = boundaryRect?.height
-    ? Math.min(boundaryRect.bottom, viewportBottom)
-    : viewportBottom;
-  const boundaryTop = boundaryRect?.height
-    ? Math.max(boundaryRect.top, 12)
-    : 12;
-  const gap = 7;
-  const padding = 12;
-  const availableBelow = Math.floor(boundaryBottom - triggerRect.bottom - gap - padding);
-  const availableAbove = Math.floor(triggerRect.top - boundaryTop - gap - padding);
-  const boundaryHeight = boundaryRect?.height || window.innerHeight;
-  const availableByBox = Math.floor(boundaryHeight - triggerRect.height - gap - (padding * 2));
-  const isAdvancedSettingsMenu = Boolean(select.closest('.advanced-editor-settings-card'));
   const visibleOptionCount = Array.from(select.options || []).filter((option, optionIndex) =>
     !option.hidden && !isCustomSelectPlaceholderOption(select, option, optionIndex)
   ).length;
-  const allOptionsHeight = Math.max(48, (visibleOptionCount * 34) + (Math.max(0, visibleOptionCount - 1) * 4) + 14);
+  const allOptionsHeight = Math.max(38, (visibleOptionCount * 32) + (Math.max(0, visibleOptionCount - 1) * 2) + 12);
+
+  const isInRuleDialog = Boolean(select.closest('.awe-rule-entry-panel') || select.closest('[data-awe-dialog]'));
+  if (isInRuleDialog) {
+    const maxVisibleOptions = 5;
+    const optionH = 32;
+    const optionGap = 2;
+    const menuPadding = 12;
+    const max5Height = (maxVisibleOptions * optionH) + (Math.max(0, maxVisibleOptions - 1) * optionGap) + menuPadding;
+
+    const shellRect = shell.getBoundingClientRect();
+    const menuGap = 7;
+    const viewportGap = 20;
+    const topFixed = shellRect.bottom + menuGap;
+    const viewportAvailable = Math.max(60, Math.floor(window.innerHeight - topFixed - viewportGap));
+
+    const cappedByOptions = visibleOptionCount > maxVisibleOptions ? max5Height : allOptionsHeight;
+    const usedHeight = Math.min(cappedByOptions, viewportAvailable);
+    const needsScroll = visibleOptionCount > maxVisibleOptions || allOptionsHeight > usedHeight;
+
+    menu.classList.toggle('opens-upward', false);
+    // position:fixed escapes all overflow:hidden ancestors (advanced-editor-settings-card etc.)
+    menu.style.setProperty('position', 'fixed', 'important');
+    menu.style.setProperty('top', `${topFixed}px`, 'important');
+    menu.style.setProperty('left', `${shellRect.left}px`, 'important');
+    menu.style.setProperty('right', 'auto', 'important');
+    menu.style.setProperty('width', `${shellRect.width}px`, 'important');
+    menu.style.setProperty('height', `${usedHeight}px`, 'important');
+    menu.style.setProperty('max-height', `${usedHeight}px`, 'important');
+    menu.style.setProperty('overflow', 'hidden', 'important');
+    menu.style.setProperty('overflow-y', needsScroll ? 'auto' : 'hidden', 'important');
+    menu.style.setProperty('z-index', '99999', 'important');
+    menu.style.setProperty('--lm-custom-select-menu-max-height', `${usedHeight}px`);
+    return;
+  }
+
+  const advancedCard = select.closest('.advanced-editor-settings-card') || select.closest('.advanced-editor-settings-content') || select.closest('.advanced-editor-settings-modal');
+  const boundary = customSelectBoundaryElement(shell) || advancedCard;
+  const boundaryRect = boundary?.getBoundingClientRect?.();
+  const viewportBottom = boundaryRect?.height
+    ? Math.min(boundaryRect.bottom - 12, window.innerHeight - 12)
+    : Math.max(0, window.innerHeight - 12);
+  const boundaryTop = boundaryRect?.height
+    ? Math.max(boundaryRect.top + 12, 12)
+    : 12;
+  const gap = 6;
+  const padding = 10;
+  const availableBelow = Math.floor(viewportBottom - triggerRect.bottom - gap - padding);
+  const availableAbove = Math.floor(triggerRect.top - boundaryTop - gap - padding);
+  const boundaryHeight = boundaryRect?.height || window.innerHeight;
+  const availableByBox = Math.floor(boundaryHeight - triggerRect.height - gap - (padding * 2));
+
   const configuredMaxHeight = Number(select?.dataset?.menuMaxHeight) || 0;
-  const preferredMaxHeight = isAdvancedSettingsMenu
-    ? Math.max(configuredMaxHeight, allOptionsHeight)
-    : configuredMaxHeight || 230;
-  const openUpwards = isAdvancedSettingsMenu && availableBelow < allOptionsHeight && availableAbove > availableBelow;
+  const openUpwards = availableBelow < allOptionsHeight && availableAbove > availableBelow;
   const directionalSpace = openUpwards ? availableAbove : availableBelow;
   const availableHeight = directionalSpace > 0 ? directionalSpace : availableByBox;
-  const usableHeight = Math.min(preferredMaxHeight, Math.max(48, availableHeight));
+  const maxAllowedSpace = Math.max(48, Math.floor(availableHeight));
+  const usableMaxHeight = configuredMaxHeight ? Math.min(configuredMaxHeight, maxAllowedSpace) : maxAllowedSpace;
 
   menu.classList.toggle('opens-upward', openUpwards);
-  menu.style.setProperty('--lm-custom-select-menu-max-height', `${Math.floor(usableHeight)}px`);
+
+  if (allOptionsHeight <= usableMaxHeight) {
+    menu.style.maxHeight = `${Math.floor(allOptionsHeight)}px`;
+    menu.style.setProperty('--lm-custom-select-menu-max-height', `${Math.floor(allOptionsHeight)}px`);
+    menu.style.overflowY = 'hidden';
+  } else {
+    menu.style.maxHeight = `${Math.floor(usableMaxHeight)}px`;
+    menu.style.setProperty('--lm-custom-select-menu-max-height', `${Math.floor(usableMaxHeight)}px`);
+    menu.style.overflowY = 'auto';
+  }
 }
 
 function closeCustomSelects() {
@@ -5122,6 +5286,19 @@ function syncCustomSelect(select) {
 
   if (trigger) updateCustomSelectMenuHeight(select, shell, trigger, menu);
   menu.hidden = !isOpen;
+  // Reset fixed-position styles when menu closes (set by isInRuleDialog for AWE section)
+  if (!isOpen) {
+    menu.style.removeProperty('position');
+    menu.style.removeProperty('top');
+    menu.style.removeProperty('left');
+    menu.style.removeProperty('right');
+    menu.style.removeProperty('width');
+    menu.style.removeProperty('height');
+    menu.style.removeProperty('max-height');
+    menu.style.removeProperty('overflow');
+    menu.style.removeProperty('overflow-y');
+    menu.style.removeProperty('z-index');
+  }
   menu.innerHTML = '';
   Array.from(select.options).forEach((option, optionIndex) => {
     if (option.hidden || isCustomSelectPlaceholderOption(select, option, optionIndex)) return;

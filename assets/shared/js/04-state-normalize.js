@@ -602,6 +602,7 @@ const WORKSPACE_HANDLE_KEY = 'workspace-folder';
 const PROJECT_MANIFEST_FILE = 'Chapters_info.json';
 const PROJECT_NAMING_FILE = 'Story_Naming.json';
 const PROJECT_DRAFTS_FILE = 'Story_Drafts.json';
+const PROJECT_WORD_EDITING_FILE = 'Story_Word_Editing.json';
 const PROJECT_TRASH_DIR = 'Trash';
 const PROJECT_TRASH_DRAFTS_FILE = 'Trash/Trash_Drafts.json';
 const PROJECT_CHAPTER_EDIT_DRAFTS_FILE = 'Temp_Chapter_Draft.json';
@@ -848,16 +849,34 @@ function normalizeEditorFontSize(value) {
 
 function editorGlobalTextFormattingDefaults() {
   let stored = {};
-  try { stored = JSON.parse(localStorage.getItem('lm_editor_advanced_settings_v1') || '{}') || {}; }
-  catch { stored = {}; }
-  const rawLineHeight = Number(stored.globalLineSpacing);
-  const rawParagraphGap = Number(stored.globalParagraphGap);
-  const rawFontSize = Number(stored.globalFontSize);
+  if (typeof getStoredOrRuntimeGlobalFormatting === 'function') {
+    const fmt = getStoredOrRuntimeGlobalFormatting();
+    const rawLineHeight = Number(fmt.globalLineSpacing ?? fmt.lineHeight);
+    const rawParagraphGap = Number(fmt.globalParagraphGap ?? fmt.paragraphGap);
+    const rawFontSize = Number(fmt.globalFontSize ?? fmt.fontSize);
+    return {
+      alignment: normalizeEditorAlignment(fmt.globalAlignment || fmt.alignment || 'justify'),
+      lineHeight: Number.isFinite(rawLineHeight) && rawLineHeight > 0 ? getClosestEditorLineHeight(rawLineHeight) : null,
+      paragraphGap: normalizeEditorParagraphGap(Number.isFinite(rawParagraphGap) ? rawParagraphGap : 1),
+      fontFamily: normalizeEditorFontFamily(fmt.globalFontFamily || fmt.fontFamily || EDITOR_FONT_FAMILIES[0]),
+      fontSize: normalizeEditorFontSize(Number.isFinite(rawFontSize) && rawFontSize > 0 ? rawFontSize : 16)
+    };
+  }
+
+  if (typeof projectManifest !== 'undefined' && projectManifest?.globalTextFormatting) {
+    stored = projectManifest.globalTextFormatting;
+  } else {
+    try { stored = JSON.parse(localStorage.getItem('lm_editor_advanced_settings_v1') || '{}') || {}; }
+    catch { stored = {}; }
+  }
+  const rawLineHeight = Number(stored.globalLineSpacing ?? stored.lineHeight);
+  const rawParagraphGap = Number(stored.globalParagraphGap ?? stored.paragraphGap);
+  const rawFontSize = Number(stored.globalFontSize ?? stored.fontSize);
   return {
-    alignment: normalizeEditorAlignment(stored.globalAlignment || 'justify'),
+    alignment: normalizeEditorAlignment(stored.globalAlignment || stored.alignment || 'justify'),
     lineHeight: Number.isFinite(rawLineHeight) && rawLineHeight > 0 ? getClosestEditorLineHeight(rawLineHeight) : null,
-    paragraphGap: normalizeEditorParagraphGap(Number.isFinite(rawParagraphGap) ? rawParagraphGap : 0),
-    fontFamily: normalizeEditorFontFamily(stored.globalFontFamily || EDITOR_FONT_FAMILIES[0]),
+    paragraphGap: normalizeEditorParagraphGap(Number.isFinite(rawParagraphGap) ? rawParagraphGap : 1),
+    fontFamily: normalizeEditorFontFamily(stored.globalFontFamily || stored.fontFamily || EDITOR_FONT_FAMILIES[0]),
     fontSize: normalizeEditorFontSize(Number.isFinite(rawFontSize) && rawFontSize > 0 ? rawFontSize : 16)
   };
 }

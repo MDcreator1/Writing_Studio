@@ -162,7 +162,7 @@
   --lm-status-info-color: #00ff00;
   --lm-status-warning-color: #ff9900;
   --lm-status-orphan-color: #f8fbff;
-  
+
   /* Category status node root var's */
   --lm-category-status-node-width: 7px;
   --lm-category-status-node-min-height: 28px;
@@ -171,7 +171,7 @@
   --lm-category-existing-node-bg: #ffee00;
   --lm-category-orphan-node-bg: var(--lm-status-orphan-color);
   --lm-category-empty-node-bg: var(--ink);
-  
+
   --lm-category-status-node-hover-transform: scaleY(1.12);
   --lm-mini-reminder-color: var(--accent3);
   --lm-mini-reminder-bg: var(--lm-floating-panel-glass-bg);
@@ -332,7 +332,7 @@
 
 
 
-    
+
   /* Visual token classification: 3. Linear-gradient values */
   --light-theme-preview-tone: linear-gradient(135deg,
       color-mix(in srgb, var(--surface) 88%, var(--accent-soft)),

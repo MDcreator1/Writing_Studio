@@ -334,21 +334,6 @@
                 id="smartPasteFontSizeValue" type="button" aria-label="Smart Paste font size value">Default</button>
             </div>
           </div>
-          <div
-            class="editor-setting-row lm-id-applySmartPasteStylesGloballyBtn lm-id-applyStylesGloballyContainer"
-            id="applyStylesGloballyContainer">
-            <button class="status-option-row editor-setting-option-row" type="button"
-              id="applySmartPasteStylesGloballyBtn">
-              <span id="applySmartPasteStylesGloballyLabel" class="lm-id-applySmartPasteStylesGloballyLabel">Global Text Formatting</span>
-            </button>
-            <div class="smart-paste-auto-apply-wrapper">
-              <button class="setting-state lm-id-autoApplySmartPasteToggleBtn" id="autoApplySmartPasteToggleBtn"
-                type="button" title="Auto apply after 2 minutes">
-                <span class="smart-paste-auto-label">Auto</span>
-                <span id="autoApplySmartPasteState" class="lm-id-autoApplySmartPasteState">Off</span>
-              </button>
-            </div>
-          </div>
           <!-- Smart Copy Toggle -->
           <div class="editor-setting-row lm-id-copySettingsToggleBtn" id="copySettingsToggleBtn">
             <span id="copySettingsLabel" class="lm-id-copySettingsLabel" style="cursor: pointer; flex-grow: 1; display: flex; align-items: center; height: 100%;">Smart Copy</span>
@@ -689,6 +674,12 @@
                   <span class="font-tools-icon">
                     <span data-lm-icon="fontTools"></span>
                   </span>
+                </button>
+              </div>
+              <div class="tool-section tool-section-auto-format">
+                <button class="tool-btn auto-format-btn lm-id-autoFormatBtn" id="autoFormatBtn" type="button"
+                  onclick="runAdvancedGlobalStyleApply()" title="Global Text Formatting (अप्लाई करें)" aria-label="Apply Global Text Formatting">
+                  <span data-lm-icon="autoFormat"></span>
                 </button>
               </div>
             </div>

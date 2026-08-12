@@ -1491,10 +1491,10 @@ function parseEditorAutoScrollTimeMs(value, fallback = 320) {
 
 function editorAutoScrollFocusTimeBounds() {
   const styles = window.getComputedStyle(document.documentElement);
-  const min = parseEditorAutoScrollTimeMs(styles.getPropertyValue('--editor-auto-scroll-focus-min-time'), 120);
-  const max = parseEditorAutoScrollTimeMs(styles.getPropertyValue('--editor-auto-scroll-focus-max-time'), 900);
-  const safeMin = Math.max(0, Number.isFinite(min) ? min : 120);
-  const safeMax = Math.max(safeMin, Number.isFinite(max) ? max : 900);
+  const min = parseEditorAutoScrollTimeMs(styles.getPropertyValue('--editor-auto-scroll-focus-min-time'), 200);
+  const max = parseEditorAutoScrollTimeMs(styles.getPropertyValue('--editor-auto-scroll-focus-max-time'), 5000);
+  const safeMin = Math.max(0, Number.isFinite(min) ? min : 200);
+  const safeMax = Math.max(safeMin, Number.isFinite(max) ? max : 5000);
   return { min: safeMin, max: safeMax };
 }
 
@@ -1889,18 +1889,44 @@ function restoreEditorAutoScrollDepthSetting() {
   );
 }
 
+function applyAutoScrollCssVariablesFromSettings() {
+  const root = document.documentElement;
+  if (!root) return;
+
+  const defaultDepth = typeof lmEditorAdvancedNumber === 'function' ? lmEditorAdvancedNumber('defaultAutoScrollDepth', 72) : 72;
+  const defaultTop = typeof lmEditorAdvancedNumber === 'function' ? lmEditorAdvancedNumber('defaultAutoScrollBandTop', 14) : 14;
+  const defaultBottom = typeof lmEditorAdvancedNumber === 'function' ? lmEditorAdvancedNumber('defaultAutoScrollBandBottom', 88) : 88;
+  const bandMinGap = typeof lmEditorAdvancedNumber === 'function' ? lmEditorAdvancedNumber('autoScrollBandMinGap', 22) : 22;
+
+  const storedDepth = localStorage.getItem(EDITOR_AUTO_SCROLL_DEPTH_KEY);
+  const storedTop = localStorage.getItem(EDITOR_AUTO_SCROLL_BAND_TOP_KEY);
+  const storedBottom = localStorage.getItem(EDITOR_AUTO_SCROLL_BAND_BOTTOM_KEY);
+
+  const depthVal = storedDepth !== null ? parseFloat(storedDepth) : defaultDepth;
+  const topVal = storedTop !== null ? parseFloat(storedTop) : defaultTop;
+  const bottomVal = storedBottom !== null ? parseFloat(storedBottom) : defaultBottom;
+
+  root.style.setProperty('--editor-auto-scroll-depth', `${Number.isFinite(depthVal) ? depthVal : defaultDepth}%`);
+  root.style.setProperty('--editor-auto-scroll-band-top', `${Number.isFinite(topVal) ? topVal : defaultTop}%`);
+  root.style.setProperty('--editor-auto-scroll-band-bottom', `${Number.isFinite(bottomVal) ? bottomVal : defaultBottom}%`);
+  root.style.setProperty('--editor-auto-scroll-band-min-gap', `${Number.isFinite(bandMinGap) ? bandMinGap : 22}%`);
+}
+
 function editorAutoScrollDepthPx(editor) {
   const editorHeight = editor?.clientHeight || 0;
   if (!editorHeight) return 0;
 
+  const defaultDepth = typeof lmEditorAdvancedNumber === 'function'
+    ? lmEditorAdvancedNumber('defaultAutoScrollDepth', 72)
+    : 72;
   const rawDepth = window.getComputedStyle(editor)
     .getPropertyValue('--editor-auto-scroll-depth')
     .trim();
-  const fallbackDepth = editorHeight * 0.72;
+  const fallbackDepth = editorHeight * (defaultDepth / 100);
   let depth = fallbackDepth;
 
   if (rawDepth.endsWith('%')) {
-    depth = editorHeight * ((parseFloat(rawDepth) || 72) / 100);
+    depth = editorHeight * ((parseFloat(rawDepth) || defaultDepth) / 100);
   } else if (rawDepth.endsWith('px')) {
     depth = parseFloat(rawDepth) || fallbackDepth;
   } else if (rawDepth) {
@@ -1962,18 +1988,22 @@ function editorAutoScrollCssDepthPx(editor, propertyName, fallbackPercent) {
 }
 
 function editorAutoScrollRootDepthPx(editor) {
+  const defaultDepthFrac = (typeof lmEditorAdvancedNumber === 'function' ? lmEditorAdvancedNumber('defaultAutoScrollDepth', 72) : 72) / 100;
   const rawDepth = window.getComputedStyle(document.documentElement)
     .getPropertyValue('--editor-auto-scroll-depth')
     .trim();
-  return editorAutoScrollDimensionPx(editor, rawDepth, 0.72);
+  return editorAutoScrollDimensionPx(editor, rawDepth, defaultDepthFrac);
 }
 
 function editorAutoScrollBandMinGapPx(editor) {
   const editorHeight = editor?.clientHeight || 0;
   if (!editorHeight) return 0;
-  const rawGap = window.getComputedStyle(editor)
-    .getPropertyValue('--editor-auto-scroll-band-min-gap')
-    .trim();
+  const configuredValue = typeof lmEditorAdvancedNumber === 'function'
+    ? lmEditorAdvancedNumber('autoScrollBandMinGap', 22)
+    : null;
+  const rawGap = configuredValue !== null
+    ? `${configuredValue}%`
+    : window.getComputedStyle(editor).getPropertyValue('--editor-auto-scroll-band-min-gap').trim();
   const fallbackGap = editorHeight * 0.22;
   const gap = editorAutoScrollDimensionPx(editor, rawGap, 0.22) || fallbackGap;
   return clampEditorAutoScrollValue(gap, 48, Math.max(48, editorHeight - 48));
@@ -1988,8 +2018,10 @@ function editorAutoScrollBandBounds(editor) {
 
 function editorAutoScrollBandRange(editor) {
   const bounds = editorAutoScrollBandBounds(editor);
-  let top = editorAutoScrollCssDepthPx(editor, '--editor-auto-scroll-band-top', 0.34);
-  let bottom = editorAutoScrollCssDepthPx(editor, '--editor-auto-scroll-band-bottom', 0.78);
+  const defaultTopFrac = (typeof lmEditorAdvancedNumber === 'function' ? lmEditorAdvancedNumber('defaultAutoScrollBandTop', 14) : 14) / 100;
+  const defaultBottomFrac = (typeof lmEditorAdvancedNumber === 'function' ? lmEditorAdvancedNumber('defaultAutoScrollBandBottom', 88) : 88) / 100;
+  let top = editorAutoScrollCssDepthPx(editor, '--editor-auto-scroll-band-top', defaultTopFrac);
+  let bottom = editorAutoScrollCssDepthPx(editor, '--editor-auto-scroll-band-bottom', defaultBottomFrac);
 
   bottom = clampEditorAutoScrollValue(bottom, bounds.min + bounds.gap, bounds.max);
   top = clampEditorAutoScrollValue(top, bounds.min, bottom - bounds.gap);

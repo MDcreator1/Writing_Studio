@@ -12,7 +12,7 @@
   const state = {
     rules: [], categories: ['General'], search: '', categoryFilter: 'all',
     sortMode: 'order', activeView: 'dictionary', keepEditorReplacements: true, showEditorQuickAction: false,
-    collectUnmatchedReplacements: false, unmatchedReplacementThreshold: 3,
+    collectUnmatchedReplacements: false, unmatchedReplacementThreshold: 3, unmatchedCategory: 'General',
     unmatchedObservations: new Map(), temporaryCandidates: [],
     expandedCategories: new Set(), visibleRules: [], draftAliases: [], root: null, loaded: false, restorePromise: null, persistTimer: 0, aliasResizeObserver: null, dialogDrag: null, outsideClickHandler: null
   };
@@ -97,8 +97,29 @@
       activeView: state.activeView, keepEditorReplacements: state.keepEditorReplacements,
       showEditorQuickAction: state.showEditorQuickAction,
       collectUnmatchedReplacements: state.collectUnmatchedReplacements,
-      unmatchedReplacementThreshold: state.unmatchedReplacementThreshold
+      unmatchedReplacementThreshold: state.unmatchedReplacementThreshold,
+      unmatchedCategory: state.unmatchedCategory || 'General'
     };
+  }
+
+  function loadDictionaryPayload(saved) {
+    if (saved && typeof saved === 'object') {
+      state.rules = Array.isArray(saved.rules) ? saved.rules.map(normaliseRule).filter(Boolean) : [];
+      state.categories = Array.isArray(saved.categories) ? saved.categories.filter(category => typeof category === 'string') : ['General'];
+      state.search = typeof saved.search === 'string' ? saved.search : '';
+      state.categoryFilter = typeof saved.categoryFilter === 'string' ? saved.categoryFilter : 'all';
+      state.sortMode = ['order', 'count', 'alphabetical'].includes(saved.sortMode) ? saved.sortMode : 'order';
+      state.activeView = ['editor', 'dictionary'].includes(saved.activeView) ? saved.activeView : 'dictionary';
+      state.keepEditorReplacements = saved.keepEditorReplacements !== false;
+      state.showEditorQuickAction = saved.showEditorQuickAction === true;
+      state.collectUnmatchedReplacements = saved.collectUnmatchedReplacements === true;
+      state.unmatchedReplacementThreshold = Math.min(10000, Math.max(1, Math.floor(Number(saved.unmatchedReplacementThreshold) || 3)));
+      state.unmatchedCategory = typeof saved.unmatchedCategory === 'string' && saved.unmatchedCategory ? saved.unmatchedCategory : 'General';
+      ensureCategories();
+      renderAll(true);
+      syncEditorQuickAction();
+      setStorageStatus('Loaded from project folder (Story_Word_Editing.json)', 'success');
+    }
   }
 
   async function restore() {
@@ -106,7 +127,12 @@
     if (state.restorePromise) return state.restorePromise;
     state.restorePromise = (async () => {
       let saved = null;
-      try { saved = await databaseState('read'); } catch { /* LocalStorage fallback below. */ }
+      if (typeof readWordEditingDataFromProject === 'function') {
+        try { saved = await readWordEditingDataFromProject(); } catch { saved = null; }
+      }
+      if (!saved) {
+        try { saved = await databaseState('read'); } catch { /* LocalStorage fallback below. */ }
+      }
       if (!saved) {
         try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch { saved = null; }
       }
@@ -121,6 +147,7 @@
         state.showEditorQuickAction = saved.showEditorQuickAction === true;
         state.collectUnmatchedReplacements = saved.collectUnmatchedReplacements === true;
         state.unmatchedReplacementThreshold = Math.min(10000, Math.max(1, Math.floor(Number(saved.unmatchedReplacementThreshold) || 3)));
+        state.unmatchedCategory = typeof saved.unmatchedCategory === 'string' && saved.unmatchedCategory ? saved.unmatchedCategory : 'General';
       }
       state.loaded = true;
     })();
@@ -137,13 +164,23 @@
   async function persist() {
     window.clearTimeout(state.persistTimer);
     const payload = serializableState();
+    let savedInProject = false;
     let indexed = false;
+    if (typeof writeWordEditingDataToProject === 'function') {
+      try { savedInProject = await writeWordEditingDataToProject(payload); } catch { savedInProject = false; }
+    }
     try { await databaseState('write', payload); indexed = true; } catch { /* LocalStorage fallback below. */ }
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); }
     catch {
-      if (!indexed) { setStorageStatus('Storage is full — export a backup', 'danger'); return false; }
+      if (!indexed && !savedInProject) { setStorageStatus('Storage is full — export a backup', 'danger'); return false; }
     }
-    setStorageStatus(indexed ? 'Dictionary saved locally' : 'Saved in browser cache', 'success');
+    if (savedInProject) {
+      setStorageStatus('Dictionary saved to project folder', 'success');
+    } else if (indexed) {
+      setStorageStatus('Dictionary saved locally', 'success');
+    } else {
+      setStorageStatus('Saved in browser cache', 'success');
+    }
     window.dispatchEvent(new CustomEvent('lm:advanced-word-editing-rules-changed', { detail: { rules: getRules() } }));
     return true;
   }
@@ -264,6 +301,15 @@
     renderWorkspaceView();
   }
 
+  function renderUnmatchedCategoryOptions() {
+    if (!state.root) return;
+    const select = state.root.querySelector('[data-awe-unmatched-category]');
+    if (!select) return;
+    const currentVal = state.unmatchedCategory || 'General';
+    select.innerHTML = state.categories.map(cat => `<option value="${escapeAttribute(cat)}"${cat === currentVal ? ' selected' : ''}>${escapeHTML(cat)}</option>`).join('');
+    if (typeof syncCustomSelects === 'function') syncCustomSelects(state.root);
+  }
+
   function renderWorkspaceView() {
     if (!state.root) return;
     state.root.dataset.aweView = state.activeView;
@@ -287,7 +333,9 @@
     if (unmatchedThreshold) {
       unmatchedThreshold.value = String(state.unmatchedReplacementThreshold);
     }
+    renderUnmatchedCategoryOptions();
     renderTemporaryCandidates();
+    if (typeof syncCustomSelects === 'function') syncCustomSelects(state.root);
   }
 
   function openDialog(name) {
@@ -643,6 +691,125 @@
     button.hidden = !state.showEditorQuickAction;
   }
 
+  function applyDictionaryToHTMLString(htmlString) {
+    if (!htmlString || typeof htmlString !== 'string') return { html: htmlString, count: 0 };
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<body>${htmlString}</body>`, 'text/html');
+    const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    while (walker.nextNode()) textNodes.push(walker.currentNode);
+    let count = 0;
+    textNodes.forEach(node => {
+      const res = runReplacementEngine(node.nodeValue || '');
+      if (res.count > 0) {
+        node.nodeValue = res.text;
+        count += res.count;
+      }
+    });
+    return { html: doc.body.innerHTML, count };
+  }
+
+  async function applyDictionaryToAllDrafts(options = {}) {
+    await restore();
+    if (!state.rules.length) {
+      toast('The replacement dictionary is empty.', 'error');
+      return { count: 0, changed: false };
+    }
+
+    let totalReplacements = 0;
+
+    // 1. Process in-memory chapterDrafts
+    if (typeof chapterDrafts !== 'undefined' && Array.isArray(chapterDrafts)) {
+      chapterDrafts.forEach(draft => {
+        if (draft && typeof draft.content === 'string') {
+          const res = applyDictionaryToHTMLString(draft.content);
+          if (res.count > 0) {
+            draft.content = res.html;
+            totalReplacements += res.count;
+          }
+        }
+      });
+    }
+
+    // 2. Process in-memory chapters
+    if (typeof chapters !== 'undefined' && Array.isArray(chapters)) {
+      chapters.forEach(chapter => {
+        if (chapter && typeof chapter.content === 'string') {
+          const res = applyDictionaryToHTMLString(chapter.content);
+          if (res.count > 0) {
+            chapter.content = res.html;
+            totalReplacements += res.count;
+          }
+        }
+      });
+    }
+
+    // 3. Process in-memory chapterEditDrafts
+    if (typeof chapterEditDrafts !== 'undefined' && chapterEditDrafts && typeof chapterEditDrafts === 'object') {
+      Object.values(chapterEditDrafts).forEach(draft => {
+        if (draft && typeof draft.content === 'string') {
+          const res = applyDictionaryToHTMLString(draft.content);
+          if (res.count > 0) {
+            draft.content = res.html;
+            totalReplacements += res.count;
+          }
+        }
+      });
+    }
+
+    // 4. Process active editor DOM if currently visible
+    const editor = document.getElementById('editor');
+    if (editor) {
+      if (typeof clearHighlights === 'function') clearHighlights({ sync: false });
+      if (typeof captureEditorHistorySnapshot === 'function') captureEditorHistorySnapshot('advanced-word-editing-all-drafts-before', { force: true });
+      const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+      const textNodes = [];
+      while (walker.nextNode()) textNodes.push(walker.currentNode);
+      let editorCount = 0;
+      textNodes.forEach(node => {
+        const res = runReplacementEngine(node.nodeValue || '');
+        if (res.count > 0) {
+          node.nodeValue = res.text;
+          editorCount += res.count;
+        }
+      });
+      if (editorCount > 0) {
+        editor.normalize();
+        if (typeof syncEditorPlaceholderState === 'function') syncEditorPlaceholderState();
+        if (typeof stageEditorHTMLForMemoryCommit === 'function') {
+          stageEditorHTMLForMemoryCommit();
+          if (typeof scheduleSaveButtonTypingIdleCheck === 'function') scheduleSaveButtonTypingIdleCheck();
+          if (typeof updateStats === 'function') updateStats({ sourceHTML: typeof getCleanEditorHTML === 'function' ? getCleanEditorHTML() : editor.innerHTML, deferMemoryCommit: true });
+        } else {
+          editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertReplacementText' }));
+        }
+        if (typeof captureEditorHistorySnapshot === 'function') captureEditorHistorySnapshot('advanced-word-editing-all-drafts-after', { force: true });
+      }
+    }
+
+    // 5. Persist updated drafts & project manifest to storage & disk
+    if (typeof saveToStorage === 'function') saveToStorage(true);
+    if (typeof hasActiveStory === 'function' && hasActiveStory() && typeof projectDirectoryHandle !== 'undefined' && projectDirectoryHandle) {
+      try {
+        await Promise.all([
+          typeof writeDraftsDataToProject === 'function' ? writeDraftsDataToProject() : Promise.resolve(),
+          typeof writeChapterEditDraftsToProject === 'function' ? writeChapterEditDraftsToProject() : Promise.resolve()
+        ]);
+      } catch (err) {
+        console.error('Failed to write updated draft files:', err);
+      }
+    }
+
+    if (totalReplacements > 0) {
+      toast(`${totalReplacements.toLocaleString()} dictionary replacement${totalReplacements === 1 ? '' : 's'} applied across all project drafts.`);
+    } else {
+      toast('No dictionary replacements were found in any project draft.');
+    }
+
+    window.dispatchEvent(new CustomEvent('lm:advanced-word-editing-all-drafts-applied', { detail: { count: totalReplacements, source: options.source || 'settings' } }));
+    return { count: totalReplacements, changed: totalReplacements > 0 };
+  }
+
   async function applyDictionaryToEditor(options = {}) {
     await restore();
     if (typeof canEditActiveDocument === 'function' && !canEditActiveDocument()) {
@@ -715,7 +882,7 @@
 
   function refreshTemporaryCandidates() {
     state.temporaryCandidates = [...state.unmatchedObservations.values()]
-      .filter(candidate => candidate.count > state.unmatchedReplacementThreshold)
+      .filter(candidate => candidate.count <= state.unmatchedReplacementThreshold)
       .sort((first, second) => second.count - first.count || second.lastSeen - first.lastSeen);
     renderTemporaryCandidates();
   }
@@ -731,11 +898,29 @@
     candidate.count += safeCount;
     candidate.lastSeen = Date.now();
     state.unmatchedObservations.set(key, candidate);
-    refreshTemporaryCandidates();
+
     if (candidate.count > state.unmatchedReplacementThreshold) {
-      window.dispatchEvent(new CustomEvent('lm:advanced-word-editing-temporary-candidate', {
-        detail: { ...candidate }
-      }));
+      const category = state.unmatchedCategory || 'General';
+      let rule = state.rules.find(item => replacementIdentity(item.replace) === replacementIdentity(replacement));
+      let changed = false;
+      if (!rule) {
+        rule = normaliseRule({ aliases: [source], replace: replacement, category, finderMode: 'saved', order: state.rules.length }, state.rules.length);
+        if (rule) { state.rules.push(rule); changed = true; }
+      } else if (!rule.aliases.some(alias => replacementIdentity(alias) === replacementIdentity(source))) {
+        rule.aliases.push(source);
+        rule.find = rule.aliases[0];
+        changed = true;
+      }
+      state.unmatchedObservations.delete(key);
+      refreshTemporaryCandidates();
+      if (changed) {
+        ensureCategories();
+        renderAll(false);
+        persistSoon();
+        toast(`"${source} → ${replacement}" auto-added to "${category}" category.`);
+      }
+    } else {
+      refreshTemporaryCandidates();
     }
     return candidate;
   }
@@ -844,7 +1029,8 @@
       return;
     }
     const action = trigger.dataset.aweAction;
-    if (action === 'apply-editor-dictionary') applyDictionaryToEditor({ source: 'settings' });
+    if (action === 'apply-all-drafts-dictionary') applyDictionaryToAllDrafts({ source: 'settings' });
+    else if (action === 'apply-editor-dictionary') applyDictionaryToEditor({ source: 'settings' });
     else if (action === 'open-temporary-candidates') { renderTemporaryCandidates(); openDialog('temporary-candidates'); }
     else if (action === 'close-temporary-candidates') closeDialog('temporary-candidates');
     else if (action === 'save-temporary-candidate') saveTemporaryCandidate(trigger.dataset.candidateId);
@@ -957,6 +1143,10 @@
         refreshTemporaryCandidates();
         persistSoon();
       }
+      else if (event.target.matches('[data-awe-unmatched-category]')) {
+        state.unmatchedCategory = event.target.value || 'General';
+        persistSoon();
+      }
       else if (event.target.matches('[data-awe-finder-mode]')) syncFinderHelp();
       else if (event.target.matches('[name="replacement"]')) adoptExistingReplacementRule();
       else if (event.target.matches('[data-awe-file-input]')) { const file = event.target.files?.[0]; event.target.value = ''; if (file) importDictionaryFile(file); }
@@ -990,9 +1180,9 @@
     return `<div class="awe-workspace-switcher" role="tablist" aria-label="Advanced word editing workspace"><button type="button" role="tab" data-awe-action="select-view" data-view="editor" data-awe-view-tab="editor" aria-selected="false">Work on Editor</button><button type="button" role="tab" data-awe-action="select-view" data-view="dictionary" data-awe-view-tab="dictionary" aria-selected="true">Words Dictionary</button></div>
     <div class="awe-workspace" data-awe-root>
       <section class="awe-work-editor-panel" data-awe-editor-settings hidden>
-        <div class="awe-editor-setting-row"><span><strong>Keep words and replacements from editor</strong><small>When the Replace value belongs to a Naming category, remember the Find value as a source word for that replacement.</small></span><label class="awe-setting-switch"><input type="checkbox" data-awe-setting="keep-editor-replacements"><i aria-hidden="true"></i><span class="sr-only">Keep words and replacements from editor</span></label></div>
-        <div class="awe-editor-setting-row awe-unmatched-setting-row"><span><strong>Collect unmatched replacements</strong><small>If a Replace value has no Naming-category match, collect its Find → Replace pair after it exceeds this occurrence limit.</small></span><div class="awe-unmatched-controls"><label class="awe-threshold-field"><span>More than</span><input type="number" min="1" max="10000" step="1" inputmode="numeric" data-awe-unmatched-threshold aria-label="Unmatched replacement occurrence limit"></label><button type="button" data-awe-action="open-temporary-candidates">Temporary Names <b data-awe-temporary-count>0</b></button><label class="awe-setting-switch"><input type="checkbox" data-awe-setting="collect-unmatched-replacements"><i aria-hidden="true"></i><span class="sr-only">Collect unmatched replacements</span></label></div></div>
-        <div class="awe-editor-setting-row"><span><strong>Refresh Editor Script</strong><small>Apply every saved dictionary rule to all text in the currently editable draft or chapter.</small></span><button class="awe-apply-editor-button" type="button" data-awe-action="apply-editor-dictionary">Refresh Editor Script</button></div>
+        <div class="awe-editor-setting-row"><span><strong>Keep words and replacements from editor</strong><small>When enabled, replaced words from editor are remembered and processed based on occurrence limits.</small></span><div class="awe-unmatched-controls"><button type="button" data-awe-action="open-temporary-candidates">Temporary Names <b data-awe-temporary-count>0</b></button><label class="awe-setting-switch"><input type="checkbox" data-awe-setting="keep-editor-replacements"><i aria-hidden="true"></i><span class="sr-only">Keep words and replacements from editor</span></label></div></div>
+        <div class="awe-editor-setting-row awe-unmatched-setting-row"><span><strong>Collect unmatched replacements</strong><small>Words replaced fewer times than threshold go to Temporary Names; words exceeding threshold automatically move to selected category.</small></span><div class="awe-unmatched-controls"><label class="awe-threshold-field"><span>More than</span><input type="number" min="1" max="10000" step="1" inputmode="numeric" data-awe-unmatched-threshold aria-label="Unmatched replacement occurrence limit"></label><label class="awe-threshold-field awe-unmatched-category-field"><select data-awe-unmatched-category title="Category for words exceeding occurrence limit"></select></label><label class="awe-setting-switch"><input type="checkbox" data-awe-setting="collect-unmatched-replacements"><i aria-hidden="true"></i><span class="sr-only">Collect unmatched replacements</span></label></div></div>
+        <div class="awe-editor-setting-row"><span><strong>Apply Dictionary to All Drafts</strong><small>Apply saved dictionary rules across all drafts and chapters in this story project.</small></span><button class="awe-apply-editor-button" type="button" data-awe-action="apply-all-drafts-dictionary" title="Apply dictionary replacements to all project drafts">Apply to All Drafts</button></div>
         <div class="awe-editor-setting-row"><span><strong>Show quick refresh button</strong><small>Keep a dictionary refresh shortcut in the editor's bottom-right corner.</small></span><label class="awe-setting-switch"><input type="checkbox" data-awe-setting="show-editor-quick-action"><i aria-hidden="true"></i><span class="sr-only">Show quick refresh button in editor</span></label></div>
       </section>
       <div class="awe-dictionary-view" data-awe-dictionary-view>
@@ -1001,7 +1191,7 @@
       <div class="awe-category-workspace" data-awe-category-workspace></div>
       <div class="awe-dictionary-actions"><input type="file" data-awe-file-input accept=".json,application/json" hidden><button class="is-danger" type="button" data-awe-action="clear-rules">Clear</button><div class="awe-export-wrap"><button type="button" data-awe-action="toggle-export" aria-haspopup="menu">Export</button><div class="awe-export-panel" data-awe-export-panel role="menu" hidden><button type="button" role="menuitem" data-awe-action="export-compatible">Compatible JSON</button><button type="button" role="menuitem" data-awe-action="export-studio">Studio JSON</button></div></div></div>
       </div>
-      <div class="awe-dialog-backdrop" data-awe-dialog="rule" hidden><form class="awe-dialog awe-rule-entry-panel" data-awe-rule-form><header class="awe-naming-entry-head" data-awe-rule-drag-handle><div><h4 data-awe-rule-dialog-title>Add Word Replacement</h4></div><button class="awe-name-panel-close" type="button" data-awe-action="close-rule" aria-label="Close">×</button></header><input type="hidden" name="ruleId"><div class="awe-word-entry-field"><div class="awe-word-input-row" data-awe-word-input-row><input name="replacement" type="text" maxlength="500" autocomplete="off" placeholder="Replacement"><input type="text" data-awe-source-word-input maxlength="500" autocomplete="off" placeholder="Word to replace" hidden><button class="awe-source-word-add" type="button" data-awe-action="open-source-word" title="Add word to replace" aria-label="Add word to replace">+</button></div><div class="awe-source-word-list" data-awe-source-word-list aria-live="polite"></div></div><label class="awe-category-select-field"><span>Category</span><select name="category" data-awe-rule-category data-custom-select="off" title="Naming categories and dictionary-only categories are available here."></select></label><div class="awe-rule-options"><label><span>Finder mode</span><select name="finderMode" data-awe-finder-mode data-custom-select="off"><option value="saved">Save — exact complete word</option><option value="raw">Raw — case-free Hindi endings</option><option value="deep">Deep — no word boundary</option></select></label></div><div class="awe-rule-form-actions"><button class="awe-delete-rule-button" type="button" data-awe-delete-rule data-awe-action="delete-rule" hidden>Delete rule</button><button class="awe-save-rule-button" data-awe-save-rule type="submit">Add Replacement</button></div></form></div>
+      <div class="awe-dialog-backdrop" data-awe-dialog="rule" hidden><form class="awe-dialog awe-rule-entry-panel" data-awe-rule-form><header class="awe-naming-entry-head" data-awe-rule-drag-handle><div><h4 data-awe-rule-dialog-title>Add Word Replacement</h4></div><button class="awe-name-panel-close" type="button" data-awe-action="close-rule" aria-label="Close">×</button></header><input type="hidden" name="ruleId"><div class="awe-word-entry-field"><div class="awe-word-input-row" data-awe-word-input-row><input name="replacement" type="text" maxlength="500" autocomplete="off" placeholder="Replacement"><input type="text" data-awe-source-word-input maxlength="500" autocomplete="off" placeholder="Word to replace" hidden><button class="awe-source-word-add" type="button" data-awe-action="open-source-word" title="Add word to replace" aria-label="Add word to replace">+</button></div><div class="awe-source-word-list" data-awe-source-word-list aria-live="polite"></div></div><label class="awe-category-select-field"><span>Category</span><select name="category" data-awe-rule-category title="Naming categories and dictionary-only categories are available here."></select></label><div class="awe-rule-options"><label><span>Finder mode</span><select name="finderMode" data-awe-finder-mode title="Finder mode"><option value="saved">Save — exact complete word</option><option value="raw">Raw — case-free Hindi endings</option><option value="deep">Deep — no word boundary</option></select></label></div><div class="awe-rule-form-actions"><button class="awe-delete-rule-button" type="button" data-awe-delete-rule data-awe-action="delete-rule" hidden>Delete rule</button><button class="awe-save-rule-button" data-awe-save-rule type="submit">Add Replacement</button></div></form></div>
       <div class="awe-dialog-backdrop" data-awe-dialog="temporary-candidates" hidden><section class="awe-dialog awe-temporary-candidates-panel" role="dialog" aria-modal="true" aria-labelledby="aweTemporaryCandidatesTitle"><header><div><span>Editor observations</span><h4 id="aweTemporaryCandidatesTitle">Temporary Names <b data-awe-temporary-count>0</b></h4></div><button class="awe-name-panel-close" type="button" data-awe-action="close-temporary-candidates" aria-label="Close">×</button></header><p>These replacements exceeded your occurrence limit but their Replace value did not match a Naming category.</p><div class="awe-temporary-empty" data-awe-temporary-empty>No temporary replacement candidates yet.</div><div class="awe-temporary-list" data-awe-temporary-list></div></section></div>
       <div class="awe-dialog-backdrop" data-awe-dialog="categories" hidden><section class="awe-dialog"><header><div><span>Dictionary structure</span><h4>Manage categories</h4></div><button type="button" data-awe-action="close-categories" aria-label="Close">×</button></header><p>Renaming updates every related rule. Deleting a category moves its rules to General.</p><form class="awe-category-form" data-awe-category-form><input name="categoryName" type="text" maxlength="80" placeholder="New category name" autocomplete="off"><button class="is-primary" type="submit">Add category</button></form><div class="awe-category-list" data-awe-category-list></div><footer><span></span><button class="is-primary" type="button" data-awe-action="close-categories">Done</button></footer></section></div>
       <div class="awe-dialog-backdrop" data-awe-dialog="clear-rules" hidden><section class="awe-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="aweClearRulesTitle" aria-describedby="aweClearRulesBody"><div class="awe-confirm-icon" aria-hidden="true">!</div><div class="awe-confirm-copy"><h4 id="aweClearRulesTitle">Clear replacement dictionary?</h4><p id="aweClearRulesBody">All replacement rules will be permanently removed. This action cannot be undone.</p></div><div class="awe-confirm-actions"><button type="button" data-awe-action="cancel-clear-rules">Cancel</button><button class="is-danger awe-confirm-delete" type="button" data-awe-action="confirm-clear-rules">Clear all</button></div></section></div>
@@ -1032,8 +1222,8 @@
 
   window.lmAdvancedWordEditing = Object.freeze({
     markup, mount, getRules, getActiveRules, runReplacementEngine, normaliseRule, extractImportedDictionary,
-    openImport, applyDictionaryToEditor, learnFromEditorReplacement, getTemporaryCandidates,
-    syncEditorQuickAction, flush: persist
+    openImport, applyDictionaryToAllDrafts, applyDictionaryToEditor, learnFromEditorReplacement, getTemporaryCandidates,
+    syncEditorQuickAction, loadDictionaryPayload, flush: persist
   });
 
   const initializeEditorIntegration = () => restore().then(syncEditorQuickAction).catch(() => {});

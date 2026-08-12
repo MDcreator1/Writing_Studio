@@ -386,8 +386,51 @@ body.is-advanced-editor-settings-open { overflow: hidden; }
   font-weight: 750;
 }
 .advanced-runtime-setting-row > select { width: min(240px, 32vw); padding: 0 30px 0 10px; }
-.advanced-runtime-setting-row > .lm-custom-select { width: min(240px, 32vw); }
-.advanced-editor-settings-card .lm-custom-select-menu { overflow-y: auto; }
+/* Restore overflow-visible for all advanced settings custom select menus */
+.advanced-editor-settings-card .lm-custom-select-menu {
+  max-height: none !important;
+  height: auto !important;
+  overflow: visible !important;
+  overflow-y: visible !important;
+}
+.advanced-editor-settings-card .lm-custom-select-menu::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+/* Exception: AWE section menus are controlled by JS via inline !important — only restore scrollbar visibility here */
+[data-advanced-top-section="advanced-word-editing"] .lm-custom-select-menu::-webkit-scrollbar {
+  display: block !important;
+  width: 6px !important;
+  height: auto !important;
+}
+
+.smart-paste-sync-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-left: 6px;
+}
+.smart-paste-sync-btn:hover {
+  background: var(--surface-hover, color-mix(in srgb, var(--lm-color-accent-rgb, 100 100 255) 12%, var(--surface-raised)));
+  border-color: var(--lm-color-accent, #5c6ac4);
+  color: var(--lm-color-accent, #5c6ac4);
+}
+.smart-paste-sync-btn svg,
+.smart-paste-sync-icon svg {
+  width: 13px;
+  height: 13px;
+}
 .advanced-runtime-number { position: relative; min-width: 142px; width: 142px; display: block; }
 .advanced-runtime-number input { width: 100%; padding: 0 53px 0 9px; text-align: left; }
 .advanced-runtime-number em {
