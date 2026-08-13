@@ -5,21 +5,10 @@ let customSelectSyncRaf = null;
 const customSelectObservers = new WeakMap();
 
 function textToEditorHTML(value) {
-  const normalizedText = String(value || '').replace(/\r\n?/g, '\n').trimEnd();
+  const normalizedText = String(value || '').replace(/\r\n?/g, '\n');
   if (!normalizedText.trim()) return '';
-
-  return normalizedText
-    .split(/((?:\n[ \t]*)+)/)
-    .map(chunk => {
-      if (!chunk) return '';
-      if (/^(?:\n[ \t]*)+$/.test(chunk)) {
-        const newlineCount = (chunk.match(/\n/g) || []).length;
-        return Array.from({ length: Math.max(0, newlineCount - 1) }, () =>
-          editorFileGapHTML()
-        ).join('');
-      }
-      return `<p>${escapeHtml(chunk).replace(/\n/g, '<br>')}</p>`;
-    })
+  return normalizedText.split('\n')
+    .map(line => `<p>${line ? escapeHtml(line) : '<br>'}</p>`)
     .join('');
 }
 
@@ -870,29 +859,24 @@ async function writeNamingDataToProject() {
   localStorage.setItem(NAMING_STORAGE_KEY, JSON.stringify(namingData));
 }
 
-async function readWordEditingDataFromProject() {
-  if (!projectDirectoryHandle) return null;
+async function readWordEditingDataFromProject(targetDirectoryHandle = projectDirectoryHandle) {
+  if (!targetDirectoryHandle) return null;
   try {
-    const fileHandle = await getProjectFileHandle(PROJECT_WORD_EDITING_FILE);
+    const fileHandle = await targetDirectoryHandle.getFileHandle(PROJECT_WORD_EDITING_FILE);
     const content = await readFileText(fileHandle);
     if (!content) return null;
     const parsed = JSON.parse(content);
-    if (parsed && typeof parsed === 'object') {
-      if (window.lmAdvancedWordEditing && typeof window.lmAdvancedWordEditing.loadDictionaryPayload === 'function') {
-        window.lmAdvancedWordEditing.loadDictionaryPayload(parsed);
-      }
-      return parsed;
-    }
+    if (parsed && typeof parsed === 'object') return parsed;
   } catch (error) {
     /* File might not exist in project yet. */
   }
   return null;
 }
 
-async function writeWordEditingDataToProject(payload) {
-  if (!projectDirectoryHandle || !payload) return false;
+async function writeWordEditingDataToProject(payload, targetDirectoryHandle = projectDirectoryHandle) {
+  if (!targetDirectoryHandle || !payload) return false;
   try {
-    const fileHandle = await getProjectFileHandle(PROJECT_WORD_EDITING_FILE, { create: true });
+    const fileHandle = await targetDirectoryHandle.getFileHandle(PROJECT_WORD_EDITING_FILE, { create: true });
     await writeFileText(fileHandle, JSON.stringify(payload, null, 2));
     return true;
   } catch (error) {
@@ -1414,9 +1398,15 @@ async function loadLocalProject(handle, shouldStoreHandle = true, options = {}) 
     readDraftsDataFromProject(),
     readTrashDraftsDataFromProject(),
     readChapterEditDraftsFromProject(),
-    readNamingDataFromProject(),
-    readWordEditingDataFromProject()
+    readNamingDataFromProject()
   ]);
+  if (window.lmAdvancedWordEditing && typeof window.lmAdvancedWordEditing.loadDictionaryPayload === 'function') {
+    const projectWordEditingData = await readWordEditingDataFromProject(projectDirectoryHandle);
+    window.lmAdvancedWordEditing.loadDictionaryPayload(projectWordEditingData, { projectHandle: projectDirectoryHandle });
+    if (!projectWordEditingData && typeof window.lmAdvancedWordEditing.flush === 'function') {
+      await window.lmAdvancedWordEditing.flush();
+    }
+  }
   if (savedEditorTarget) {
     restoreSavedActiveEditorTarget(savedEditorTarget);
   } else if (shouldRestoreSavedTarget) {
@@ -1530,6 +1520,9 @@ function clearActiveStoryState() {
   selectedTrashDraftIndexes.clear();
   lastSelectedTrashDraftIndex = null;
   isDraftTrashMode = false;
+  if (window.lmAdvancedWordEditing && typeof window.lmAdvancedWordEditing.loadDictionaryPayload === 'function') {
+    window.lmAdvancedWordEditing.loadDictionaryPayload(null, { projectHandle: null });
+  }
   lastSavedChapterHTML = '';
   localStorage.removeItem(PROJECT_MANIFEST_KEY);
   localStorage.removeItem('lm_chapters');
@@ -3433,6 +3426,10 @@ async function createStoryFromInfoForm() {
   await writeDraftsDataToProject();
   await writeTrashDraftsDataToProject();
   await writeChapterEditDraftsToProject();
+  if (window.lmAdvancedWordEditing && typeof window.lmAdvancedWordEditing.loadDictionaryPayload === 'function') {
+    window.lmAdvancedWordEditing.loadDictionaryPayload(null, { projectHandle: storyHandle });
+    if (typeof window.lmAdvancedWordEditing.flush === 'function') await window.lmAdvancedWordEditing.flush();
+  }
 
   closeStoryInfoModal();
   hideProjectGate();
@@ -5051,33 +5048,80 @@ function updateCustomSelectMenuHeight(select, shell, trigger, menu) {
   const visibleOptionCount = Array.from(select.options || []).filter((option, optionIndex) =>
     !option.hidden && !isCustomSelectPlaceholderOption(select, option, optionIndex)
   ).length;
-  const allOptionsHeight = Math.max(38, (visibleOptionCount * 32) + (Math.max(0, visibleOptionCount - 1) * 2) + 12);
+  const optionButtons = [...menu.querySelectorAll('.lm-custom-select-option:not([hidden])')];
+  const optionGap = 4;
+  const menuPadding = 14;
+  const optionHeights = optionButtons.map(button => Math.max(34, Math.ceil(button.getBoundingClientRect().height || button.offsetHeight || 34)));
+  const heightForCount = count => Math.max(48, optionHeights.slice(0, count).reduce((sum, height) => sum + height, 0) + (Math.max(0, count - 1) * optionGap) + menuPadding);
+  const allOptionsHeight = heightForCount(visibleOptionCount);
 
-  const isInRuleDialog = Boolean(select.closest('.awe-rule-entry-panel') || select.closest('[data-awe-dialog]'));
-  if (isInRuleDialog) {
+  const isInAweFloatingDialog = Boolean(select.closest('.awe-rule-entry-panel') || select.closest('.awe-category-action-dialog'));
+  if (isInAweFloatingDialog) {
     const maxVisibleOptions = 5;
-    const optionH = 32;
-    const optionGap = 2;
-    const menuPadding = 12;
-    const max5Height = (maxVisibleOptions * optionH) + (Math.max(0, maxVisibleOptions - 1) * optionGap) + menuPadding;
+    const shellRect = shell.getBoundingClientRect();
+    const viewportGap = 12;
+    const menuGap = 7;
+    const requestedHeight = heightForCount(Math.min(maxVisibleOptions, visibleOptionCount));
+    const availableBelow = Math.max(48, window.innerHeight - shellRect.bottom - menuGap - viewportGap);
+    const availableAbove = Math.max(48, shellRect.top - menuGap - viewportGap);
+    const openUpwards = availableBelow < requestedHeight && availableAbove > availableBelow;
+    const usedHeight = Math.min(requestedHeight, openUpwards ? availableAbove : availableBelow);
+    const widestButton = optionButtons.reduce((width, button) => Math.max(width, Math.ceil(button.scrollWidth)), 0);
+    const desiredWidth = Math.max(shellRect.width, widestButton + 18);
+    const maxWidth = Math.max(shellRect.width, window.innerWidth - (viewportGap * 2));
+    const usedWidth = Math.min(desiredWidth, maxWidth);
+    const left = Math.max(viewportGap - shellRect.left, Math.min(0, window.innerWidth - viewportGap - shellRect.left - usedWidth));
+    const needsScroll = visibleOptionCount > maxVisibleOptions || requestedHeight > (openUpwards ? availableAbove : availableBelow);
+
+    menu.classList.toggle('opens-upward', openUpwards);
+    menu.style.setProperty('position', 'absolute', 'important');
+    menu.style.setProperty('top', openUpwards ? 'auto' : `calc(100% + ${menuGap}px)`, 'important');
+    menu.style.setProperty('bottom', openUpwards ? `calc(100% + ${menuGap}px)` : 'auto', 'important');
+    menu.style.setProperty('left', `${left}px`, 'important');
+    menu.style.setProperty('right', 'auto', 'important');
+    menu.style.setProperty('width', `${usedWidth}px`, 'important');
+    menu.style.setProperty('min-width', `${shellRect.width}px`, 'important');
+    menu.style.setProperty('max-width', `calc(100vw - ${viewportGap * 2}px)`, 'important');
+    menu.style.setProperty('height', `${usedHeight}px`, 'important');
+    menu.style.setProperty('max-height', `${usedHeight}px`, 'important');
+    menu.style.setProperty('overflow-y', needsScroll ? 'auto' : 'hidden', 'important');
+    menu.style.setProperty('z-index', '100001', 'important');
+    menu.style.setProperty('--lm-custom-select-menu-max-height', `${usedHeight}px`);
+    return;
+  }
+
+  const isInAdvancedSettings = Boolean(select.closest('.advanced-editor-settings-modal') || select.closest('.advanced-editor-settings-card'));
+  if (isInAdvancedSettings) {
+    const maxVisibleOptions = 5;
+    const visibleRows = Math.min(maxVisibleOptions, visibleOptionCount);
+    const requestedHeight = heightForCount(visibleRows);
 
     const shellRect = shell.getBoundingClientRect();
     const menuGap = 7;
-    const viewportGap = 20;
-    const topFixed = shellRect.bottom + menuGap;
-    const viewportAvailable = Math.max(60, Math.floor(window.innerHeight - topFixed - viewportGap));
+    const viewportGap = 12;
+    const availableBelow = Math.max(48, Math.floor(window.innerHeight - shellRect.bottom - menuGap - viewportGap));
+    const availableAbove = Math.max(48, Math.floor(shellRect.top - menuGap - viewportGap));
+    const openUpwards = availableBelow < requestedHeight && availableAbove > availableBelow;
+    const directionalSpace = openUpwards ? availableAbove : availableBelow;
+    const usedHeight = Math.min(requestedHeight, directionalSpace);
+    const needsScroll = visibleOptionCount > maxVisibleOptions || requestedHeight > directionalSpace;
+    const widestButton = optionButtons.reduce((width, button) => Math.max(width, Math.ceil(button.scrollWidth)), 0);
+    const desiredWidth = Math.max(shellRect.width, widestButton + 18);
+    const usedWidth = Math.min(desiredWidth, Math.max(shellRect.width, window.innerWidth - (viewportGap * 2)));
+    const unclampedLeft = shellRect.left;
+    const left = Math.max(viewportGap, Math.min(unclampedLeft, window.innerWidth - usedWidth - viewportGap));
+    const top = openUpwards ? Math.max(viewportGap, shellRect.top - menuGap - usedHeight) : shellRect.bottom + menuGap;
 
-    const cappedByOptions = visibleOptionCount > maxVisibleOptions ? max5Height : allOptionsHeight;
-    const usedHeight = Math.min(cappedByOptions, viewportAvailable);
-    const needsScroll = visibleOptionCount > maxVisibleOptions || allOptionsHeight > usedHeight;
-
-    menu.classList.toggle('opens-upward', false);
+    menu.classList.toggle('opens-upward', openUpwards);
     // position:fixed escapes all overflow:hidden ancestors (advanced-editor-settings-card etc.)
     menu.style.setProperty('position', 'fixed', 'important');
-    menu.style.setProperty('top', `${topFixed}px`, 'important');
-    menu.style.setProperty('left', `${shellRect.left}px`, 'important');
+    menu.style.setProperty('top', `${top}px`, 'important');
+    menu.style.setProperty('bottom', 'auto', 'important');
+    menu.style.setProperty('left', `${left}px`, 'important');
     menu.style.setProperty('right', 'auto', 'important');
-    menu.style.setProperty('width', `${shellRect.width}px`, 'important');
+    menu.style.setProperty('width', `${usedWidth}px`, 'important');
+    menu.style.setProperty('min-width', `${shellRect.width}px`, 'important');
+    menu.style.setProperty('max-width', `calc(100vw - ${viewportGap * 2}px)`, 'important');
     menu.style.setProperty('height', `${usedHeight}px`, 'important');
     menu.style.setProperty('max-height', `${usedHeight}px`, 'important');
     menu.style.setProperty('overflow', 'hidden', 'important');
@@ -5284,7 +5328,6 @@ function syncCustomSelect(select) {
   }
   if (!menu) return;
 
-  if (trigger) updateCustomSelectMenuHeight(select, shell, trigger, menu);
   menu.hidden = !isOpen;
   // Reset fixed-position styles when menu closes (set by isInRuleDialog for AWE section)
   if (!isOpen) {
@@ -5292,7 +5335,10 @@ function syncCustomSelect(select) {
     menu.style.removeProperty('top');
     menu.style.removeProperty('left');
     menu.style.removeProperty('right');
+    menu.style.removeProperty('bottom');
     menu.style.removeProperty('width');
+    menu.style.removeProperty('min-width');
+    menu.style.removeProperty('max-width');
     menu.style.removeProperty('height');
     menu.style.removeProperty('max-height');
     menu.style.removeProperty('overflow');
@@ -5323,6 +5369,7 @@ function syncCustomSelect(select) {
     });
     menu.appendChild(optionButton);
   });
+  if (trigger && isOpen) updateCustomSelectMenuHeight(select, shell, trigger, menu);
 }
 
 function toggleCustomSelect(select) {
@@ -5330,6 +5377,7 @@ function toggleCustomSelect(select) {
   const key = customSelectKey(select);
   activeCustomSelectKey = activeCustomSelectKey === key ? null : key;
   syncCustomSelects();
+  if (activeCustomSelectKey === key) requestAnimationFrame(() => syncCustomSelect(select));
 }
 
 function syncCustomSelects(root = document) {

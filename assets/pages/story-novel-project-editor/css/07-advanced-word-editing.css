@@ -53,8 +53,16 @@
 
 .awe-workspace button.is-primary {
   border-color: var(--accent);
+  background: var(--accent-light);
+  color: var(--color-on-accent, #fff);
+}
+
+.awe-workspace button.is-primary:hover{
+  border-color: var(--accent);
   background: var(--accent);
-  color: var(--accent-contrast, #fff);
+  color: var(--paper, #fff);
+  font-weight: 800;
+
 }
 
 .awe-workspace button.is-danger {
@@ -82,7 +90,7 @@
   border-radius: 8px;
   background: transparent;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 16px;
   font-weight: 750;
   cursor: pointer;
 }
@@ -111,22 +119,23 @@
   flex: 1 1 auto;
   align-content: start;
   display: grid;
-  gap: 10px;
-  padding: 16px;
+  gap: 0;
+  padding: 0 16px;
   scrollbar-color: var(--scroll-thumb, var(--border)) transparent;
   scrollbar-width: thin;
 }
 
 .awe-editor-setting-row {
   min-height: 72px;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 20px;
-  padding: 13px 14px;
-  border: 1px solid var(--border);
-  border-radius: 11px;
-  background: color-mix(in srgb, var(--surface-raised) 90%, transparent);
+  padding: 15px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
 }
 
 .awe-editor-setting-row>span:first-child {
@@ -137,14 +146,14 @@
 
 .awe-editor-setting-row strong {
   color: var(--ink);
-  font-size: 12px;
+  font-size: 16px;
 }
 
 .awe-editor-setting-row small {
   max-width: 560px;
   color: var(--muted);
-  font-size: 10px;
-  line-height: 1.45;
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .awe-unmatched-controls {
@@ -167,13 +176,13 @@
 
 .awe-threshold-field>span {
   color: var(--muted);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .awe-threshold-field input {
-  width: 58px;
+  width: auto;
   height: 26px;
   padding: 0 5px;
   border: 0;
@@ -202,7 +211,7 @@
   height: 26px;
   padding: 0 8px;
   border-radius: 5px;
-  font-size: 10px;
+  font-size: 14px;
   font-weight: 750;
 }
 
@@ -220,7 +229,7 @@
 }
 
 .awe-unmatched-controls>button {
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -302,10 +311,13 @@
 .awe-apply-editor-button {
   flex: 0 0 auto;
   border-color: var(--accent) !important;
-  background: var(--accent) !important;
+  background: color-mix(in srgb, var(--accent) 50%, transparent) !important;
   color: var(--accent-contrast, #fff) !important;
-  font-size: 10px !important;
-  font-weight: 750;
+}
+
+.awe-apply-editor-button:hover {
+  background: color-mix(in srgb, var(--accent) 75%, transparent) !important;
+  color: var(--ink) !important;
 }
 
 .awe-editor-refresh-quick-button {
@@ -353,7 +365,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  padding: 18px 20px 14px;
+  padding: 18px 20px 0px;
 }
 
 .advanced-editor-settings-section-head.is-heading-only {
@@ -378,6 +390,17 @@
   font-size: 11px;
   font-weight: 750;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.advanced-word-editing-import-button .awe-import-icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+  fill: currentColor;
 }
 
 .advanced-word-editing-import-button:hover {
@@ -388,7 +411,7 @@
 
 .awe-workspace-head>span {
   color: var(--accent);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 800;
   letter-spacing: .06em;
 }
@@ -432,8 +455,20 @@
   color: var(--ink);
   font-size: 18px;
 }
-.awe-search-icon-wrap .awe-search-icon { width: 17px; height: 17px; display: block; fill: currentColor; }
-.awe-search-box .awe-search-clear-icon { width: 13px; height: 13px; display: block; fill: currentColor; }
+
+.awe-search-icon-wrap .awe-search-icon {
+  width: 17px;
+  height: 17px;
+  display: block;
+  fill: currentColor;
+}
+
+.awe-search-box .awe-search-clear-icon {
+  width: 13px;
+  height: 13px;
+  display: block;
+  fill: currentColor;
+}
 
 .awe-search-box input {
   min-width: 0;
@@ -482,8 +517,13 @@
   fill: currentColor;
 }
 
-.awe-sort-button { color: var(--ink) !important; }
-.awe-sort-button:hover { color: var(--accent) !important; }
+.awe-sort-button {
+  color: var(--ink) !important;
+}
+
+.awe-sort-button:hover {
+  color: var(--accent) !important;
+}
 
 .awe-browser-category-button {
   flex: 0 0 auto;
@@ -623,17 +663,29 @@
 
 .awe-category-toggle small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .awe-category-chevron {
-  width: 13px;
+  width: 20px;
   flex: 0 0 13px;
   font-size: 18px;
   line-height: 1;
 }
-.awe-category-chevron-icon { width: 14px; height: 14px; display: block; fill: currentColor; }
-.awe-category-add-icon { width: 13px; height: 13px; display: block; fill: currentColor; }
+
+.awe-category-chevron-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  fill: currentColor;
+}
+
+.awe-category-add-icon {
+  width: 13px;
+  height: 13px;
+  display: block;
+  fill: currentColor;
+}
 
 .awe-category-entries {
   padding-left: 18px;
@@ -648,9 +700,9 @@
   top: auto !important;
   left: auto;
   right: auto;
-  height: 46px;
+  height: 40px;
   margin-top: 8px;
-  padding: 6px 7px 6px 14px;
+  padding: 0px 7px 0px 14px;
   border: 1px solid var(--lm-status-neutral-border, var(--border));
   border-left: 4px solid var(--lm-status-neutral-border-strong, var(--muted));
   border-radius: var(--radius-lg, 10px);
@@ -839,6 +891,13 @@
   outline: none;
 }
 
+.awe-rule-row.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border)) !important;
+  border-left-color: var(--accent) !important;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface)) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
 .awe-rule-main {
   min-width: 0;
   display: flex;
@@ -986,10 +1045,66 @@
   background: color-mix(in srgb, var(--danger) 9%, transparent);
 }
 
-.awe-rule-actions>button:last-child {
-  min-height: 30px;
-  padding: 0 9px;
-  font-size: 10px;
+.awe-rule-edit-btn,
+.awe-row-delete-btn,
+.awe-category-delete-selected-button,
+.awe-category-rename-btn,
+.awe-category-delete-btn {
+  width: 28px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent !important;
+  border-radius: var(--radius-sm, 6px) !important;
+  background: transparent !important;
+  color: var(--muted) !important;
+  opacity: 1 !important;
+  transform: none !important;
+  transition: color .16s ease, border-color .16s ease, background .16s ease;
+}
+
+.awe-rule-edit-btn svg,
+.awe-row-delete-btn svg,
+.awe-category-delete-selected-button svg,
+.awe-category-rename-btn svg,
+.awe-category-delete-btn svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  fill: currentColor;
+}
+
+.awe-rule-edit-btn:hover,
+.awe-rule-edit-btn:focus-visible,
+.awe-category-rename-btn:hover,
+.awe-category-rename-btn:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border)) !important;
+  background: var(--accent-soft) !important;
+  color: var(--accent) !important;
+}
+
+.awe-row-delete-btn:hover,
+.awe-row-delete-btn:focus-visible,
+.awe-category-delete-selected-button:hover,
+.awe-category-delete-selected-button:focus-visible,
+.awe-category-delete-btn:hover,
+.awe-category-delete-btn:focus-visible {
+  border-color: var(--lm-border-danger-color, var(--danger)) !important;
+  background: var(--lm-bg-danger-soft, color-mix(in srgb, var(--danger) 12%, transparent)) !important;
+  color: var(--danger) !important;
+}
+
+.awe-row-delete-btn[hidden],
+.awe-category-delete-selected-button[hidden] {
+  display: none !important;
+}
+
+.awe-category-toggle small.is-selection-count {
+  color: var(--danger);
+  font-weight: 800;
 }
 
 .awe-empty-rules {
@@ -1006,7 +1121,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 8px;
   border: 0 !important;
   background-color: transparent !important;
@@ -1015,12 +1130,26 @@
   backdrop-filter: none !important;
 }
 
-.awe-dictionary-actions button {
-  min-height: 31px;
-  font-size: 10px;
+.awe-dictionary-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.awe-export-wrap { position: relative; }
+.awe-dictionary-actions-right>button,
+.awe-dictionary-actions-right>.awe-export-wrap>button {
+  font-weight: 750;
+}
+
+.awe-dictionary-actions button {
+  min-height: 31px;
+  font-size: 14px;
+}
+
+.awe-export-wrap {
+  position: relative;
+}
+
 .awe-export-panel {
   position: absolute;
   z-index: 35;
@@ -1033,11 +1162,19 @@
   border: 1px solid var(--lm-border-cloud-panel-color, var(--border));
   border-radius: var(--radius-lg, 10px);
   background: var(--lm-floating-panel-glass-bg, var(--surface-raised));
-  box-shadow: var(--lm-shadow-cloud-panel, 0 14px 34px rgba(0,0,0,.2));
+  box-shadow: var(--lm-shadow-cloud-panel, 0 14px 34px rgba(0, 0, 0, .2));
   backdrop-filter: var(--lm-floating-panel-backdrop-filter, blur(16px));
 }
-.awe-export-panel[hidden] { display: none !important; }
-.awe-export-panel button { width: 100%; justify-content: flex-start; text-align: left; }
+
+.awe-export-panel[hidden] {
+  display: none !important;
+}
+
+.awe-export-panel button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
 
 .awe-confirm-dialog {
   width: min(410px, calc(100vw - 32px));
@@ -1048,15 +1185,54 @@
   border: 1px solid var(--lm-border-cloud-panel-color, var(--border));
   border-radius: var(--radius-xl, 12px);
   background: var(--lm-floating-panel-glass-bg, var(--surface-raised));
-  box-shadow: var(--lm-shadow-cloud-panel, 0 22px 64px rgba(0,0,0,.28));
+  box-shadow: var(--lm-shadow-cloud-panel, 0 22px 64px rgba(0, 0, 0, .28));
   backdrop-filter: var(--lm-floating-panel-backdrop-filter, blur(18px));
 }
-.awe-confirm-icon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); font-size: 20px; font-weight: 900; }
-.awe-confirm-copy h4 { margin: 1px 0 6px; color: var(--ink); font-size: 15px; }
-.awe-confirm-copy p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
-.awe-confirm-actions { grid-column: 1 / -1; padding-top: 8px; display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border); }
-.awe-confirm-delete { border-color: color-mix(in srgb, var(--danger) 35%, var(--border)) !important; background: color-mix(in srgb, var(--danger) 10%, var(--surface-raised)) !important; font-weight: 800; }
-.awe-confirm-delete:hover { border-color: var(--danger) !important; background: color-mix(in srgb, var(--danger) 17%, var(--surface-raised)) !important; }
+
+.awe-confirm-icon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.awe-confirm-copy h4 {
+  margin: 1px 0 6px;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.awe-confirm-copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.awe-confirm-actions {
+  grid-column: 1 / -1;
+  padding-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.awe-confirm-delete {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border)) !important;
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface-raised)) !important;
+  font-weight: 800;
+}
+
+.awe-confirm-delete:hover {
+  border-color: var(--danger) !important;
+  background: color-mix(in srgb, var(--danger) 17%, var(--surface-raised)) !important;
+}
 
 .awe-dialog-backdrop {
   position: fixed;
@@ -1073,7 +1249,7 @@
 }
 
 .awe-dialog {
-  width: min(590px, calc(100vw - 32px));
+  width: min(500px, calc(100vw - 32px));
   max-height: min(760px, calc(100vh - 40px));
   padding: 20px;
   overflow: auto;
@@ -1137,7 +1313,7 @@
 
 .awe-dialog input[type="text"],
 .awe-dialog select {
-  height: 38px;
+  height: 32px;
   padding: 0 11px;
 }
 
@@ -1244,7 +1420,7 @@
   position: fixed;
   top: 50%;
   left: 50%;
-  width: min(560px, calc(100vw - 32px));
+  width: min(500px, calc(100vw - 32px));
   height: auto;
   min-width: 0;
   max-width: none;
@@ -1320,6 +1496,19 @@
   cursor: pointer;
 }
 
+.awe-name-panel-close-icon {
+  display: block;
+  width: 19px;
+  height: 19px;
+  fill: currentColor;
+}
+
+.awe-temporary-candidates-panel .awe-name-panel-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .awe-word-input-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 34px;
@@ -1333,7 +1522,7 @@
 
 .awe-rule-entry-panel .awe-word-input-row input {
   min-width: 0;
-  height: 38px;
+  height: 35px;
   margin: 0 0 7px;
   padding: 10px 12px;
   border: 1px solid var(--border);
@@ -1353,8 +1542,8 @@
 
 .awe-source-word-add {
   width: 34px;
-  height: 38px;
-  min-height: 38px !important;
+  height: 34px;
+  min-height: 34px !important;
   padding: 0 !important;
   border: 1px solid var(--border) !important;
   border-radius: var(--radius-md, 8px) !important;
@@ -1524,7 +1713,7 @@
 
 .awe-category-row strong {
   color: var(--ink);
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .awe-category-row small {
@@ -1539,7 +1728,279 @@
 
 .awe-category-row button {
   min-height: 29px;
-  font-size: 9px;
+  font-size: 13px;
+}
+
+.awe-category-dialog {
+  height: 500px;
+  max-height: min(500px, calc(100vh - 40px));
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.awe-category-dialog>header {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 12px 12px 8px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.awe-category-close-btn {
+  width: 36px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--muted) !important;
+}
+
+.awe-category-close-btn:hover,
+.awe-category-close-btn:focus-visible {
+  border-color: var(--border) !important;
+  background: var(--bg-control-hover) !important;
+  color: var(--ink) !important;
+}
+
+.awe-category-close-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  fill: currentColor;
+}
+
+.awe-category-dialog .awe-category-list {
+  min-height: 0;
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 5px 5px 0px 15px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-top: 0;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color .2s ease;
+}
+
+.awe-category-dialog .awe-category-list:hover,
+.awe-category-dialog .awe-category-list:focus,
+.awe-category-dialog .awe-category-list:focus-within,
+.awe-category-dialog .awe-category-list.is-scrolling {
+  scrollbar-color: var(--lm-scroll-thumb) transparent;
+}
+
+.awe-category-dialog .awe-category-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.awe-category-dialog .awe-category-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.awe-category-dialog .awe-category-list::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  background-clip: padding-box;
+  transition: background-color .2s ease;
+}
+
+.awe-category-dialog .awe-category-list:hover::-webkit-scrollbar-thumb,
+.awe-category-dialog .awe-category-list:focus::-webkit-scrollbar-thumb,
+.awe-category-dialog .awe-category-list:focus-within::-webkit-scrollbar-thumb,
+.awe-category-dialog .awe-category-list.is-scrolling::-webkit-scrollbar-thumb {
+  background-color: var(--lm-scroll-thumb);
+}
+
+.awe-category-dialog .awe-category-list::-webkit-scrollbar-button {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.awe-category-footer {
+  min-height: 66px;
+  flex: 0 0 auto;
+  margin: 0 !important;
+  padding: 13px 20px !important;
+  display: flex !important;
+  align-items: center;
+  border-top: 1px solid var(--border);
+}
+
+.awe-add-category-trigger-btn,
+.awe-category-form.awe-inline-category-form {
+  width: 100% !important;
+  max-width: 100% !important;
+  flex: 1 1 100% !important;
+}
+
+.awe-add-category-trigger-btn {
+  min-height: 38px !important;
+  border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--border)) !important;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-raised)) !important;
+  color: var(--accent) !important;
+  font-weight: 750;
+}
+
+.awe-add-category-trigger-btn:hover {
+  border-color: var(--accent) !important;
+  background: var(--accent-soft) !important;
+}
+
+.awe-category-form.awe-inline-category-form {
+  margin: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.awe-category-form.awe-inline-category-form[hidden] {
+  display: none !important;
+}
+
+.awe-inline-rename-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.awe-inline-rename-form input {
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface-raised);
+  color: var(--ink);
+  outline: none;
+}
+
+.awe-category-row>div {
+  align-items: center;
+}
+
+.awe-category-delete-btn:disabled {
+  opacity: .35 !important;
+  pointer-events: none;
+}
+
+.awe-category-rename-btn:disabled {
+  opacity: .35 !important;
+  pointer-events: none;
+}
+
+.awe-category-add {
+  width: 26px !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border)) !important;
+  border-radius: var(--radius-md, 8px) !important;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 7%, var(--surface-raised)), var(--surface-raised)) !important;
+  color: var(--muted) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 75%, transparent), 0 2px 7px color-mix(in srgb, var(--ink) 7%, transparent);
+  transition: color .16s ease, border-color .16s ease, background .16s ease;
+}
+
+.awe-category-add-icon,
+.awe-category-add-icon.category-add-svg,
+.awe-category-add .category-add-svg {
+  width: 11px !important;
+  height: 11px !important;
+}
+
+.awe-category-add:hover,
+.awe-category-add:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border)) !important;
+  background: var(--accent-soft) !important;
+  color: var(--accent) !important;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.awe-category-action-dialog {
+  width: min(520px, calc(100vw - 32px));
+  overflow: visible;
+}
+
+.awe-category-target-field {
+  margin-top: 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.awe-category-target-field[hidden] {
+  display: none !important;
+}
+
+.awe-category-target-field>span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.awe-category-target-field>select {
+  width: 100%;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+
+.awe-category-action-buttons button[hidden] {
+  display: none !important;
+}
+
+.awe-category-action-dialog .awe-category-target-field {
+  width: 100%;
+  min-width: 0;
+  opacity: .52;
+  filter: saturate(.55);
+  transition: opacity .18s ease, filter .18s ease;
+}
+
+.awe-category-action-dialog.is-move-selecting .awe-category-target-field,
+.awe-category-action-dialog.is-move-ready .awe-category-target-field {
+  opacity: 1;
+  filter: none;
+}
+
+.awe-category-action-dialog .awe-category-target-field .lm-custom-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.awe-category-action-dialog .awe-confirm-copy {
+  min-width: 0;
+}
+
+.awe-category-action-dialog .awe-category-target-field .lm-custom-select-trigger {
+  width: 100%;
+}
+
+.awe-category-action-dialog .awe-category-target-field .lm-custom-select.is-disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.awe-category-action-buttons {
+  grid-column: 1 / -1;
+}
+
+.awe-category-action-buttons>[data-awe-action="close-category-action"],
+.awe-category-move-actions>[data-awe-action="cancel-category-move"] {
+  margin-right: auto;
+}
+
+.awe-category-action-buttons>[data-awe-action="delete-category-and-rules"]:disabled {
+  opacity: .36;
+  cursor: not-allowed;
+}
+
+.awe-category-action-buttons>[data-awe-action="clear-category-rules"] {
+  color: var(--danger);
 }
 
 .awe-toast-region {
@@ -1605,4 +2066,122 @@
   .awe-form-row {
     grid-template-columns: 1fr;
   }
+}
+
+/* Advanced word-editing control refinements. */
+.awe-threshold-field .awe-threshold-stepper {
+  width: 78px;
+  height: 28px;
+  flex: 0 0 78px;
+  border: 0;
+  background: var(--surface-raised);
+}
+
+.awe-threshold-field .awe-threshold-stepper .advanced-number-input {
+  height: 26px;
+  padding: 0 24px 0 7px;
+  font-size: 12px;
+  text-align: left;
+}
+
+.awe-threshold-field .awe-threshold-stepper .dock-fsize-stepper {
+  width: 20px;
+}
+
+.awe-threshold-field .awe-threshold-stepper .step-chevron-svg {
+  width: 10px;
+  height: 10px;
+}
+
+.awe-custom-first-button {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 7px;
+  border: none !important;
+  background: transparent !important;
+  color: var(--muted) !important;
+}
+
+.awe-custom-first-button svg,
+.awe-custom-first-button span {
+  width: 22px;
+  height: 22px;
+  display: block;
+  fill: currentColor;
+}
+
+.awe-custom-first-button .moveup-svg {
+  position: absolute;
+  inset: 0;
+  margin: 5px 0;
+  width: 40px;
+  height: 40px;
+  max-width: none;
+  max-height: none;
+  transform: rotate(180deg);
+  transform-origin: center;
+}
+
+/* All scrollable surfaces inside Advanced Settings use the project thumb theme. */
+.advanced-editor-settings-card *,
+.advanced-editor-settings-card *::before,
+.advanced-editor-settings-card *::after {
+  scrollbar-color: var(--lm-scroll-thumb) var(--lm-scroll-track);
+}
+
+.advanced-editor-settings-card *::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.advanced-editor-settings-card *::-webkit-scrollbar-track {
+  border-radius: var(--radius-pill);
+  background: var(--lm-scroll-track);
+}
+
+.advanced-editor-settings-card *::-webkit-scrollbar-thumb {
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: var(--radius-pill);
+  background: var(--lm-scroll-thumb);
+  box-shadow: var(--lm-scroll-thumb-shadow);
+}
+
+.advanced-editor-settings-card *::-webkit-scrollbar-thumb:hover {
+  background: var(--lm-scroll-thumb-hover);
+}
+
+.advanced-editor-settings-card *::-webkit-scrollbar-corner {
+  background: var(--lm-scroll-track);
+}
+
+.awe-custom-first-button:hover,
+.awe-custom-first-button.is-active {
+  color: var(--accent) !important;
+}
+
+.awe-category-card.is-naming-category .awe-category-title {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 62%, var(--surface));
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 48%, transparent);
+}
+
+.awe-rule-entry-panel .lm-custom-select,
+.awe-category-action-dialog .lm-custom-select {
+  display: flex;
+  align-items: center;
+}
+
+.awe-rule-entry-panel .lm-custom-select-trigger,
+.awe-category-action-dialog .lm-custom-select-trigger {
+  align-self: center;
+  margin-block: 0;
+  transform: none !important;
 }

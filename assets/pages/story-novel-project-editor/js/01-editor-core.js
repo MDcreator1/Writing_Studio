@@ -251,8 +251,7 @@ function cleanPlainTextEditorValue(root) {
   clone.querySelectorAll?.('.hindi-pending-virama-boundary, [data-lm-pending-virama-boundary]').forEach(node => node.remove());
   return (clone.textContent || '')
     .replace(/\u00a0/g, ' ')
-    .replace(/\r\n?/g, '\n')
-    .trimEnd();
+    .replace(/\r\n?/g, '\n');
 }
 
 function normalizePlainTextParagraphGapValue(value, paragraphGap) {
@@ -488,11 +487,13 @@ function getCleanEditorText() {
 
     if (cursor && isEditorContentNode(cursor)) {
       outputParts.push('\n'.repeat(gapLineCount + 1));
+    } else if (gapLineCount > 0) {
+      outputParts.push('\n'.repeat(gapLineCount));
     }
     node = cursor;
   }
 
-  return outputParts.join('').trimEnd();
+  return outputParts.join('');
 }
 
 function editorHTMLToText(html) {
@@ -520,11 +521,13 @@ function editorHTMLToText(html) {
 
     if (cursor && isEditorContentNode(cursor)) {
       outputParts.push('\n'.repeat(gapLineCount + 1));
+    } else if (gapLineCount > 0) {
+      outputParts.push('\n'.repeat(gapLineCount));
     }
     node = cursor;
   }
 
-  return outputParts.join('').trimEnd();
+  return outputParts.join('');
 }
 
 const EDITOR_HISTORY_STORAGE_KEY = 'lm_editor_history_v1';
@@ -706,18 +709,28 @@ function editorHistoryTextOffset(root, container, offset) {
   }
 }
 
-function editorHistoryPositionForTextOffset(root, targetOffset = 0) {
+function editorHistoryPositionForTextOffset(root, targetOffset = 0, options = {}) {
   const safeOffset = Math.max(0, Number(targetOffset) || 0);
+  const preferForwardBoundary = options.boundaryAffinity === 'forward';
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   let consumed = 0;
+  let lastTextNode = null;
   let node = walker.nextNode();
   while (node) {
     const length = node.nodeValue.length;
-    if (consumed + length >= safeOffset) {
+    lastTextNode = node;
+    if (
+      consumed + length > safeOffset ||
+      (!preferForwardBoundary && consumed + length === safeOffset)
+    ) {
       return { node, offset: Math.max(0, Math.min(length, safeOffset - consumed)) };
     }
     consumed += length;
     node = walker.nextNode();
+  }
+
+  if (lastTextNode && safeOffset === consumed) {
+    return { node: lastTextNode, offset: lastTextNode.nodeValue.length };
   }
 
   const fallbackBlock = root.querySelector?.('p, div, li, blockquote') || root;
@@ -2460,6 +2473,10 @@ function runEditorCaretAutoScroll() {
 }
 
 function scheduleEditorCaretAutoScroll() {
+  if (isVirtualEditorDOMSelectionTransaction) {
+    cancelEditorCaretAutoScroll();
+    return;
+  }
   const canRunAutoScroll = typeof isEditorAutoScrollSystemActive === 'function'
     ? isEditorAutoScrollSystemActive()
     : isEditorAutoScrollEnabled;
@@ -8260,8 +8277,8 @@ let persistedEditorInputSequence = 0;
 const switchedDocumentSnapshots = new Map();
 let switchedDocumentSnapshotSequence = 0;
 const EDITOR_READING_WORDS_PER_MINUTE = lmEditorAdvancedNumber('readingWordsPerMinute', 200);
-const EDITOR_PROCESSING_WORKER_URL = `assets/pages/story-novel-project-editor/js/editor-processing-worker.js?v=20260811-naming-similar-names&readingWpm=${EDITOR_READING_WORDS_PER_MINUTE}`;
-const EDITOR_HTML_BRIDGE_WORKER_URL = `assets/pages/story-novel-project-editor/js/editor-html-bridge-worker.js?v=20260811-configured-window&readingWpm=${EDITOR_READING_WORDS_PER_MINUTE}&maxWindow=${lmEditorAdvancedNumber('workerWindowMaximum', 40)}`;
+const EDITOR_PROCESSING_WORKER_URL = `assets/pages/story-novel-project-editor/js/editor-processing-worker.js?v=20260813-preserve-empty-lines&readingWpm=${EDITOR_READING_WORDS_PER_MINUTE}`;
+const EDITOR_HTML_BRIDGE_WORKER_URL = `assets/pages/story-novel-project-editor/js/editor-html-bridge-worker.js?v=20260813-preserve-empty-lines&readingWpm=${EDITOR_READING_WORDS_PER_MINUTE}&maxWindow=${lmEditorAdvancedNumber('workerWindowMaximum', 40)}`;
 let editorWorkerJobSequence = 0;
 
 function editorWorkerNamesPayload() {
@@ -8392,6 +8409,7 @@ let virtualEditorProgrammaticScrollGuard = 0;
 let isExpandingVirtualEditorSelection = false;
 let virtualEditorSelectionExpansionPromise = null;
 let isVirtualEditorDOMSelectionTransaction = false;
+let virtualEditorDOMSelectionTransactionSequence = 0;
 const VIRTUAL_EDITOR_PATCH_BATCH_MS = lmEditorAdvancedNumber('patchBatchDelay', 75);
 const VIRTUAL_EDITOR_MATERIALIZE_DELAY_MS = lmEditorAdvancedNumber('materializeDelay', 700);
 const VIRTUAL_EDITOR_FULL_ANALYSIS_DELAY_MS = lmEditorAdvancedNumber('fullAnalysisDelay', 2200);
@@ -8459,21 +8477,21 @@ function scheduleSaveButtonTypingIdleCheck() {
 }
 
 function virtualEditorLogicalParagraphs(text) {
-  const normalized = String(text || '').replace(/\r\n?/g, '\n').trimEnd();
-  return normalized ? normalized.split(/\n+/) : [''];
+  // Every newline is structural editor data. Empty array entries represent
+  // user-created blank lines and must survive restricted rendering.
+  return String(text || '').replace(/\r\n?/g, '\n').split('\n');
 }
 
 function virtualEditorLogicalParagraphIndexForTextOffset(text, offset) {
   const source = String(text || '').replace(/\r\n?/g, '\n');
   const safeOffset = Math.max(0, Math.min(source.length, Number(offset) || 0));
-  return Math.max(0, source.slice(0, safeOffset).split(/\n+/).length - 1);
+  return Math.max(0, source.slice(0, safeOffset).split('\n').length - 1);
 }
 
-function virtualEditorParagraphSeparator(state = activeVirtualEditorDocument) {
-  const configuredGap = typeof normalizeEditorParagraphGap === 'function'
-    ? normalizeEditorParagraphGap(state?.documentItem?.paragraphGap)
-    : Math.max(0, Math.min(3, Number(state?.documentItem?.paragraphGap) || 0));
-  return '\n'.repeat(configuredGap + 1);
+function virtualEditorParagraphSeparator() {
+  // Configured and manually edited gaps already exist as empty logical lines.
+  // Adding the configured gap again here would duplicate or erase formatting.
+  return '\n';
 }
 
 function captureVirtualEditorGlobalSelection(editor, state) {
@@ -8613,11 +8631,11 @@ function virtualEditorParagraphStartOffset(text, paragraphIndex) {
   if (paragraphIndex <= 0) return 0;
   let index = 0;
   let paragraph = 0;
-  const separators = /\n+/g;
+  const separators = /\n/g;
   let match;
   while ((match = separators.exec(source))) {
     paragraph += 1;
-    index = match.index + match[0].length;
+    index = match.index + 1;
     if (paragraph >= paragraphIndex) return index;
   }
   return source.length;
@@ -8625,7 +8643,7 @@ function virtualEditorParagraphStartOffset(text, paragraphIndex) {
 
 function virtualEditorTextOffsetViewportTop(editor, textOffset) {
   if (!editor || typeof editorHistoryPositionForTextOffset !== 'function') return null;
-  const position = editorHistoryPositionForTextOffset(editor, textOffset);
+  const position = editorHistoryPositionForTextOffset(editor, textOffset, { boundaryAffinity: 'forward' });
   if (!position?.node) return null;
   const range = document.createRange();
   const maxOffset = position.node.nodeType === Node.TEXT_NODE
@@ -8661,11 +8679,14 @@ function createVirtualEditorVisualShield(editor) {
   return shield;
 }
 
-function releaseVirtualEditorVisualShield(shield, editor, anchor, localOffset) {
+function releaseVirtualEditorVisualShield(shield, editor, anchor, localOffset, preferCaret = false) {
   if (!shield) return;
   requestAnimationFrame(() => {
     // Recheck after fonts/layout and the virtual pseudo-spacers have settled.
-    const settledTop = virtualEditorTextOffsetViewportTop(editor, localOffset);
+    const caretRect = preferCaret && typeof editorCaretRect === 'function' ? editorCaretRect(editor) : null;
+    const settledTop = Number.isFinite(caretRect?.top)
+      ? caretRect.top
+      : virtualEditorTextOffsetViewportTop(editor, localOffset);
     if (Number.isFinite(settledTop) && Number.isFinite(anchor?.top)) {
       editor.scrollTop += settledTop - anchor.top;
     }
@@ -8702,14 +8723,27 @@ function virtualEditorSelectionParagraphRange(editor, text, selectionSnapshot = 
   return { start: startLine, end: startLine + 1, paragraphCount: paragraphs.length };
 }
 
-function captureVirtualEditorBeforeInputContext() {
+function captureVirtualEditorBeforeInputContext(event) {
   const editor = document.getElementById('editor');
   if (!activeVirtualEditorDocument || !editor) {
     virtualEditorBeforeInputContext = null;
     return;
   }
   const textValue = editor.textContent || '';
-  virtualEditorBeforeInputContext = virtualEditorSelectionParagraphRange(editor, textValue);
+  const selectionSnapshot = currentEditorHistorySelection(editor);
+  const context = virtualEditorSelectionParagraphRange(editor, textValue, selectionSnapshot);
+  if (selectionSnapshot?.collapsed) {
+    const paragraphs = virtualEditorLogicalParagraphs(textValue);
+    const line = virtualEditorLogicalParagraphIndexForTextOffset(textValue, selectionSnapshot.startTextOffset);
+    const lineStart = virtualEditorParagraphStartOffset(textValue, line);
+    const lineEnd = lineStart + String(paragraphs[line] || '').length;
+    if (event?.inputType === 'deleteContentBackward' && selectionSnapshot.startTextOffset === lineStart && line > 0) {
+      context.start = Math.min(context.start, line - 1);
+    } else if (event?.inputType === 'deleteContentForward' && selectionSnapshot.startTextOffset === lineEnd && line < paragraphs.length - 1) {
+      context.end = Math.max(context.end, line + 2);
+    }
+  }
+  virtualEditorBeforeInputContext = context;
 }
 
 function virtualEditorPatchPayload(editor, state) {
@@ -8914,7 +8948,7 @@ function beginRestrictedInputRendering() {
   const sourceText = String(editor.textContent || '').replace(/\r\n?/g, '\n');
   const sourceHTML = typeof textToEditorHTML === 'function' ? textToEditorHTML(sourceText) : editor.innerHTML;
   const sequence = editorDocumentLoadSequence;
-  startVirtualEditorDocument(documentItem, sequence, sourceHTML);
+  startVirtualEditorDocument(documentItem, sequence, sourceHTML, sourceText);
   if (activeVirtualEditorDocument) {
     activeVirtualEditorDocument.inputCaretAnchor = temporaryVirtualEditorViewportAnchor(editor, activeVirtualEditorDocument, true);
   }
@@ -8971,20 +9005,8 @@ function shouldVirtualizeEditorDocument(documentItem) {
 
 function boundedVirtualFallbackFromHTML(documentItem) {
   const source = String(documentItem?.content || '');
-  const decoded = source
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/?(?:address|article|aside|blockquote|div|h[1-6]|li|p|pre|section|tr)[^>]*>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/\r\n?/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-  const paragraphs = decoded ? decoded.split(/\n+/) : [''];
+  const decoded = editorHTMLToText(source);
+  const paragraphs = virtualEditorLogicalParagraphs(decoded);
   const words = decoded.trim().match(/[\p{L}\p{N}\p{M}]+(?:['’\-][\p{L}\p{N}\p{M}]+)*/gu)?.length || 0;
   return {
     paragraphs,
@@ -9149,6 +9171,18 @@ function applyVirtualEditorWindow(result, options = {}) {
   editor.dataset.virtualWindowLimit = String(requestedWindowSize);
   editor.style.setProperty('--virtual-editor-top-space', `${Math.max(0, safeStart * paragraphSpace)}px`);
   editor.style.setProperty('--virtual-editor-bottom-space', `${Math.max(0, ((Number(result.total) || 0) - safeEnd) * paragraphSpace)}px`);
+  const selectionTransaction = ++virtualEditorDOMSelectionTransactionSequence;
+  isVirtualEditorDOMSelectionTransaction = true;
+  cancelEditorCaretAutoScroll();
+  const finishSelectionTransaction = () => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (selectionTransaction === virtualEditorDOMSelectionTransactionSequence) {
+          isVirtualEditorDOMSelectionTransaction = false;
+        }
+      });
+    });
+  };
   setPlainTextEditorValue(editor, windowParagraphs.join(virtualEditorParagraphSeparator(activeVirtualEditorDocument)));
   if (options.caretAnchor && Number.isFinite(options.caretAnchor.paragraph)) {
     const localCaretParagraph = Math.max(0, options.caretAnchor.paragraph - safeStart);
@@ -9175,12 +9209,16 @@ function applyVirtualEditorWindow(result, options = {}) {
     virtualEditorProgrammaticScrollGuard = Date.now() + 160;
     // Force measurement and correct the scroll position in the same task. This
     // prevents the bounded window from painting once at the wrong position.
-    const renderedTop = virtualEditorTextOffsetViewportTop(editor, localOffset);
+    const caretRect = options.caretAnchor && typeof editorCaretRect === 'function' ? editorCaretRect(editor) : null;
+    const renderedTop = Number.isFinite(caretRect?.top)
+      ? caretRect.top
+      : virtualEditorTextOffsetViewportTop(editor, localOffset);
     if (Number.isFinite(renderedTop) && Number.isFinite(options.viewportAnchor.top)) {
       editor.scrollTop += renderedTop - options.viewportAnchor.top;
     }
     updateEditorScrollThumb(false);
-    releaseVirtualEditorVisualShield(visualShield, editor, options.viewportAnchor, localOffset);
+    releaseVirtualEditorVisualShield(visualShield, editor, options.viewportAnchor, localOffset, Boolean(options.caretAnchor));
+    finishSelectionTransaction();
     return;
   }
   visualShield?.remove();
@@ -9191,14 +9229,15 @@ function applyVirtualEditorWindow(result, options = {}) {
       updateEditorScrollThumb(false);
     });
   }
+  finishSelectionTransaction();
 }
 
-function startVirtualEditorDocument(documentItem, sequence, sourceHTML = documentItem?.content || '') {
+function startVirtualEditorDocument(documentItem, sequence, sourceHTML = documentItem?.content || '', sourceText = null) {
   const editor = document.getElementById('editor');
   if (!editor) return;
   clearVirtualEditorDocument();
   const key = virtualEditorDocumentKey(documentItem);
-  const sessionParagraphs = virtualEditorLogicalParagraphs(editorHTMLToText(sourceHTML));
+  const sessionParagraphs = virtualEditorLogicalParagraphs(sourceText === null ? editorHTMLToText(sourceHTML) : sourceText);
   activeVirtualEditorDocument = {
     key,
     documentItem,
@@ -9225,6 +9264,7 @@ function startVirtualEditorDocument(documentItem, sequence, sourceHTML = documen
   editorHTMLBridgeWorkerLane.run({
     documentKey: key,
     html: sourceHTML,
+    paragraphs: sessionParagraphs,
     start: 0,
     windowSize: VIRTUAL_EDITOR_WINDOW_SIZE
   }, 'load-virtual-document').then(result => {
@@ -9293,9 +9333,12 @@ function temporaryVirtualEditorViewportAnchor(editor, state, preferCaret = false
       const localParagraph = virtualEditorLogicalParagraphIndexForTextOffset(editor.textContent || '', offsets.start);
       const paragraph = localParagraph + (state.temporarilyMaterialized ? 0 : state.start);
       const startOffset = virtualEditorParagraphStartOffset(editor.textContent || '', localParagraph);
+      const caretRect = typeof editorCaretRect === 'function' ? editorCaretRect(editor) : null;
       return {
         paragraph,
-        top: virtualEditorTextOffsetViewportTop(editor, startOffset),
+        top: Number.isFinite(caretRect?.top)
+          ? caretRect.top
+          : virtualEditorTextOffsetViewportTop(editor, startOffset),
         caretAnchor: {
           paragraph,
           offsetInParagraph: Math.max(0, offsets.start - startOffset)
@@ -9333,30 +9376,40 @@ function applyTemporaryVirtualEditorFullDOM(state, editor, reason = 'scroll') {
   const maxScroll = Math.max(1, editor.scrollHeight - editor.clientHeight);
   const scrollRatio = editor.scrollTop / maxScroll;
   const fullHTML = activeEditorHTMLBuffer || state.html || state.documentItem?.content || '';
-  const fullText = editorHTMLToText(fullHTML);
+  const fullText = Array.isArray(state.sessionParagraphs)
+    ? state.sessionParagraphs.join('\n')
+    : editorHTMLToText(fullHTML);
   state.temporarilyMaterialized = true;
   state.temporaryReason = reason;
-  state.fullTextParagraphCount = fullText ? fullText.split(/\n+/).length : 0;
+  state.fullTextParagraphCount = virtualEditorLogicalParagraphs(fullText).length;
   state.fullTextCharacterCount = fullText.length;
   editor.classList.remove('is-virtual-document');
   editor.classList.add('is-temporarily-materialized');
   editor.style.removeProperty('--virtual-editor-top-space');
   editor.style.removeProperty('--virtual-editor-bottom-space');
+  const selectionTransaction = ++virtualEditorDOMSelectionTransactionSequence;
   isVirtualEditorDOMSelectionTransaction = true;
+  cancelEditorCaretAutoScroll();
   setPlainTextEditorValue(editor, fullText);
   if (preservedSelection) restoreVirtualEditorGlobalSelection(editor, preservedSelection);
   virtualEditorProgrammaticScrollGuard = Date.now() + 120;
   if (viewportAnchor && Number.isFinite(viewportAnchor.paragraph) && Number.isFinite(viewportAnchor.top)) {
     const fullParagraphOffset = virtualEditorParagraphStartOffset(editor.textContent || '', viewportAnchor.paragraph);
-    const renderedTop = virtualEditorTextOffsetViewportTop(editor, fullParagraphOffset);
+    const caretRect = preservedSelection && typeof editorCaretRect === 'function' ? editorCaretRect(editor) : null;
+    const renderedTop = Number.isFinite(caretRect?.top)
+      ? caretRect.top
+      : virtualEditorTextOffsetViewportTop(editor, fullParagraphOffset);
     if (Number.isFinite(renderedTop)) editor.scrollTop += renderedTop - viewportAnchor.top;
   } else {
     editor.scrollTop = scrollRatio * Math.max(0, editor.scrollHeight - editor.clientHeight);
   }
   updateEditorScrollThumb(false);
   requestAnimationFrame(() => {
-    isVirtualEditorDOMSelectionTransaction = false;
-    scheduleEditorCaretAutoScroll();
+    requestAnimationFrame(() => {
+      if (selectionTransaction === virtualEditorDOMSelectionTransactionSequence) {
+        isVirtualEditorDOMSelectionTransaction = false;
+      }
+    });
   });
   return true;
 }
@@ -9401,7 +9454,7 @@ function restoreVirtualEditorWindowAroundViewport(options = {}) {
   if (!state.temporarilyMaterialized && options.preferCaret !== true) return false;
   if (state.temporaryReason === 'find' && isFindOpen && !options.force) return false;
   if (state.workerUnavailable) {
-    const currentText = String(editor.textContent || '').replace(/\r\n?/g, '\n').trimEnd();
+    const currentText = String(editor.textContent || '').replace(/\r\n?/g, '\n');
     state.fallbackParagraphs = virtualEditorLogicalParagraphs(currentText);
     state.total = state.fallbackParagraphs.length;
     const currentHTML = currentText && typeof textToEditorHTML === 'function' ? textToEditorHTML(currentText) : '';
@@ -9726,7 +9779,7 @@ function stageEditorHTMLForMemoryCommit() {
           if (error?.name === 'AbortError') return null;
           console.warn('Editor HTML bridge fallback:', error);
           if (virtualState) {
-            const paragraphs = editorHTMLToText(activeEditorHTMLBuffer || virtualState.html || '').split(/\n+/);
+            const paragraphs = virtualEditorLogicalParagraphs(editorHTMLToText(activeEditorHTMLBuffer || virtualState.html || ''));
             const replacement = virtualPatch?.paragraphs || [];
             paragraphs.splice(virtualPatch.start, virtualPatch.end - virtualPatch.start, ...replacement);
             const fallbackHTML = textToEditorHTML(paragraphs.join('\n'));
@@ -9744,7 +9797,7 @@ function stageEditorHTMLForMemoryCommit() {
           }
           return {
             html: payload.plainTextMode
-              ? (payload.rawText.trim() ? textToEditorHTML(payload.rawText.replace(/\r\n?/g, '\n').trimEnd()) : '')
+              ? (payload.rawText.trim() ? textToEditorHTML(payload.rawText.replace(/\r\n?/g, '\n')) : '')
               : payload.rawHTML,
             inputSequence
           };

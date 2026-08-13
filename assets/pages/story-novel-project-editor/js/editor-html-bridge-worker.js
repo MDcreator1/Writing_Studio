@@ -13,7 +13,7 @@ function escapeHTML(value) {
 }
 
 function plainTextToHTML(value) {
-  const text = String(value || '').replace(/\r\n?/g, '\n').trimEnd();
+  const text = String(value || '').replace(/\r\n?/g, '\n');
   if (!text.trim()) return '';
   return text.split('\n').map(line => `<p>${line ? escapeHTML(line) : '<br>'}</p>`).join('');
 }
@@ -121,7 +121,9 @@ function handleVirtualMessage(type, payload) {
   if (!key) throw new Error('Virtual document key is required');
 
   if (type === 'load-virtual-document') {
-    const paragraphs = htmlToParagraphs(payload.html || '');
+    const paragraphs = Array.isArray(payload.paragraphs)
+      ? payload.paragraphs.map(value => String(value || ''))
+      : htmlToParagraphs(payload.html || '');
     const statsList = paragraphs.map(paragraphStats);
     const state = {
       key,

@@ -292,17 +292,17 @@ const LM_EDITOR_ADVANCED_CATEGORY_META = {
 
 function selectAdvancedEditorSettingsCategory(index, options = {}) {
   closeAdvancedEditorSettingInfo();
-  const categories = [...new Set(LM_EDITOR_ADVANCED_SCHEMA.map(item => item.category))];
+  const categories = [...new Set(LM_EDITOR_ADVANCED_SCHEMA.map(item => item.category)), 'Project Cache & Storage'];
   const nextIndex = Math.max(0, Math.min(categories.length - 1, Number(index) || 0));
   activeAdvancedEditorSettingsCategoryIndex = nextIndex;
-  document.querySelectorAll('[data-advanced-developer-category]').forEach((button, buttonIndex) => {
-    const active = buttonIndex === nextIndex;
+  document.querySelectorAll('[data-advanced-developer-category]').forEach(button => {
+    const active = Number(button.dataset.advancedDeveloperCategory) === nextIndex;
     button.classList.toggle('is-active', active);
     button.setAttribute('aria-selected', String(active));
     button.tabIndex = active ? 0 : -1;
   });
-  document.querySelectorAll('[data-advanced-developer-section]').forEach((section, sectionIndex) => {
-    section.hidden = sectionIndex !== nextIndex;
+  document.querySelectorAll('[data-advanced-developer-section]').forEach(section => {
+    section.hidden = Number(section.dataset.advancedDeveloperSection) !== nextIndex;
   });
   if (options.keepScroll !== true) {
     const content = document.querySelector('.advanced-editor-settings-content');
@@ -464,7 +464,7 @@ function advancedStoredPercent(key, fallback) {
 function advancedFeatureSection(key, meta, body, countLabel = '', quickPins = [], extraTools = '') {
   const tools = `${countLabel ? `<strong class="advanced-feature-count">${countLabel}</strong>` : ''}${quickPins.map(pin => advancedQuickPinButton(pin.key, pin.label)).join('')}${extraTools}`;
   const sectionHead = key === 'advanced-word-editing'
-    ? `<div class="advanced-editor-settings-section-head is-heading-only"><h3>${meta.label}</h3><button class="advanced-word-editing-import-button" type="button" onclick="window.lmAdvancedWordEditing?.openImport?.()">Import JSON</button></div>`
+    ? `<div class="advanced-editor-settings-section-head is-heading-only"><h3>${meta.label}</h3></div>`
     : `<div class="advanced-editor-settings-section-head"><div><span>Advanced editor</span><h3>${meta.label}</h3><p>${meta.description}</p></div>${tools ? `<div class="advanced-feature-head-tools">${tools}</div>` : ''}</div>`;
   return `<section class="advanced-editor-feature-section" data-advanced-top-section="${key}" ${key === activeAdvancedEditorSettingsTopSection ? '' : 'hidden'}>${sectionHead}${body}</section>`;
 }
@@ -1091,8 +1091,68 @@ document.addEventListener('keydown', event => {
 });
 document.addEventListener('click', () => closeAdvancedEditorSettingInfo());
 
-window.runResetActiveProjectBrowserCache = function runResetActiveProjectBrowserCache() {
-  const confirmed = confirm('क्या आप वर्तमान प्रोजेक्ट का ब्राउज़र कैश रीसेट करना चाहते हैं?\n\nआपकी कंप्यूटर डिस्क पर रखी प्रोजेक्ट फाइल्स (JSON/TXT) पूरी तरह सुरक्षित रहेंगी और नया डेटा फाइल्स से दोबारा सिंक हो जाएगा।');
+function ensureAdvancedSettingsDecisionPanel() {
+  let panel = document.getElementById('advancedSettingsDecisionPanel');
+  if (panel) return panel;
+  panel = document.createElement('div');
+  panel.id = 'advancedSettingsDecisionPanel';
+  panel.className = 'advanced-settings-decision-backdrop';
+  panel.hidden = true;
+  panel.innerHTML = `<section class="advanced-settings-decision-card" role="alertdialog" aria-modal="true" aria-labelledby="advancedSettingsDecisionTitle" aria-describedby="advancedSettingsDecisionMessage"><div class="advanced-settings-decision-icon" aria-hidden="true">!</div><div><h3 id="advancedSettingsDecisionTitle"></h3><p id="advancedSettingsDecisionMessage"></p></div><div class="advanced-settings-decision-actions" data-advanced-settings-decision-actions></div></section>`;
+  document.body.appendChild(panel);
+  return panel;
+}
+
+function requestAdvancedSettingsDecision(options = {}) {
+  const panel = ensureAdvancedSettingsDecisionPanel();
+  const title = panel.querySelector('#advancedSettingsDecisionTitle');
+  const message = panel.querySelector('#advancedSettingsDecisionMessage');
+  const actions = panel.querySelector('[data-advanced-settings-decision-actions]');
+  title.textContent = options.title || 'Please confirm';
+  message.textContent = options.message || '';
+  actions.innerHTML = '';
+  const choices = Array.isArray(options.actions) && options.actions.length
+    ? options.actions
+    : [{ value: 'cancel', label: 'Cancel' }, { value: 'confirm', label: 'Confirm', tone: 'danger' }];
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = value => {
+      if (settled) return;
+      settled = true;
+      panel.hidden = true;
+      panel.removeEventListener('click', handleBackdrop);
+      document.removeEventListener('keydown', handleEscape, true);
+      resolve(value);
+    };
+    const handleBackdrop = event => { if (event.target === panel) finish(options.dismissValue ?? null); };
+    const handleEscape = event => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      finish(options.dismissValue ?? null);
+    };
+    choices.forEach(choice => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = choice.label;
+      if (choice.tone) button.classList.add(`is-${choice.tone}`);
+      button.addEventListener('click', () => finish(choice.value));
+      actions.appendChild(button);
+    });
+    panel.addEventListener('click', handleBackdrop);
+    document.addEventListener('keydown', handleEscape, true);
+    panel.hidden = false;
+    window.setTimeout(() => actions.querySelector('button')?.focus(), 20);
+  });
+}
+
+function notifyAdvancedSettings(message, tone = 'success') {
+  if (typeof showEditorToast === 'function') showEditorToast(message, tone);
+  else if (typeof showMiniReminder === 'function') showMiniReminder(message);
+}
+
+window.runResetActiveProjectBrowserCache = async function runResetActiveProjectBrowserCache() {
+  const confirmed = await requestAdvancedSettingsDecision({ title: 'Reset project browser cache?', message: 'Disk पर रखी project files (JSON/TXT) सुरक्षित रहेंगी और browser data files से दोबारा sync होगा।', actions: [{ value: false, label: 'Cancel' }, { value: true, label: 'Reset Cache', tone: 'danger' }] });
   if (!confirmed) return;
 
   try {
@@ -1123,19 +1183,15 @@ window.runResetActiveProjectBrowserCache = function runResetActiveProjectBrowser
     if (typeof readWordEditingDataFromProject === 'function') {
       readWordEditingDataFromProject().catch(() => {});
     }
-    if (typeof showEditorToast === 'function') {
-      showEditorToast('Project browser cache reset & re-synced from disk files', 'success');
-    } else {
-      alert('प्रोजेक्ट का ब्राउज़र कैश रीसेट हो गया है और डिस्क फाइलों से पुनः सिंक हो गया है।');
-    }
+    notifyAdvancedSettings('Project browser cache reset & re-synced from disk files', 'success');
   } catch (err) {
     console.error('Error resetting project browser cache:', err);
-    alert('कैश रीसेट के दौरान एक त्रुटि हुई: ' + err.message);
+    notifyAdvancedSettings('कैश रीसेट के दौरान एक त्रुटि हुई: ' + err.message, 'error');
   }
 };
 
-window.runResetWordEditingBrowserCache = function runResetWordEditingBrowserCache() {
-  const confirmed = confirm('क्या आप वर्ड एडिटिंग डिक्शनरी का ब्राउज़र कैश रीसेट करना चाहते हैं?\n\nप्रोजेक्ट फोल्डर की Story_Word_Editing.json फाइल से रूल्स दोबारा लोड किए जाएंगे।');
+window.runResetWordEditingBrowserCache = async function runResetWordEditingBrowserCache() {
+  const confirmed = await requestAdvancedSettingsDecision({ title: 'Reset word dictionary cache?', message: 'Story_Word_Editing.json से replacement rules दोबारा load किए जाएंगे।', actions: [{ value: false, label: 'Cancel' }, { value: true, label: 'Re-sync Dictionary', tone: 'danger' }] });
   if (!confirmed) return;
 
   try {
@@ -1146,19 +1202,15 @@ window.runResetWordEditingBrowserCache = function runResetWordEditingBrowserCach
     if (typeof readWordEditingDataFromProject === 'function') {
       readWordEditingDataFromProject().catch(() => {});
     }
-    if (typeof showEditorToast === 'function') {
-      showEditorToast('Word Editing dictionary cache cleared & re-synced', 'success');
-    } else {
-      alert('वर्ड एडिटिंग डिक्शनरी कैश रीसेट हो गया है।');
-    }
+    notifyAdvancedSettings('Word Editing dictionary cache cleared & re-synced', 'success');
   } catch (err) {
     console.error('Error resetting word editing cache:', err);
-    alert('त्रुटि: ' + err.message);
+    notifyAdvancedSettings('त्रुटि: ' + err.message, 'error');
   }
 };
 
-window.runResetAllStudioBrowserCaches = function runResetAllStudioBrowserCaches() {
-  const confirmed = confirm('WARNING: क्या आप पूरे ब्राउज़र का प्रोजेक्ट कैश व सेटिंग्स रीसेट करना चाहते हैं?\n\nआपकी डिस्क पर रखी फाइल्स सुरक्षित रहेंगी। ब्राउज़र रिफ्रेश हो जाएगा।');
+window.runResetAllStudioBrowserCaches = async function runResetAllStudioBrowserCaches() {
+  const confirmed = await requestAdvancedSettingsDecision({ title: 'Reset all studio browser storage?', message: 'सभी Lekhak Manch browser settings और caches हटेंगे। Disk files सुरक्षित रहेंगी और page refresh होगा।', actions: [{ value: false, label: 'Cancel' }, { value: true, label: 'Reset Everything', tone: 'danger' }] });
   if (!confirmed) return;
 
   try {
@@ -1173,9 +1225,12 @@ window.runResetAllStudioBrowserCaches = function runResetAllStudioBrowserCaches(
     location.reload();
   } catch (err) {
     console.error('Error resetting all studio caches:', err);
-    alert('त्रुटि: ' + err.message);
+    notifyAdvancedSettings('त्रुटि: ' + err.message, 'error');
   }
 };
+
+window.requestAdvancedSettingsDecision = requestAdvancedSettingsDecision;
+window.notifyAdvancedSettings = notifyAdvancedSettings;
 
 window.LM_EDITOR_ADVANCED_SCHEMA = LM_EDITOR_ADVANCED_SCHEMA;
 window.lmEditorAdvancedNumber = lmEditorAdvancedNumber;

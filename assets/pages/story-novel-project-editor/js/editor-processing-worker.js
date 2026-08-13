@@ -26,7 +26,7 @@ function escapeHTML(value) {
 }
 
 function plainTextToHTML(value) {
-  const text = String(value || '').replace(/\r\n?/g, '\n').trimEnd();
+  const text = String(value || '').replace(/\r\n?/g, '\n');
   if (!text.trim()) return '';
   return text.split('\n').map(line => `<p>${line ? escapeHTML(line) : '<br>'}</p>`).join('');
 }
@@ -111,7 +111,7 @@ function analyze(payload = {}) {
     ? plainTextToHTML(payload.rawText || '')
     : sanitizeHTML(payload.html || payload.rawHTML || '');
   const text = payload.plainTextMode
-    ? String(payload.rawText || '').replace(/\r\n?/g, '\n').trimEnd()
+    ? String(payload.rawText || '').replace(/\r\n?/g, '\n')
     : htmlToText(normalizedHTML);
   const nameMatches = (payload.names || []).map(entry => ({
     id: entry.id,
