@@ -294,12 +294,18 @@ function applyPlainTextParagraphGapToEditor(editor, paragraphGap) {
   return true;
 }
 
-function renderEditorDocumentContent(editor, documentItem) {
+function renderEditorDocumentContent(editor, documentItem, options = {}) {
   if (!editor) return;
-  if (activeVirtualEditorDocument && !shouldActivateRestrictedEditorRendering(documentItem)) {
+  const renderVirtualWindowAsNormalContent = options.virtualWindow === true;
+  if (
+    !renderVirtualWindowAsNormalContent &&
+    activeVirtualEditorDocument &&
+    !isLargeVirtualEditorDocument(documentItem)
+  ) {
     clearVirtualEditorDocument();
   }
   if (
+    !renderVirtualWindowAsNormalContent &&
     documentItem &&
     typeof shouldVirtualizeEditorDocument === 'function' &&
     shouldVirtualizeEditorDocument(documentItem) &&
@@ -8871,11 +8877,29 @@ function editorDocumentWordCountSignature(documentItem) {
   return `${content.length}:${hash >>> 0}`;
 }
 
-// Restricted paragraph rendering is intentionally dormant. Keep its Worker,
-// windowing and restoration machinery available; the future user-defined
-// condition should be implemented only through this single activation gate.
-function shouldActivateRestrictedEditorRendering() {
-  return isRestrictedInputRenderingActive;
+function verifiedEditorDocumentWordCount(documentItem) {
+  if (!documentItem) return 0;
+  const signature = editorDocumentWordCountSignature(documentItem);
+  if (
+    documentItem._wordCountVerifiedSignature === signature &&
+    Number.isFinite(documentItem._wordCount)
+  ) {
+    return Math.max(0, Number(documentItem._wordCount) || 0);
+  }
+
+  const words = countWordsFromText(editorHTMLToText(documentItem.content || ''));
+  documentItem._wordCount = words;
+  documentItem.wordCount = words;
+  documentItem._wordCountVerifiedSignature = signature;
+  return words;
+}
+
+function isLargeVirtualEditorDocument(documentItem = activeEditorDocument()) {
+  return verifiedEditorDocumentWordCount(documentItem) >= VIRTUAL_EDITOR_WORD_THRESHOLD;
+}
+
+function shouldActivateRestrictedEditorRendering(documentItem = activeEditorDocument()) {
+  return isRestrictedInputRenderingActive && isLargeVirtualEditorDocument(documentItem);
 }
 
 function isRestrictedInputProducingKey(event) {
@@ -8934,10 +8958,10 @@ function scheduleRestrictedInputRenderingIdle() {
 }
 
 function beginRestrictedInputRendering() {
-  scheduleRestrictedInputRenderingIdle();
   const editor = document.getElementById('editor');
   const documentItem = activeEditorDocument();
-  if (!editor || !documentItem || !canEditActiveDocument()) return;
+  if (!editor || !documentItem || !canEditActiveDocument() || !isLargeVirtualEditorDocument(documentItem)) return;
+  scheduleRestrictedInputRenderingIdle();
   if (isRestrictedInputRenderingActive) {
     if (activeVirtualEditorDocument) {
       activeVirtualEditorDocument.inputCaretAnchor = temporaryVirtualEditorViewportAnchor(editor, activeVirtualEditorDocument, true);
@@ -8945,6 +8969,10 @@ function beginRestrictedInputRendering() {
     return;
   }
   isRestrictedInputRenderingActive = true;
+  if (activeVirtualEditorDocument?.documentItem === documentItem) {
+    activeVirtualEditorDocument.inputCaretAnchor = temporaryVirtualEditorViewportAnchor(editor, activeVirtualEditorDocument, true);
+    return;
+  }
   const sourceText = String(editor.textContent || '').replace(/\r\n?/g, '\n');
   const sourceHTML = typeof textToEditorHTML === 'function' ? textToEditorHTML(sourceText) : editor.innerHTML;
   const sequence = editorDocumentLoadSequence;
@@ -8986,21 +9014,7 @@ function initRestrictedInputFloatingPanelObserver() {
 }
 
 function shouldVirtualizeEditorDocument(documentItem) {
-  if (!documentItem || !shouldActivateRestrictedEditorRendering(documentItem)) return false;
-  const cachedWords = Number.isFinite(documentItem._wordCount)
-    ? Number(documentItem._wordCount)
-    : Number.isFinite(documentItem.wordCount) ? Number(documentItem.wordCount) : 0;
-  if (cachedWords >= VIRTUAL_EDITOR_WORD_THRESHOLD) return true;
-
-  const content = String(documentItem.content || '');
-  const signature = editorDocumentWordCountSignature(documentItem);
-  if (documentItem._wordCountVerifiedSignature === signature) return false;
-
-  // N words require at least N characters plus N-1 separators. If the source
-  // can possibly cross the threshold, verify it in the Worker instead of
-  // risking a stale low cache and painting the full document DOM.
-  const minimumPossibleLargeDocumentLength = Math.max(1, (VIRTUAL_EDITOR_WORD_THRESHOLD * 2) - 1);
-  return content.length >= minimumPossibleLargeDocumentLength;
+  return Boolean(documentItem && isLargeVirtualEditorDocument(documentItem));
 }
 
 function boundedVirtualFallbackFromHTML(documentItem) {
@@ -9183,7 +9197,11 @@ function applyVirtualEditorWindow(result, options = {}) {
       });
     });
   };
-  setPlainTextEditorValue(editor, windowParagraphs.join(virtualEditorParagraphSeparator(activeVirtualEditorDocument)));
+  // A virtual window is only the content source. Render it through the same
+  // HTML -> plain text -> editor.textContent path used by the legacy editor;
+  // the Worker remains responsible only for the full-document backing state.
+  const windowText = windowParagraphs.join(virtualEditorParagraphSeparator(activeVirtualEditorDocument));
+  renderEditorDocumentContent(editor, { content: textToEditorHTML(windowText) }, { virtualWindow: true });
   if (options.caretAnchor && Number.isFinite(options.caretAnchor.paragraph)) {
     const localCaretParagraph = Math.max(0, options.caretAnchor.paragraph - safeStart);
     const localParagraphStart = virtualEditorParagraphStartOffset(editor.textContent || '', localCaretParagraph);
@@ -9251,16 +9269,26 @@ function startVirtualEditorDocument(documentItem, sequence, sourceHTML = documen
   };
   setEditorRenderMode(editor, 'plain');
   activeVirtualEditorDocument.html = sourceHTML;
-  // The first input has already been painted into the authoritative full DOM.
-  // Do not rewrite textContent here: replacing the focused text node would
-  // invalidate the live Range and make Chromium reveal the document start.
-  activeVirtualEditorDocument.temporarilyMaterialized = true;
-  activeVirtualEditorDocument.temporaryReason = 'input-session-start';
+  const preservePaintedInputDOM = isRestrictedInputRenderingActive;
+  // During an input event Chromium's live Range must not be replaced. On an
+  // ordinary document load, however, paint the bounded source immediately by
+  // sending it through the legacy normal-content renderer.
+  activeVirtualEditorDocument.temporarilyMaterialized = preservePaintedInputDOM;
+  activeVirtualEditorDocument.temporaryReason = preservePaintedInputDOM ? 'input-session-start' : '';
   activeVirtualEditorDocument.fullTextParagraphCount = activeVirtualEditorDocument.sessionParagraphs.length;
   activeVirtualEditorDocument.fullTextCharacterCount = String(editor.textContent || '').length;
-  editor.classList.remove('is-virtual-document');
-  editor.classList.add('is-temporarily-materialized');
+  editor.classList.toggle('is-virtual-document', !preservePaintedInputDOM);
+  editor.classList.toggle('is-temporarily-materialized', preservePaintedInputDOM);
   editor.dataset.placeholder = text().editorPlaceholder || 'Start writing here... your story is waiting.';
+  if (!preservePaintedInputDOM) {
+    applyVirtualEditorWindow({
+      documentKey: key,
+      start: 0,
+      end: Math.min(sessionParagraphs.length, VIRTUAL_EDITOR_WINDOW_SIZE),
+      total: sessionParagraphs.length,
+      windowText: sessionParagraphs.slice(0, VIRTUAL_EDITOR_WINDOW_SIZE).join('\n')
+    });
+  }
   editorHTMLBridgeWorkerLane.run({
     documentKey: key,
     html: sourceHTML,
@@ -11257,9 +11285,16 @@ function handleEditorContentInput() {
   if (editor && !isEditorPlainTextMode(editor) && typeof normalizeEditorParagraphBlocks === 'function') {
     normalizeEditorParagraphBlocks(editor);
   }
+  const documentItem = activeEditorDocument();
+  if (isLargeVirtualEditorDocument(documentItem)) {
+    // Establish/reuse the full-document backing session before capturing this
+    // input, so the visible legacy-rendered window is patched into that state.
+    beginRestrictedInputRendering();
+  }
+  // Both editor sizes retain the innerHTML bridge and processing pipeline.
+  // Only large documents attach that pipeline to a virtual backing document.
   stageEditorHTMLForMemoryCommit();
   scheduleSaveButtonTypingIdleCheck();
-  beginRestrictedInputRendering();
   if (!isApplyingEditorHistorySnapshot) scheduleEditorHistorySnapshot('input');
 }
 
