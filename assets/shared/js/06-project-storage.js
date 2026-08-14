@@ -3745,7 +3745,7 @@ function normalizeEditorReplaceScope(scope) {
 }
 
 function isEditorFindModeSystemActive() {
-  return !(typeof isChapterReviewModeForEditorSettings === 'function' && isChapterReviewModeForEditorSettings());
+  return true;
 }
 
 function isEditorAutoScrollSystemActive() {
@@ -4108,10 +4108,10 @@ function updateEditorSettingsUI() {
   const globalFormattingPinned = typeof isEditorQuickSettingPinned === 'function' ? isEditorQuickSettingPinned('globalFormatting') : true;
 
   if (isChapterReviewMode || isTrashMode) {
-    isFindSettingsSelectorOpen = false;
     isReplaceSettingsSelectorOpen = false;
     isEditorAutoScrollModeSelectorOpen = false;
   }
+  if (isTrashMode) isFindSettingsSelectorOpen = false;
   if (!canShowStatusOptions) isStatusSelectorOpen = false;
 
   applyHeaderStatusVisibility();
@@ -4128,7 +4128,7 @@ function updateEditorSettingsUI() {
     autoScrollModeBtn.setAttribute('aria-pressed', String(autoScrollActive));
   }
   if (findSettingsBtn) {
-    findSettingsBtn.hidden = isTrashMode || isChapterReviewMode || !findPinned;
+    findSettingsBtn.hidden = isTrashMode || !findPinned;
     findSettingsBtn.setAttribute('aria-expanded', String(isFindSettingsSelectorOpen));
     findSettingsBtn.setAttribute('aria-pressed', 'true');
   }
@@ -4148,7 +4148,7 @@ function updateEditorSettingsUI() {
     statusBtn.setAttribute('aria-pressed', String(activeStatusCount > 0));
   }
   if (autoScrollModePanel) autoScrollModePanel.hidden = isTrashMode || isChapterReviewMode || !autoScrollPinned || !isEditorAutoScrollModeSelectorOpen;
-  if (findSettingsPanel) findSettingsPanel.hidden = isTrashMode || isChapterReviewMode || !findPinned || !isFindSettingsSelectorOpen;
+  if (findSettingsPanel) findSettingsPanel.hidden = isTrashMode || !findPinned || !isFindSettingsSelectorOpen;
   if (replaceSettingsPanel) replaceSettingsPanel.hidden = isTrashMode || isChapterReviewMode || !replacePinned || !isReplaceSettingsSelectorOpen;
   if (statusSelectorPanel) statusSelectorPanel.hidden = !isStatusSelectorOpen || !canShowStatusOptions;
   statusOptionRows.forEach(optionRow => {

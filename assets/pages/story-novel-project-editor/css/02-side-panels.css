@@ -660,16 +660,13 @@
   height: 20px;
   fill: currentColor;
 }
-  border-color: var(--lm-border-info-color);
-  background: var(--accent-soft);
-}
 
 .category-delete-btn {
   display: none !important;
 }
 
 .category-settings-svg {
-  width: var(--svg-size-xl);
+  width: var(--svg-size-2xl);
   fill: currentColor;
   display: block;
 }
@@ -2013,8 +2010,8 @@ body.focus-mode .naming-entry-panel.is-focus-center-panel.is-panel-dragging .nam
 }
 
 .naming-sort-btn svg {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
 }
 
 /* Naming Sort Panel Floating Container */

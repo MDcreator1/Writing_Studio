@@ -36,6 +36,13 @@
   font: inherit;
 }
 
+.lm-custom-select-trigger {
+  min-height: 28px !important;
+}
+
+.awe-name-panel-close {
+  border: none !important;
+}
 .awe-workspace button {
   min-height: 34px;
   padding: 0 12px;
@@ -57,7 +64,7 @@
   color: var(--color-on-accent, #fff);
 }
 
-.awe-workspace button.is-primary:hover{
+.awe-workspace button.is-primary:hover {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--paper, #fff);
@@ -208,7 +215,6 @@
 }
 
 .awe-unmatched-category-field .lm-custom-select-trigger {
-  height: 26px;
   padding: 0 8px;
   border-radius: 5px;
   font-size: 14px;
@@ -311,12 +317,13 @@
 .awe-apply-editor-button {
   flex: 0 0 auto;
   border-color: var(--accent) !important;
-  background: color-mix(in srgb, var(--accent) 50%, transparent) !important;
+  background: color-mix(in srgb, var(--accent) 20%, transparent) !important;
   color: var(--accent-contrast, #fff) !important;
+  font-weight: 650 !important;
 }
 
 .awe-apply-editor-button:hover {
-  background: color-mix(in srgb, var(--accent) 75%, transparent) !important;
+  background: color-mix(in srgb, var(--accent) 50%, transparent) !important;
   color: var(--ink) !important;
 }
 
@@ -510,8 +517,8 @@
 
 .awe-sort-button span,
 .awe-sort-button svg {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   display: block;
   color: inherit;
   fill: currentColor;
@@ -724,8 +731,7 @@
   display: none !important;
 }
 
-.awe-workspace-head>div:first-child span,
-.awe-dialog>header span {
+.awe-workspace-head>div:first-child span {
   color: var(--accent);
   font-size: 10px;
   font-weight: 700;
@@ -1251,7 +1257,7 @@
 .awe-dialog {
   width: min(500px, calc(100vw - 32px));
   max-height: min(760px, calc(100vh - 40px));
-  padding: 20px;
+  padding: 12px;
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -1264,7 +1270,6 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
-  margin-bottom: 18px;
 }
 
 .awe-dialog>header h4 {
@@ -1274,9 +1279,8 @@
 }
 
 .awe-dialog>header>button {
-  width: 34px;
-  min-height: 34px;
-  padding: 0;
+  max-height: 26px;
+  padding: 5px;
   font-size: 20px;
 }
 
@@ -1298,10 +1302,13 @@
 .awe-dialog label>small,
 .awe-dialog>p {
   display: block;
-  margin: 6px 0 0;
   color: var(--muted);
   font-size: 10px;
   line-height: 1.5;
+}
+
+.awe-dialog>p {
+  margin-bottom: 12px;
 }
 
 .awe-dialog textarea {
@@ -1334,16 +1341,16 @@
 }
 
 .awe-temporary-candidates-panel {
-  width: min(640px, calc(100vw - 32px));
+  width: min(540px, calc(100vw - 32px));
 }
 
 .awe-temporary-candidates-panel>header h4 b {
   color: var(--accent);
-  font-size: .72em;
+  font-size: 1em;
+  margin-left: 8px;
 }
 
 .awe-temporary-empty {
-  margin-top: 16px;
   padding: 24px 14px;
   border: 1px dashed var(--border);
   border-radius: 10px;
@@ -1358,7 +1365,6 @@
 
 .awe-temporary-list {
   max-height: min(430px, 55vh);
-  margin-top: 14px;
   display: grid;
   gap: 8px;
   overflow: auto;
@@ -2070,34 +2076,57 @@
 
 /* Advanced word-editing control refinements. */
 .awe-threshold-field .awe-threshold-stepper {
-  width: 78px;
+  width: 60px;
   height: 28px;
-  flex: 0 0 78px;
+  flex: 0 0 60px;
   border: 0;
   background: var(--surface-raised);
+  overflow: hidden;
 }
 
 .awe-threshold-field .awe-threshold-stepper .advanced-number-input {
+  width: 54px;
+  min-width: 0;
+  flex: 1 1 54px;
   height: 26px;
-  padding: 0 24px 0 7px;
-  font-size: 12px;
+  padding: 0 5px 0 7px;
+  font-size: 14px;
   text-align: left;
 }
 
 .awe-threshold-field .awe-threshold-stepper .dock-fsize-stepper {
-  width: 20px;
+  width: 24px;
+  min-width: 24px;
+  height: 28px;
+  margin: 0;
+  flex: 0 0 24px;
+  align-self: stretch;
+  position: relative;
+  z-index: 1;
+}
+
+.awe-threshold-field .awe-threshold-stepper .dock-fsize-step {
+  width: 24px;
+  min-width: 24px;
+  min-height: 13px;
+  border: none;
+  color: var(--ink);
+  opacity: 1;
 }
 
 .awe-threshold-field .awe-threshold-stepper .step-chevron-svg {
-  width: 10px;
-  height: 10px;
+  width: 16px;
+  height: 16px;
+  display: block;
+  flex: 0 0 16px;
+  fill: currentColor;
 }
 
 .awe-custom-first-button {
   position: relative;
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
   padding: 0 !important;
   display: inline-flex;
   align-items: center;
@@ -2106,7 +2135,7 @@
   border-radius: 7px;
   border: none !important;
   background: transparent !important;
-  color: var(--muted) !important;
+  color: var(--ink) !important;
 }
 
 .awe-custom-first-button svg,
@@ -2120,9 +2149,9 @@
 .awe-custom-first-button .moveup-svg {
   position: absolute;
   inset: 0;
-  margin: 5px 0;
-  width: 40px;
-  height: 40px;
+  padding: 0 0 0 12px;
+  width: 45px;
+  height: 45px;
   max-width: none;
   max-height: none;
   transform: rotate(180deg);

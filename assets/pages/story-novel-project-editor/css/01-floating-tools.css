@@ -157,8 +157,8 @@
 }
 
 .dock-action-icon .search-svg {
-  width: var(--svg-size-lg);
-  height: var(--svg-size-lg);
+  width: var(--svg-size-xl);
+  height: var(--svg-size-xl);
 }
 
 .search-svg {
@@ -365,6 +365,11 @@
   width: 20px;
   height: 20px;
   fill: var(--ink);
+}
+
+.auto-format-svg {
+  width: 24px !important;
+  height: 24px !important;
 }
 
 .tool-btn.active {
@@ -730,4 +735,88 @@
 .highlight-find.current {
   background: var(--trash-ai-border);
   color: var(--color-on-accent);
+}
+
+.word-editing-quick-panel {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: 3;
+  width: max-content;
+  max-width: calc(100vw - 44px);
+  box-sizing: border-box;
+  padding: 5px;
+  border: var(--border-width) solid var(--lm-border-cloud-panel-color);
+  border-radius: var(--radius-3xl);
+  background: var(--lm-floating-panel-glass-bg);
+  box-shadow: var(--lm-shadow-cloud-panel);
+  backdrop-filter: var(--lm-floating-panel-backdrop-filter);
+  display: flex;
+  align-items: stretch;
+  gap: 5px;
+  transform: translateX(calc(-50% + var(--word-editing-panel-shift-x, 0px)));
+}
+
+.word-editing-quick-panel[hidden] {
+  display: none !important;
+}
+
+.word-editing-quick-control {
+  width: 78px;
+  min-height: 62px;
+  padding: 7px 5px;
+  border: 0;
+  border-radius: var(--radius-xl);
+  background: transparent;
+  color: var(--ink);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: background .16s ease, color .16s ease, transform .16s ease;
+}
+
+.word-editing-quick-control:hover,
+.word-editing-quick-control:focus-visible,
+.word-editing-quick-control.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.word-editing-quick-control:hover {
+  transform: translateY(-1px);
+}
+
+.word-editing-quick-control:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 62%, transparent);
+  outline-offset: -2px;
+}
+
+.word-editing-quick-icon {
+  width: 24px;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+}
+
+.word-editing-quick-icon svg,
+.word-editing-quick-toggle svg {
+  width: 24px;
+  height: 24px;
+  display: block;
+  fill: currentColor;
+}
+
+.word-editing-quick-control small {
+  max-width: 68px;
+  overflow: hidden;
+  color: currentColor;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

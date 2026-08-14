@@ -1803,12 +1803,91 @@ function canUseEditorToolDock() {
 }
 
 function toggleToolDock() {
+  setWordEditingQuickPanel(false);
   syncToolDockMode();
   if (!canUseEditorToolDock()) return;
   const shouldOpen = !isToolDockOpen;
   if (shouldOpen) setFindPanel(false);
   setToolDock(shouldOpen);
 }
+
+function setWordEditingQuickPanel(open) {
+  const panel = document.getElementById('wordEditingQuickPanel');
+  const toggle = document.getElementById('wordEditingQuickToggleBtn');
+  if (!panel || !toggle) return;
+  const shouldOpen = Boolean(open);
+  panel.hidden = !shouldOpen;
+  toggle.setAttribute('aria-expanded', String(shouldOpen));
+  toggle.classList.toggle('is-active', shouldOpen);
+  if (shouldOpen) {
+    if (isFindOpen) setFindPanel(false);
+    if (isToolDockOpen) setToolDock(false);
+    window.lmAdvancedWordEditing?.syncEditorDockPanel?.();
+    requestAnimationFrame(positionWordEditingQuickPanel);
+  }
+}
+
+function positionWordEditingQuickPanel() {
+  const panel = document.getElementById('wordEditingQuickPanel');
+  const dock = document.getElementById('floating-tools');
+  const editorArea = document.getElementById('editor-area');
+  if (!panel || panel.hidden || !dock || !editorArea) return;
+  const areaRect = editorArea.getBoundingClientRect();
+  const dockRect = dock.getBoundingClientRect();
+  const panelRect = panel.getBoundingClientRect();
+  const padding = 12;
+  const gap = 8;
+  const baseLeft = dockRect.left - areaRect.left + (dockRect.width - panelRect.width) / 2;
+  const safeLeft = Math.max(padding, Math.min(baseLeft, editorArea.clientWidth - panelRect.width - padding));
+  panel.style.setProperty('--word-editing-panel-shift-x', `${Math.round(safeLeft - baseLeft)}px`);
+
+  const dockTop = dockRect.top - areaRect.top;
+  const dockBottom = dockRect.bottom - areaRect.top;
+  const roomAbove = dockTop - padding;
+  if (roomAbove >= panelRect.height + gap) {
+    panel.style.top = 'auto';
+    panel.style.bottom = `calc(100% + ${gap}px)`;
+  } else {
+    panel.style.bottom = 'auto';
+    panel.style.top = `calc(100% + ${gap}px)`;
+    const belowBottom = dockBottom + gap + panelRect.height;
+    if (belowBottom > editorArea.clientHeight - padding) {
+      panel.style.top = `${Math.round(editorArea.clientHeight - padding - panelRect.height - dockTop)}px`;
+    }
+  }
+}
+
+function toggleWordEditingQuickPanel(event) {
+  event?.preventDefault?.();
+  event?.stopPropagation?.();
+  const panel = document.getElementById('wordEditingQuickPanel');
+  setWordEditingQuickPanel(Boolean(panel?.hidden));
+}
+
+async function openWordEditingTemporaryNames() {
+  setWordEditingQuickPanel(false);
+  await window.lmAdvancedWordEditing?.openEditorControlsFromDock?.(true);
+}
+
+async function openWordEditingCollectSettings() {
+  setWordEditingQuickPanel(false);
+  await window.lmAdvancedWordEditing?.openEditorControlsFromDock?.(false);
+}
+
+async function toggleWordEditingKeepSetting() {
+  await window.lmAdvancedWordEditing?.toggleKeepEditorReplacementsFromDock?.();
+}
+
+document.addEventListener('pointerdown', event => {
+  const panel = document.getElementById('wordEditingQuickPanel');
+  const toggle = document.getElementById('wordEditingQuickToggleBtn');
+  if (!panel || panel.hidden || panel.contains(event.target) || toggle?.contains(event.target)) return;
+  setWordEditingQuickPanel(false);
+});
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') setWordEditingQuickPanel(false);
+});
 
 function setToolDock(open) {
   syncToolDockMode();
@@ -2576,6 +2655,7 @@ function updateEditorScrollThumb(visible = false) {
 }
 
 function setFindPanel(open) {
+  if (open) setWordEditingQuickPanel(false);
   const wasOpen = Boolean(isFindOpen);
   if (open && !wasOpen && typeof prepareFloatingPanelFocusReturn === 'function') {
     prepareFloatingPanelFocusReturn('find-bar');

@@ -2840,6 +2840,22 @@ function scanStoryForNamingEntry(entryId) {
 
 function deepScanAllNamingEntries(buttonElement = null) {
   const btn = buttonElement || document.getElementById('namingDeepScanBtn');
+  const countDeepScanSavedNameUses = (name, documentText) => {
+    const cleanedName = normalizeScanText(name);
+    const cleanedText = normalizeScanText(documentText);
+    if (cleanedName.length < 2 || !cleanedText) return 0;
+
+    try {
+      const namePattern = cleanedName.split(/\s+/).map(escapeRegExp).join('\\s+');
+      const wordUnit = '\\p{L}\\p{N}\\p{M}_';
+      const pattern = `(^|[^${wordUnit}])${namePattern}(?=$|[^${wordUnit}])`;
+      return [...cleanedText.matchAll(new RegExp(pattern, 'giu'))].length;
+    } catch (_error) {
+      // Saved matching must fail closed when Unicode-boundary support is
+      // unavailable; a substring fallback would accept names inside words.
+      return 0;
+    }
+  };
   if (btn) {
     btn.classList.add('is-scanning');
     btn.disabled = true;
@@ -2860,7 +2876,7 @@ function deepScanAllNamingEntries(buttonElement = null) {
           const chapter = chapters[i];
           if (!chapter) continue;
           const text = htmlToPlainText(chapter.content);
-          if (countSavedNameUsesInText(name, text) > 0) {
+          if (countDeepScanSavedNameUses(name, text) > 0) {
             foundInChapter = true;
             const newChapterKey = chapter.contentPath || (typeof chapterStorageKey === 'function' ? chapterStorageKey(i) : `chap-${i}`);
             const newChapterNo = chapter.chapterNo || (i + 1);
@@ -2932,7 +2948,7 @@ function deepScanAllNamingEntries(buttonElement = null) {
           const draft = chapterDrafts[i];
           if (!draft) continue;
           const text = htmlToPlainText(draft.content);
-          if (countSavedNameUsesInText(name, text) > 0) {
+          if (countDeepScanSavedNameUses(name, text) > 0) {
             const newDraftKey = draft.contentPath || (typeof draftFilePath === 'function' ? draftFilePath(i) : `draft-${i}`);
             const newDraftNo = draft.draftNo || (i + 1);
             const newDraftTitle = draft.title || '';
@@ -3740,7 +3756,7 @@ function factCardHtml(fact, state = 'recent') {
       <button class="fact-pin-btn ${isPinned ? 'is-pinned' : ''}" type="button"
         onclick="event.stopPropagation(); toggleFactPin('${escapeJsString(fact.id)}')"
         title="${escapeHtml(pinTitle)}" aria-label="${escapeHtml(pinTitle)}">
-        ${lmIcon("factPin")}
+        ${lmIcon("pinUnpinned", "fact-pin-svg")}
       </button>
     </article>`;
 }

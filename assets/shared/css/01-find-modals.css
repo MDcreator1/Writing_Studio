@@ -589,8 +589,7 @@ select.lm-native-select:not(.dock-native-select) {
   border-radius: var(--radius-15);
   background-color: var(--surface-raised);
   background: var(--lm-floating-panel-glass-bg);
-  box-shadow: 0 6px 16px color-mix(in srgb, var(--ink) 11%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--surface) 70%, transparent);
+  box-shadow: var(--lm-shadow-action-soft);
   -webkit-backdrop-filter: var(--lm-floating-panel-backdrop-filter);
   backdrop-filter: var(--lm-floating-panel-backdrop-filter);
   display: grid;

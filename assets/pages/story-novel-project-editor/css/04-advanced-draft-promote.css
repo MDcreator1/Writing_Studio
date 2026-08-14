@@ -183,7 +183,7 @@ body.is-advanced-promote-open {
 }
 
 .advanced-promote-view-tabs button.is-active {
-  background: var(--accent);
+  background: color-mix(in srgb, var(--accent) 50%, transparent);
   color: var(--color-on-accent);
   box-shadow: var(--shadow-soft);
 }
@@ -641,11 +641,6 @@ body.is-advanced-promote-open {
   transform: none;
 }
 
-.advanced-promote-footer .advanced-promote-apply-btn {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--color-on-accent);
-}
 
 @media (max-width: 980px) {
   .advanced-promote-settings-bar,

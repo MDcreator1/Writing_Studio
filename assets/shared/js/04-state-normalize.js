@@ -153,6 +153,10 @@ const translations = {
     advancedPromoteSaved: 'Draft promoted into chapters',
     promoteDestinationTitle: 'Where should this draft go?',
     promoteDestinationBody: 'Raw chapters are present. Choose whether this draft should become a chapter in the recent part or stay outside parts as a raw chapter.',
+    promoteSelectedDrafts: 'Promote selected drafts',
+    promoteSelectedDestinationTitle: 'Where should the selected drafts go?',
+    promoteSelectedDestinationBody: 'The selected drafts will become chapters in their current top-to-bottom order.',
+    selectedDraftsPromoted: '{count} drafts promoted to chapters',
     promoteToRecentPart: 'Recent Part',
     promoteToRawChapters: 'Raw Chapters',
     promoteConfirm: 'Promote',
@@ -689,6 +693,7 @@ function createEditorParagraphGapNode() {
 }
 const CROSS_CLOSE_SVG = lmIcon('close');
 const DRAFT_DELETE_SVG = lmIcon('draftDelete');
+const DRAFT_PROMOTE_SVG = lmIcon('promoteDraft');
 const TRASH_MODE_SVG = lmIcon('trashMode');
 const CHAPTER_TO_DRAFT_SVG = lmIcon('chapterToDraft');
 const RESTORE_DRAFT_SVG = lmIcon('restoreDraft');

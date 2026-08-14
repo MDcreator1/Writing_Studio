@@ -11,9 +11,9 @@
   <link rel="stylesheet" href="assets/shared/css/00-base.css?v=20260610-project-library">
   <link rel="stylesheet" href="assets/shared/css/01-find-modals.css?v=20260811-advanced-select-menu-height">
   <link rel="stylesheet"
-    href="assets/pages/story-novel-project-editor/css/00-editor-layout.css?v=20260811-advanced-title-action">
+    href="assets/pages/story-novel-project-editor/css/00-editor-layout.css?v=20260814-bulk-draft-promote">
   <link rel="stylesheet"
-    href="assets/pages/story-novel-project-editor/css/01-floating-tools.css?v=20260610-review-dock-panel">
+    href="assets/pages/story-novel-project-editor/css/01-floating-tools.css?v=20260814-word-editing-quick-panel">
   <link rel="stylesheet"
     href="assets/pages/story-novel-project-editor/css/02-side-panels.css?v=20260811-inline-similar-name-input">
   <link rel="stylesheet"
@@ -25,7 +25,7 @@
   <link rel="stylesheet"
     href="assets/pages/story-novel-project-editor/css/06-advanced-editor-settings.css?v=20260813-awe-control-polish">
   <link rel="stylesheet"
-    href="assets/pages/story-novel-project-editor/css/07-advanced-word-editing.css?v=20260813-moveup-icon-aligned">
+    href="assets/pages/story-novel-project-editor/css/07-advanced-word-editing.css?v=20260814-threshold-stepper">
   <link rel="stylesheet" href="assets/shared/css/99-theme-overrides.css?v=20260608-theme-option-previews">
 </head>
 
@@ -148,6 +148,7 @@
           Chapter</button>
         <button class="text-import-trigger lm-id-textImportTrigger" id="textImportTrigger" type="button"
           onclick="openTextImportPanel()" title="Import or paste text" aria-label="Import or paste text">
+          <!-- <span data-lm-icon="import"></span> -->
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 3v11m0 0 4-4m-4 4-4-4M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
           </svg>
@@ -564,6 +565,31 @@
             <span class="dock-action-icon">
               <span data-lm-icon="search"></span>
             </span>
+          </button>
+          <button class="dock-action-btn word-editing-quick-toggle" id="wordEditingQuickToggleBtn" type="button"
+            onclick="toggleWordEditingQuickPanel(event)" aria-expanded="false" aria-controls="wordEditingQuickPanel"
+            title="Word editing shortcuts" aria-label="Word editing shortcuts">
+            <span class="dock-action-icon">
+              <span data-lm-icon="wordEditAction"></span>
+            </span>
+          </button>
+        </div>
+        <div class="word-editing-quick-panel" id="wordEditingQuickPanel" aria-label="Word editing shortcuts" hidden>
+          <button class="word-editing-quick-control" id="wordEditingKeepBtn" type="button"
+            onclick="toggleWordEditingKeepSetting()" aria-pressed="false"
+            title="Keep words and replacements from editor" aria-label="Keep words and replacements from editor">
+            <span class="word-editing-quick-icon" data-awe-dock-keep-icon><span data-lm-icon="saveOutline"></span></span>
+            <small>Keep words</small>
+          </button>
+          <button class="word-editing-quick-control" type="button" onclick="openWordEditingTemporaryNames()"
+            title="Open Temporary Names" aria-label="Open Temporary Names">
+            <span class="word-editing-quick-icon"><span data-lm-icon="tempWordList"></span></span>
+            <small>Temporary <b data-awe-dock-temporary-count>0</b></small>
+          </button>
+          <button class="word-editing-quick-control" type="button" onclick="openWordEditingCollectSettings()"
+            title="Set collection threshold and category" aria-label="Set collection threshold and category">
+            <span class="word-editing-quick-icon"><span data-lm-icon="cateInPanel"></span></span>
+            <small data-awe-dock-collect-policy>Collection off</small>
           </button>
         </div>
         <div class="tool-dock-panel" aria-label="Writing tools">
@@ -1190,20 +1216,20 @@
     </div>
   </div>
 
-  <script src="assets/shared/js/00-icon-registry.js?v=20260813-moveup-icon"></script>
+  <script src="assets/shared/js/00-icon-registry.js?v=20260814-pin-state-icons"></script>
   <script src="assets/shared/js/01-shortcut-tooltips.js?v=20260608-file-renames"></script>
   <script src="assets/shared/js/02-floating-panel-focus-return.js?v=20260608-file-renames"></script>
   <script src="assets/shared/js/03-theme-controller.js?v=20260608-file-renames"></script>
-  <script src="assets/shared/js/04-state-normalize.js?v=20260811-review-margin-only"></script>
+  <script src="assets/shared/js/04-state-normalize.js?v=20260814-bulk-draft-promote"></script>
   <script src="assets/shared/js/05-floating-panel-positions.js?v=20260610-ai-connection-floating"></script>
   <script src="assets/shared/js/05a-editor-advanced-config.js?v=20260813-awe-control-polish"></script>
-  <script src="assets/shared/js/05b-advanced-word-editing.js?v=20260813-moveup-icon"></script>
+  <script src="assets/shared/js/05b-advanced-word-editing.js?v=20260814-temporary-category-policy"></script>
   <script src="assets/shared/js/06-project-storage.js?v=20260813-project-word-dictionary"></script>
   <script
     src="assets/pages/story-novel-project-editor/js/00-hindi-unicode-input.js?v=20260619-large-input-defer"></script>
-  <script src="assets/pages/story-novel-project-editor/js/01-editor-core.js?v=20260813-forward-caret-boundary"></script>
+  <script src="assets/pages/story-novel-project-editor/js/01-editor-core.js?v=20260814-bulk-draft-promote"></script>
   <script
-    src="assets/pages/story-novel-project-editor/js/02-find-replace-ai-tools.js?v=20260812-awe-learning"></script>
+    src="assets/pages/story-novel-project-editor/js/02-find-replace-ai-tools.js?v=20260814-word-editing-dock"></script>
   <script
     src="assets/pages/story-novel-project-editor/js/03-side-panels-naming-facts.js?v=20260811-dominant-detected-alias"></script>
   <script src="assets/pages/story-novel-project-editor/js/04-editor-boot.js?v=20260608-file-renames"></script>

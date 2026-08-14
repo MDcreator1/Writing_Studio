@@ -872,6 +872,23 @@
   border-color: var(--lm-border-danger-color);
 }
 
+.draft-title-promote-btn {
+  border-color: color-mix(in srgb, var(--accent) 38%, transparent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.draft-title-promote-btn:hover,
+.draft-title-promote-btn:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.draft-title-promote-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
 .draft-title-delete-btn:disabled {
   width: 0;
   margin-right: 0;
@@ -2297,7 +2314,8 @@
   height: 36px;
   border-radius: var(--radius-lg);
   border: none;
-  background: var(--accent-soft);
+  background: transparent;
+  /* background: var(--accent-soft); */
   color: var(--ink);
   display: inline-flex;
   align-items: center;
@@ -2305,7 +2323,7 @@
   cursor: pointer;
   font-size: var(--font-size-lg);
   font-weight: 900;
-  box-shadow: var(--shadow-soft);
+  /* box-shadow: var(--shadow-soft); */
   transition: transform .16s ease, background .16s ease, color .16s ease, border-color .16s ease;
 }
 
@@ -2396,8 +2414,9 @@
 }
 
 .editor-settings-btn .settings-svg {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
 }
 
 .editor-save-btn .save-icon-filled {
@@ -2453,8 +2472,9 @@
 
 .editor-settings-title {
   margin-bottom: 10px;
+  padding-left: 4px;
   color: var(--muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-base);
   font-weight: 900;
   letter-spacing: .08em;
   text-transform: uppercase;
@@ -2473,7 +2493,7 @@
   justify-content: space-between;
   gap: 12px;
   cursor: pointer;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-base);
   font-weight: 850;
   transition: background .16s ease, border-color .16s ease, transform .16s ease;
 }
@@ -2515,7 +2535,7 @@
   justify-content: space-between;
   gap: 10px;
   cursor: pointer;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
   font-weight: 820;
   transition: background .16s ease, color .16s ease;
 }
@@ -3305,10 +3325,10 @@ body.focus-mode .lm-id-editor.is-focus-save-saved {
 
 /* Each individual margin value button */
 .review-margin-btn {
-  padding: 4px 8px;
-  min-width: 34px;
+  padding: 4px;
+  min-width: 25px;
   border-radius: var(--radius-md);
-  font-size: var(--font-size-xs, 11px);
+  font-size: var(--font-size-md, 11px);
   font-weight: 800;
   cursor: pointer;
   border: 1px solid transparent;

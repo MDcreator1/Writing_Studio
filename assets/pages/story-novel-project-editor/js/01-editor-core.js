@@ -1103,7 +1103,7 @@ function countNamingEntryUsesInText(entry = {}, documentText = '') {
     .forEach(name => {
       try {
         const namePattern = name.split(/\s+/).map(escapeRegExp).join('\\s+');
-        const matcher = new RegExp(`(^|[^\\p{L}\\p{N}_])(${namePattern})(?=$|[^\\p{L}\\p{N}_])`, 'giu');
+        const matcher = new RegExp(`(^|[^\\p{L}\\p{N}\\p{M}_])(${namePattern})(?=$|[^\\p{L}\\p{N}\\p{M}_])`, 'giu');
         for (const match of cleanedText.matchAll(matcher)) {
           const start = (match.index || 0) + (match[1]?.length || 0);
           const end = start + (match[2]?.length || name.length);
@@ -1127,7 +1127,7 @@ function isSavedNameUsedInText(name, chapterText) {
 
   try {
     const namePattern = cleanedName.split(/\s+/).map(escapeRegExp).join('\\s+');
-    const pattern = `(^|[^\\p{L}\\p{N}_])${namePattern}(?=$|[^\\p{L}\\p{N}_])`;
+    const pattern = `(^|[^\\p{L}\\p{N}\\p{M}_])${namePattern}(?=$|[^\\p{L}\\p{N}\\p{M}_])`;
     return new RegExp(pattern, 'iu').test(cleanedText);
   } catch (error) {
     return cleanedText.toLocaleLowerCase().includes(cleanedName.toLocaleLowerCase());
@@ -1141,7 +1141,7 @@ function countSavedNameUsesInText(name, chapterText) {
 
   try {
     const namePattern = cleanedName.split(/\s+/).map(escapeRegExp).join('\\s+');
-    const pattern = `(^|[^\\p{L}\\p{N}_])${namePattern}(?=$|[^\\p{L}\\p{N}_])`;
+    const pattern = `(^|[^\\p{L}\\p{N}\\p{M}_])${namePattern}(?=$|[^\\p{L}\\p{N}\\p{M}_])`;
     return [...cleanedText.matchAll(new RegExp(pattern, 'giu'))].length;
   } catch (error) {
     const loweredText = cleanedText.toLocaleLowerCase();
@@ -7413,6 +7413,11 @@ function renderDrafts() {
     <div class="draft-box-title ${selectedDraftCount ? 'has-draft-selection' : ''}" id="draftBoxTitle">
       <span class="draft-title-label"><span class="draft-save-dot" aria-hidden="true"></span>${escapeHtml(text().drafts)}</span>
       <span class="draft-title-actions">
+        <button class="draft-title-delete-btn draft-title-promote-btn" type="button" ${selectedDraftCount ? '' : 'disabled'}
+          onclick="event.stopPropagation(); requestPromoteSelectedDrafts(this)"
+          title="${escapeHtml(text().promoteSelectedDrafts)}" aria-label="${escapeHtml(text().promoteSelectedDrafts)}">
+          ${DRAFT_PROMOTE_SVG}
+        </button>
         <button class="draft-title-delete-btn" type="button" ${canDeleteDraftBatch ? '' : 'disabled'}
           onclick="event.stopPropagation(); openDraftBulkDeletePanel(this)"
           title="${escapeHtml(draftDeleteTitle)}" aria-label="${escapeHtml(draftDeleteTitle)}">
@@ -10217,6 +10222,96 @@ function openDraftPromoteDestinationPanel(draftIndex, anchor = null) {
 
   panel.hidden = false;
   positionFloatingPanel(panel, positionAnchor);
+}
+
+function openSelectedDraftsPromoteDestinationPanel(anchor = null) {
+  chapterDrafts = normalizeDrafts(chapterDrafts);
+  normalizeDraftSelection();
+  const panel = document.getElementById('draftDetailsPanel');
+  const selectedCount = selectedDraftIndexes.size;
+  if (!panel || !selectedCount) return;
+
+  const copy = text();
+  closePartDetailsPanel();
+  closeChapterDetailsPanel();
+  closeDraftActionsPanel();
+  activeDraftDetailsIndex = 'promote:selected';
+  activeFloatingAnchor = anchor;
+  panel.dataset.positionKey = 'draftActionPromoteDestinationPanel';
+  panel.classList.add('draft-actions-panel', 'draft-promote-destination-panel');
+  panel.innerHTML = `
+    <div class="part-details-head draft-delete-confirm-head">
+      <strong>${escapeHtml(copy.promoteSelectedDestinationTitle)}</strong>
+      <button class="name-panel-close" type="button" onclick="closeDraftActionsPanel()">${CROSS_CLOSE_SVG}</button>
+    </div>
+    <p class="draft-delete-confirm-copy">${escapeHtml(copy.promoteSelectedDestinationBody)}</p>
+    <div class="draft-promote-choice-grid">
+      <button class="draft-promote-choice-btn" type="button" onclick="confirmSelectedDraftsPromoteDestination('part')">
+        ${escapeHtml(copy.promoteToRecentPart)}
+      </button>
+      <button class="draft-promote-choice-btn" type="button" onclick="confirmSelectedDraftsPromoteDestination('raw')">
+        ${escapeHtml(copy.promoteToRawChapters)}
+      </button>
+    </div>`;
+
+  panel.hidden = false;
+  positionFloatingPanel(panel, anchor);
+}
+
+async function confirmSelectedDraftsPromoteDestination(destination = 'part') {
+  await promoteSelectedDraftsToChapters(destination);
+}
+
+async function requestPromoteSelectedDrafts(anchor = null) {
+  ensureChapters();
+  chapterDrafts = normalizeDrafts(chapterDrafts);
+  normalizeDraftSelection();
+  if (!selectedDraftIndexes.size) return;
+  const manifest = normalizeProjectManifest(projectManifest || createProjectManifest());
+  if (hasRawChaptersInPanel(manifest)) {
+    openSelectedDraftsPromoteDestinationPanel(anchor);
+    return;
+  }
+  await promoteSelectedDraftsToChapters('part');
+}
+
+async function promoteSelectedDraftsToChapters(destination = 'part') {
+  ensureChapters();
+  chapterDrafts = normalizeDrafts(chapterDrafts);
+  normalizeDraftSelection();
+  const selectedIndexes = Array.from(selectedDraftIndexes).sort((left, right) => left - right);
+  if (!selectedIndexes.length) return;
+
+  syncActiveEditorDocumentFromEditor();
+  const selectedDrafts = selectedIndexes.map(index => {
+    const draft = chapterDrafts[index];
+    return draft ? { id: draft.id, contentPath: draft.contentPath, createdAt: draft.createdAt, title: draft.title } : null;
+  }).filter(Boolean);
+  const reservedTitles = new Set(chapters.map((chapter, index) => uniqueNameKey(chapterDisplayTitle(chapter, index))));
+  for (const draft of selectedDrafts) {
+    const titleKey = uniqueNameKey(draft.title);
+    if (titleKey && reservedTitles.has(titleKey)) {
+      showDuplicateReminder(text().duplicateChapterTitle);
+      return;
+    }
+    if (titleKey) reservedTitles.add(titleKey);
+  }
+
+  closeDraftActionsPanel();
+  let promotedCount = 0;
+  for (const selectedDraft of selectedDrafts) {
+    const currentIndex = chapterDrafts.findIndex(draft =>
+      draft.id === selectedDraft.id &&
+      draft.contentPath === selectedDraft.contentPath &&
+      draft.createdAt === selectedDraft.createdAt
+    );
+    if (currentIndex < 0) continue;
+    await promoteDraftToChapter(currentIndex, destination);
+    promotedCount += 1;
+  }
+  if (promotedCount > 1) {
+    showMiniReminder(text().selectedDraftsPromoted.replace('{count}', promotedCount));
+  }
 }
 
 async function confirmDraftPromoteDestination(draftIndex, destination = 'part') {

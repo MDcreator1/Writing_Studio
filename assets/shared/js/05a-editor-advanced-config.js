@@ -212,6 +212,10 @@ function syncAdvancedQuickPinButtons(key) {
     button.setAttribute('aria-pressed', String(pinned));
     button.title = pinned ? 'Remove from quick settings' : 'Pin to quick settings';
     const settingLabel = button.dataset.advancedQuickPinName || 'Setting';
+    const icon = button.querySelector('[data-advanced-quick-pin-icon]');
+    if (icon && typeof window.lmIcon === 'function') {
+      icon.innerHTML = window.lmIcon(pinned ? 'pinPinned' : 'pinUnpinned');
+    }
     const label = button.querySelector('[data-advanced-quick-pin-label]');
     if (label) label.textContent = pinned ? `${settingLabel} pinned` : `Pin ${settingLabel}`;
   });
@@ -241,7 +245,10 @@ function advancedQuickPinButton(key, label, options = {}) {
   const pinned = isEditorQuickSettingPinned(key);
   const title = pinned ? `Remove ${label} from quick settings` : `Pin ${label} to quick settings`;
   const compact = options.compact === true;
-  return `<button class="advanced-quick-pin-button ${compact ? 'is-compact' : ''} ${pinned ? 'is-pinned' : ''}" type="button" data-advanced-quick-pin="${key}" data-advanced-quick-pin-name="${label}" aria-pressed="${pinned}" aria-label="${title}" title="${title}" onclick="toggleEditorQuickSettingPin(event, '${key}')"><span class="advanced-quick-pin-mark" aria-hidden="true"></span><span class="${compact ? 'advanced-quick-pin-label-hidden' : ''}" data-advanced-quick-pin-label>${pinned ? `${label} pinned` : `Pin ${label}`}</span></button>`;
+  const pinIcon = typeof window.lmIcon === 'function'
+    ? window.lmIcon(pinned ? 'pinPinned' : 'pinUnpinned')
+    : '';
+  return `<button class="advanced-quick-pin-button ${compact ? 'is-compact' : ''} ${pinned ? 'is-pinned' : ''}" type="button" data-advanced-quick-pin="${key}" data-advanced-quick-pin-name="${label}" aria-pressed="${pinned}" aria-label="${title}" title="${title}" onclick="toggleEditorQuickSettingPin(event, '${key}')"><span class="advanced-quick-pin-mark" data-advanced-quick-pin-icon aria-hidden="true">${pinIcon}</span><span class="${compact ? 'advanced-quick-pin-label-hidden' : ''}" data-advanced-quick-pin-label>${pinned ? `${label} pinned` : `Pin ${label}`}</span></button>`;
 }
 
 function advancedNumberStepper(inputHTML, key, label) {
