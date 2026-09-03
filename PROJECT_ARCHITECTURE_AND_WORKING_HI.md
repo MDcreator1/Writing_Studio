@@ -82,18 +82,26 @@ Story editor में इसके बाद Hindi input, editor core, find/rep
 | `01-shortcut-tooltips.js` | Delayed keyboard-shortcut tooltip, viewport positioning, native title suppression |
 | `02-floating-panel-focus-return.js` | Floating panels बंद होने पर editor/input focus और selection restore करना; focus slots enforce करना |
 | `03-theme-controller.js` | छह themes, localStorage persistence, body classes, theme menu positioning |
-| `04-state-normalize.js` | Translations, constants, global runtime state, normalizers, default objects और recovery comparison |
+| `04a-state-defaults-normalization.js` | Translations, constants, global runtime state, normalizers और default objects |
+| `04b-editor-document-state.js` | Chapter/draft normalization, active-document state और recovery comparison |
 | `05-floating-panel-positions.js` | Panel-id/context के आधार पर shared position configuration और offsets |
-| `06-project-storage.js` | File System API, IndexedDB, manifests, drafts, naming, autosave, project library और settings persistence |
+| `06a-project-storage-foundation.js` | Storage primitives, manifests, drafts, naming और File System API foundation |
+| `06b-workspace-restore-autosave.js` | Workspace restore, document persistence और autosave flow |
+| `06c-workspace-library-settings.js` | Project library discovery, project switching और editor settings |
+| `06d-editor-paste-settings.js` | Paste/copy settings, formatting persistence और remaining storage UI |
 
 ### Story/novel editor JavaScript
 
 | File | जिम्मेदारी |
 |---|---|
 | `00-hindi-unicode-input.js` | Devanagari logical units, virama/matra-aware caret और deletion/input handling |
-| `01-editor-core.js` | Main editor behavior: rendering, history, find/replace, focus mode, auto-scroll, parts/chapters/drafts, panels, naming/facts/notes |
-| `02-find-replace-ai-tools.js` | Find/replace और AI-tool related auxiliary UI |
-| `03-side-panels-naming-facts.js` | Naming/facts side-panel extensions |
+| `01a`–`01i` editor modules | Foundation/history, auto-scroll/find, initialization, chapters/parts, drafts/trash, virtualization pipeline और smart clipboard; numeric-letter prefix runtime load order बताता है |
+| `02a-find-replace-core.js` | Find/replace का core selection और matching behavior |
+| `02b-editor-formatting-ai.js` | Editor formatting controls और AI-tool auxiliary UI |
+| `02c-find-results-word-editing.js` | Find result refresh और advanced word-editing integration |
+| `03a-naming-panel-core.js` | Naming panel का primary state और rendering |
+| `03b-naming-categories-search.js` | Naming categories, filters और search flow |
+| `03c-naming-deep-scan-facts.js` | Deep naming scan और facts side-panel behavior |
 | `04-editor-boot.js` | केवल `DOMContentLoaded -> init()` boot hook |
 | `05-advanced-draft-promote.js` | Draft text को sentence-safe chunks/chapters में split, preview, edit और promote करना |
 
@@ -508,7 +516,7 @@ Saved chapter सामान्यतः locked/review रूप में र�
 ## 11. वर्तमान सीमाएँ और technical debt
 
 1. **No build/test system:** automated unit/integration tests, lint config और package metadata नहीं हैं।
-2. **Large controllers:** `01-editor-core.js` और project-details controller बहुत बड़े हैं; bounded modules में विभाजन उपयोगी होगा।
+2. **Classic-script load order:** बड़े controllers bounded files में split हैं, लेकिन shared global scope के कारण HTML script order बदलते समय सावधानी आवश्यक है।
 3. **Global coupling:** state और functions implicit globals पर निर्भर हैं। ES modules/service layers से contracts स्पष्ट हो सकते हैं।
 4. **Duplicate utilities:** escape, normalization, find/count और file helpers कई pages में दोहरते हैं।
 5. **Browser limitation:** Safari/Firefox में folder workflow उपलब्ध/समान नहीं हो सकता।

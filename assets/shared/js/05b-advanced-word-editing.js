@@ -1,41 +1,23 @@
 'use strict';
-
-(function initializeAdvancedWordEditingModule() {
-  const MAX_ALIASES_PER_RULE = 300;
+(function initializeAdvancedWordEditingModule() { const MAX_ALIASES_PER_RULE = 300;
   const DEVANAGARI = /[\u0900-\u097F]/u;
   const HINDI_MATRA = /[\u093A-\u094D\u0951-\u0957\u0962-\u0963]/u;
   const WORD_CHARACTER = /[\p{L}\p{N}\p{M}_]/u;
   const REPLACEMENT_WORD = /[\p{L}\p{N}]/u;
-  const state = {
-    rules: [], categories: ['General'], search: '', categoryFilter: 'all',
-    sortMode: 'order', customCategoriesFirst: false, activeView: 'dictionary', keepEditorReplacements: true, showEditorQuickAction: false,
-    collectUnmatchedReplacements: false, unmatchedReplacementThreshold: 3, unmatchedCategory: 'General',
-    unmatchedObservations: new Map(), temporaryCandidates: [], namingCategories: new Set(),
-    expandedCategories: new Set(), visibleRules: [], selectedRuleIds: new Set(), selectionAnchorRuleId: '', pendingDeleteRuleIds: [],
-    editingCategory: '', categoryFormOpen: false, categoryAction: null, draftAliases: [], root: null, loaded: false, restorePromise: null, projectHandle: null,
-    persistTimer: 0, categoryScrollTimer: 0, aliasResizeObserver: null, dialogDrag: null, outsideClickHandler: null
-  };
-
-  function escapeHTML(value) {
-    return String(value ?? '').replace(/[&<>"]/gu, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[character]);
-  }
-
+  const state = { rules: [], categories: ['General'], search: '', categoryFilter: 'all', sortMode: 'order', customCategoriesFirst: false, activeView: 'dictionary', keepEditorReplacements: true, showEditorQuickAction: false, collectUnmatchedReplacements: false, unmatchedReplacementThreshold: 3, unmatchedCategory: 'General', unmatchedObservations: new Map(), temporaryCandidates: [], namingCategories: new Set(), expandedCategories: new Set(), visibleRules: [], selectedRuleIds: new Set(), selectionAnchorRuleId: '', pendingDeleteRuleIds: [], editingCategory: '', categoryFormOpen: false, categoryAction: null, draftAliases: [], root: null, loaded: false, restorePromise: null, projectHandle: null, persistTimer: 0, categoryScrollTimer: 0, aliasResizeObserver: null, dialogDrag: null, outsideClickHandler: null };
+  function escapeHTML(value) { return String(value ?? '').replace(/[&<>"]/gu, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[character]); }
   function escapeAttribute(value) { return escapeHTML(value).replace(/'/gu, '&#39;'); }
-  function iconMarkup(name, className, fallback = '') {
-    let markup = typeof window.lmIcon === 'function' ? window.lmIcon(name, className) : '';
+  function iconMarkup(name, className, fallback = '') { let markup = typeof window.lmIcon === 'function' ? window.lmIcon(name, className) : '';
     if (name === 'import') markup = markup.replace(/viewBox="[^"]+"/u, 'viewBox="0 0 8.48 8.48"');
     if (markup && (!['delete', 'edit'].includes(name) || /<svg\b/iu.test(markup))) return markup;
     if (fallback) return fallback;
     if (name === 'delete') return `<svg class="${escapeAttribute(className)}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 9h2v10H8V9Zm6 0h2v10h-2V9ZM7 4l1-2h8l1 2h5v2H2V4h5Zm-2 5h2v12h10V9h2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9Z"/></svg>`;
     if (name === 'edit') return `<svg class="${escapeAttribute(className)}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 16.75V20h3.25L17.81 9.44l-3.25-3.25L4 16.75Zm16.71-10.04a1 1 0 0 0 0-1.42l-2-2a1 1 0 0 0-1.42 0l-1.44 1.44 3.25 3.25 1.61-1.27Z"/></svg>`;
-    return '';
-  }
+    return ''; }
   function createId() { return window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`; }
   function safeFilename(value) { return String(value || 'word-dictionary').trim().replace(/[<>:"/\\|?*\u0000-\u001F]/gu, '-').replace(/\s+/gu, ' ').slice(0, 80) || 'word-dictionary'; }
   function parseAliases(value) { return [...new Set(String(value || '').split(/\r?\n/u).map(alias => alias.trim()).filter(Boolean))].slice(0, MAX_ALIASES_PER_RULE); }
-
-  function normaliseRule(rawRule, order = 0) {
-    if (!rawRule || typeof rawRule !== 'object') return null;
+  function normaliseRule(rawRule, order = 0) { if (!rawRule || typeof rawRule !== 'object') return null;
     const values = Array.isArray(rawRule.aliases)
       ? rawRule.aliases
       : Object.prototype.hasOwnProperty.call(rawRule, 'find') ? [rawRule.find] : [];
@@ -45,61 +27,26 @@
     const category = typeof categoryValue === 'string' && categoryValue.trim() ? categoryValue.trim().slice(0, 80) : 'General';
     const sourceMode = rawRule.finderMode || rawRule.findMode;
     const finderMode = ['raw', 'saved', 'deep'].includes(sourceMode) ? sourceMode : 'saved';
-    return {
-      id: typeof rawRule.id === 'string' && rawRule.id ? rawRule.id : createId(),
-      aliases,
-      find: aliases[0],
-      replace: typeof rawRule.replace === 'string' ? rawRule.replace.slice(0, 500) : '',
-      category,
-      group: category,
-      finderMode,
-      order: Number.isFinite(rawRule.order) ? rawRule.order : order
-    };
-  }
-
-  function sharedNamingCategoryTitles() {
-    try {
-      if (typeof namingData === 'undefined' || !Array.isArray(namingData?.categories)) return [];
-      return namingData.categories.map(category => String(category?.title || category?.label || '').trim()).filter(Boolean);
-    } catch { return []; }
-  }
-
-  function isNamingCategory(category) {
-    return [...state.namingCategories, ...sharedNamingCategoryTitles()].some(title => title.localeCompare(category, undefined, { sensitivity: 'accent' }) === 0);
-  }
-
-  function ensureCategories() {
-    const existing = new Set(state.categories.map(category => String(category || '').trim()).filter(Boolean));
+    return { id: typeof rawRule.id === 'string' && rawRule.id ? rawRule.id : createId(), aliases, find: aliases[0], replace: typeof rawRule.replace === 'string' ? rawRule.replace.slice(0, 500) : '', category, group: category, finderMode, order: Number.isFinite(rawRule.order) ? rawRule.order : order }; }
+  function sharedNamingCategoryTitles() { try { if (typeof namingData === 'undefined' || !Array.isArray(namingData?.categories)) return [];
+      return namingData.categories.map(category => String(category?.title || category?.label || '').trim()).filter(Boolean); } catch { return []; } }
+  function isNamingCategory(category) { return [...state.namingCategories, ...sharedNamingCategoryTitles()].some(title => title.localeCompare(category, undefined, { sensitivity: 'accent' }) === 0); }
+  function ensureCategories() { const existing = new Set(state.categories.map(category => String(category || '').trim()).filter(Boolean));
     const namingCategories = sharedNamingCategoryTitles();
     namingCategories.forEach(title => state.namingCategories.add(title));
     const importedNamingCategories = namingCategories.filter(title => !existing.has(title));
     // One-way copy only: Naming categories become dictionary categories. Nothing
     // in this module writes replacement-only categories back into namingData.
     state.categories = [...new Set(['General', ...state.categories, ...importedNamingCategories, ...state.rules.map(rule => rule.category)].map(category => String(category || '').trim()).filter(Boolean))];
-    return importedNamingCategories.length;
-  }
-
-  function serializableState() {
-    return {
-      version: 1, savedAt: Date.now(), rules: state.rules, categories: state.categories,
-      search: state.search, categoryFilter: state.categoryFilter, sortMode: state.sortMode, customCategoriesFirst: state.customCategoriesFirst,
-      activeView: state.activeView, keepEditorReplacements: state.keepEditorReplacements,
-      showEditorQuickAction: state.showEditorQuickAction,
-      collectUnmatchedReplacements: state.collectUnmatchedReplacements,
-      unmatchedReplacementThreshold: state.unmatchedReplacementThreshold,
-      unmatchedCategory: state.unmatchedCategory || 'General'
-    };
-  }
-
-  function loadDictionaryPayload(saved, options = {}) {
-    const payload = saved && typeof saved === 'object' ? saved : {};
+    return importedNamingCategories.length; }
+  function serializableState() { return { version: 1, savedAt: Date.now(), rules: state.rules, categories: state.categories, search: state.search, categoryFilter: state.categoryFilter, sortMode: state.sortMode, customCategoriesFirst: state.customCategoriesFirst, activeView: state.activeView, keepEditorReplacements: state.keepEditorReplacements, showEditorQuickAction: state.showEditorQuickAction, collectUnmatchedReplacements: state.collectUnmatchedReplacements, unmatchedReplacementThreshold: state.unmatchedReplacementThreshold, unmatchedCategory: state.unmatchedCategory || 'General' }; }
+  function loadDictionaryPayload(saved, options = {}) { const payload = saved && typeof saved === 'object' ? saved : {};
     window.clearTimeout(state.persistTimer);
     state.persistTimer = 0;
     state.projectHandle = options.projectHandle || (typeof projectDirectoryHandle !== 'undefined' ? projectDirectoryHandle : null);
     state.loaded = true;
     state.restorePromise = Promise.resolve();
-    {
-      state.rules = Array.isArray(payload.rules) ? payload.rules.map(normaliseRule).filter(Boolean) : [];
+    { state.rules = Array.isArray(payload.rules) ? payload.rules.map(normaliseRule).filter(Boolean) : [];
       state.categories = Array.isArray(payload.categories) ? payload.categories.filter(category => typeof category === 'string') : ['General'];
       state.search = typeof payload.search === 'string' ? payload.search : '';
       state.categoryFilter = typeof payload.categoryFilter === 'string' ? payload.categoryFilter : 'all';
@@ -120,169 +67,103 @@
       renderAll(true);
       syncEditorQuickAction();
       syncEditorDockPanel();
-      setStorageStatus(saved ? 'Loaded from project folder (Story_Word_Editing.json)' : 'New project dictionary ready', 'success');
-    }
-  }
-
-  async function restore() {
-    if (state.loaded) return;
+      setStorageStatus(saved ? 'Loaded from project folder (Story_Word_Editing.json)' : 'New project dictionary ready', 'success'); } }
+  async function restore() { if (state.loaded) return;
     if (state.restorePromise) return state.restorePromise;
-    state.restorePromise = (async () => {
-      const handle = typeof projectDirectoryHandle !== 'undefined' ? projectDirectoryHandle : null;
+    state.restorePromise = (async () => { const handle = typeof projectDirectoryHandle !== 'undefined' ? projectDirectoryHandle : null;
       let saved = null;
-      if (handle && typeof readWordEditingDataFromProject === 'function') {
-        try { saved = await readWordEditingDataFromProject(handle); } catch { saved = null; }
-      }
-      loadDictionaryPayload(saved, { projectHandle: handle });
-    })();
-    return state.restorePromise;
-  }
-
-  function setStorageStatus(message, tone = '') {
-    const status = state.root?.querySelector('[data-awe-storage-status]');
+      if (handle && typeof readWordEditingDataFromProject === 'function') { try { saved = await readWordEditingDataFromProject(handle); } catch { saved = null; } }
+      loadDictionaryPayload(saved, { projectHandle: handle }); })();
+    return state.restorePromise; }
+  function setStorageStatus(message, tone = '') { const status = state.root?.querySelector('[data-awe-storage-status]');
     if (!status) return;
     status.textContent = message;
-    status.dataset.tone = tone;
-  }
-
-  async function persist() {
-    window.clearTimeout(state.persistTimer);
+    status.dataset.tone = tone; }
+  async function persist() { window.clearTimeout(state.persistTimer);
     const payload = serializableState();
     const targetHandle = state.projectHandle;
     const activeHandle = typeof projectDirectoryHandle !== 'undefined' ? projectDirectoryHandle : null;
-    if (!targetHandle || targetHandle !== activeHandle) {
-      setStorageStatus('Open a project before saving its dictionary', 'danger');
-      return false;
-    }
+    if (!targetHandle || targetHandle !== activeHandle) { setStorageStatus('Open a project before saving its dictionary', 'danger');
+      return false; }
     let savedInProject = false;
-    if (typeof writeWordEditingDataToProject === 'function') {
-      try { savedInProject = await writeWordEditingDataToProject(payload, targetHandle); } catch { savedInProject = false; }
-    }
+    if (typeof writeWordEditingDataToProject === 'function') { try { savedInProject = await writeWordEditingDataToProject(payload, targetHandle); } catch { savedInProject = false; } }
     if (savedInProject) setStorageStatus('Dictionary saved to project folder', 'success');
-    else {
-      setStorageStatus('Project dictionary could not be saved', 'danger');
-      return false;
-    }
+    else { setStorageStatus('Project dictionary could not be saved', 'danger');
+      return false; }
     window.dispatchEvent(new CustomEvent('lm:advanced-word-editing-rules-changed', { detail: { rules: getRules() } }));
-    return true;
-  }
-
-  function persistSoon() {
-    window.clearTimeout(state.persistTimer);
+    return true; }
+  function persistSoon() { window.clearTimeout(state.persistTimer);
     setStorageStatus('Saving dictionary…', 'working');
-    state.persistTimer = window.setTimeout(persist, 220);
-  }
-
-  function toast(message, type = 'success') {
-    const region = state.root?.querySelector('[data-awe-toast-region]');
-    if (region) {
-      const item = document.createElement('div');
+    state.persistTimer = window.setTimeout(persist, 220); }
+  function toast(message, type = 'success') { const region = state.root?.querySelector('[data-awe-toast-region]');
+    if (region) { const item = document.createElement('div');
       item.className = `awe-toast is-${type}`;
       item.textContent = message;
       region.appendChild(item);
-      window.setTimeout(() => item.remove(), 3600);
-    }
-    if (!region && typeof window.showMiniReminder === 'function') window.showMiniReminder(message);
-  }
-
-  function filteredRules() {
-    const query = state.search.trim().toLocaleLowerCase();
-    return state.rules.filter(rule => {
-      const searchable = `${rule.aliases.join(' ')} ${rule.replace} ${rule.category} ${rule.finderMode}`.toLocaleLowerCase();
-      return !query || searchable.includes(query);
-    });
-  }
-
-  function createRuleRow(rule) {
-    const aliasCount = rule.aliases.length;
+      window.setTimeout(() => item.remove(), 3600); }
+    if (!region && typeof window.showMiniReminder === 'function') window.showMiniReminder(message); }
+  function filteredRules() { const query = state.search.trim().toLocaleLowerCase();
+    return state.rules.filter(rule => { const searchable = `${rule.aliases.join(' ')} ${rule.replace} ${rule.category} ${rule.finderMode}`.toLocaleLowerCase();
+      return !query || searchable.includes(query); }); }
+  function createRuleRow(rule) { const aliasCount = rule.aliases.length;
     const preview = aliasCount > 1 ? `${aliasCount} aliases: ${rule.aliases.slice(0, 3).join(', ')}${aliasCount > 3 ? ', …' : ''}` : '1 alias';
     const mode = rule.finderMode === 'saved' ? 'Save' : rule.finderMode === 'deep' ? 'Deep' : 'Raw';
     const aliases = rule.aliases.map((alias, index) => `<span class="awe-rule-alias-name" data-awe-alias-name>${index ? ', ' : ''}${escapeHTML(alias)}</span>`).join('');
     const selected = state.selectedRuleIds.has(rule.id);
-    return `<div class="awe-rule-row ${selected ? 'is-selected' : ''}" data-awe-rule-id="${escapeAttribute(rule.id)}" tabindex="0" aria-selected="${selected}" title="${escapeAttribute(`${preview} → ${rule.replace || 'delete'}`)}"><div class="awe-rule-main"><strong class="awe-rule-replacement">${escapeHTML(rule.replace || '∅')}</strong><span class="awe-rule-alias-list" data-awe-alias-list title="${escapeAttribute(rule.aliases.join(', '))}">${aliases}<span class="awe-rule-alias-more" data-awe-alias-more hidden></span></span></div><div class="awe-rule-actions"><span class="awe-finder-mode is-${rule.finderMode}">${mode}</span><button class="awe-row-delete-btn" type="button" data-awe-action="request-delete-rule" data-rule-id="${escapeAttribute(rule.id)}" aria-label="Delete rule" hidden>${iconMarkup('delete', 'awe-delete-icon')}</button><button class="awe-rule-edit-btn" type="button" data-awe-action="edit-rule" data-rule-id="${escapeAttribute(rule.id)}" aria-label="Edit rule">${iconMarkup('edit', 'awe-edit-icon')}</button></div></div>`;
-  }
-
-  function selectedRulesInCategory(category) {
-    return state.rules.filter(rule => rule.category === category && state.selectedRuleIds.has(rule.id));
-  }
-
-  function clearRuleSelection() {
-    if (!state.selectedRuleIds.size && !state.selectionAnchorRuleId) return false;
+    return `<div class="awe-rule-row ${selected ? 'is-selected' : ''}" data-awe-rule-id="${escapeAttribute(rule.id)}" tabindex="0" aria-selected="${selected}" title="${escapeAttribute(`${preview} → ${rule.replace || 'delete'}`)}"><div class="awe-rule-main"><strong class="awe-rule-replacement">${escapeHTML(rule.replace || '∅')}</strong><span class="awe-rule-alias-list" data-awe-alias-list title="${escapeAttribute(rule.aliases.join(', '))}">${aliases}<span class="awe-rule-alias-more" data-awe-alias-more hidden></span></span></div><div class="awe-rule-actions"><span class="awe-finder-mode is-${rule.finderMode}">${mode}</span><button class="awe-row-delete-btn" type="button" data-awe-action="request-delete-rule" data-rule-id="${escapeAttribute(rule.id)}" aria-label="Delete rule" hidden>${iconMarkup('delete', 'awe-delete-icon')}</button><button class="awe-rule-edit-btn" type="button" data-awe-action="edit-rule" data-rule-id="${escapeAttribute(rule.id)}" aria-label="Edit rule">${iconMarkup('edit', 'awe-edit-icon')}</button></div></div>`; }
+  function selectedRulesInCategory(category) { return state.rules.filter(rule => rule.category === category && state.selectedRuleIds.has(rule.id)); }
+  function clearRuleSelection() { if (!state.selectedRuleIds.size && !state.selectionAnchorRuleId) return false;
     state.selectedRuleIds.clear();
     state.selectionAnchorRuleId = '';
     applyRuleSelectionUI();
-    return true;
-  }
-
-  function pruneRuleSelection() {
-    const validIds = new Set(state.rules.map(rule => rule.id));
+    return true; }
+  function pruneRuleSelection() { const validIds = new Set(state.rules.map(rule => rule.id));
     state.selectedRuleIds.forEach(id => { if (!validIds.has(id)) state.selectedRuleIds.delete(id); });
-    if (!validIds.has(state.selectionAnchorRuleId)) state.selectionAnchorRuleId = '';
-  }
-
-  function applyRuleSelectionUI() {
-    if (!state.root) return;
+    if (!validIds.has(state.selectionAnchorRuleId)) state.selectionAnchorRuleId = ''; }
+  function applyRuleSelectionUI() { if (!state.root) return;
     pruneRuleSelection();
     const renderedIds = new Set([...state.root.querySelectorAll('[data-awe-rule-id]')].map(row => row.dataset.aweRuleId));
     state.selectedRuleIds.forEach(id => { if (!renderedIds.has(id)) state.selectedRuleIds.delete(id); });
     if (state.selectionAnchorRuleId && !renderedIds.has(state.selectionAnchorRuleId)) state.selectionAnchorRuleId = '';
     const selectedCount = state.selectedRuleIds.size;
-    state.root.querySelectorAll('[data-awe-rule-id]').forEach(row => {
-      const selected = state.selectedRuleIds.has(row.dataset.aweRuleId);
+    state.root.querySelectorAll('[data-awe-rule-id]').forEach(row => { const selected = state.selectedRuleIds.has(row.dataset.aweRuleId);
       row.classList.toggle('is-selected', selected);
       row.setAttribute('aria-selected', String(selected));
       const deleteButton = row.querySelector('.awe-row-delete-btn');
-      if (deleteButton) deleteButton.hidden = !(selectedCount === 1 && selected);
-    });
-    state.root.querySelectorAll('[data-awe-category-card]').forEach(card => {
-      const category = card.dataset.aweCategoryCard;
+      if (deleteButton) deleteButton.hidden = !(selectedCount === 1 && selected); });
+    state.root.querySelectorAll('[data-awe-category-card]').forEach(card => { const category = card.dataset.aweCategoryCard;
       const selectedInCategory = selectedRulesInCategory(category).length;
       const allCount = state.rules.filter(rule => rule.category === category).length;
       const visibleCount = state.visibleRules.filter(rule => rule.category === category).length;
       const count = card.querySelector('.awe-category-toggle small');
-      if (count) {
-        count.textContent = selectedCount > 1 && selectedInCategory ? `${selectedInCategory} selected` : `${visibleCount}/${allCount}`;
-        count.classList.toggle('is-selection-count', selectedCount > 1 && selectedInCategory > 0);
-      }
+      if (count) { count.textContent = selectedCount > 1 && selectedInCategory ? `${selectedInCategory} selected` : `${visibleCount}/${allCount}`;
+        count.classList.toggle('is-selection-count', selectedCount > 1 && selectedInCategory > 0); }
       const deleteButton = card.querySelector('.awe-category-delete-selected-button');
-      if (deleteButton) {
-        deleteButton.hidden = !(selectedCount > 1 && selectedInCategory > 0);
+      if (deleteButton) { deleteButton.hidden = !(selectedCount > 1 && selectedInCategory > 0);
         deleteButton.setAttribute('aria-label', `Delete Selected (${selectedInCategory})`);
         deleteButton.title = `Delete Selected (${selectedInCategory})`;
         const label = deleteButton.querySelector('[data-awe-delete-selected-label]');
-        if (label) label.textContent = `Delete Selected (${selectedInCategory})`;
-      }
-    });
-  }
-
-  function selectRuleRow(row, event = {}) {
-    const id = row?.dataset.aweRuleId;
+        if (label) label.textContent = `Delete Selected (${selectedInCategory})`; } }); }
+  function selectRuleRow(row, event = {}) { const id = row?.dataset.aweRuleId;
     if (!id) return;
     const renderedIds = [...state.root.querySelectorAll('[data-awe-rule-id]')].map(item => item.dataset.aweRuleId);
     const additive = event.ctrlKey || event.metaKey;
-    if (event.shiftKey) {
-      let anchor = state.selectionAnchorRuleId;
+    if (event.shiftKey) { let anchor = state.selectionAnchorRuleId;
       if (!renderedIds.includes(anchor)) anchor = renderedIds.find(item => state.selectedRuleIds.has(item)) || id;
       const from = renderedIds.indexOf(anchor);
       const to = renderedIds.indexOf(id);
       if (!additive) state.selectedRuleIds.clear();
       if (from >= 0 && to >= 0) renderedIds.slice(Math.min(from, to), Math.max(from, to) + 1).forEach(item => state.selectedRuleIds.add(item));
-      state.selectionAnchorRuleId = anchor;
-    } else if (additive) {
-      if (state.selectedRuleIds.has(id)) state.selectedRuleIds.delete(id);
+      state.selectionAnchorRuleId = anchor; } else if (additive) { if (state.selectedRuleIds.has(id)) state.selectedRuleIds.delete(id);
       else state.selectedRuleIds.add(id);
-      state.selectionAnchorRuleId = id;
-    } else if (state.selectedRuleIds.size === 1 && state.selectedRuleIds.has(id)) {
-      state.selectedRuleIds.clear();
-      state.selectionAnchorRuleId = '';
-    } else {
+      state.selectionAnchorRuleId = id; } else if (state.selectedRuleIds.size === 1 && state.selectedRuleIds.has(id)) { state.selectedRuleIds.clear();
+      state.selectionAnchorRuleId = ''; } else {
       state.selectedRuleIds.clear();
       state.selectedRuleIds.add(id);
       state.selectionAnchorRuleId = id;
     }
     applyRuleSelectionUI();
   }
-
   function fitRuleAliases() {
     state.root?.querySelectorAll('[data-awe-alias-list]').forEach(list => {
       const aliases = [...list.querySelectorAll('[data-awe-alias-name]')];
@@ -300,9 +181,7 @@
       }
     });
   }
-
   function scheduleRuleAliasFit() { window.requestAnimationFrame(fitRuleAliases); }
-
   function renderRules(resetScroll = false) {
     if (!state.root) return;
     state.visibleRules = filteredRules();
@@ -337,7 +216,6 @@
     applyRuleSelectionUI();
     scheduleRuleAliasFit();
   }
-
   function renderCategoryControls() {
     ensureCategories();
     const ruleCategory = state.root?.querySelector('[data-awe-rule-category]');
@@ -347,7 +225,6 @@
       ruleCategory.value = state.categories.includes(previous) ? previous : 'General';
     }
   }
-
   function renderCategoryList() {
     const list = state.root?.querySelector('[data-awe-category-list]');
     if (!list) return;
@@ -363,7 +240,6 @@
     }).join('');
     if (state.editingCategory) window.requestAnimationFrame(() => { const input = list.querySelector('[data-awe-category-rename-form] input'); input?.focus(); input?.select(); });
   }
-
   function renderAll(resetScroll = false) {
     if (!state.root) return;
     const search = state.root.querySelector('[data-awe-search]');
@@ -374,7 +250,6 @@
     renderRules(resetScroll);
     renderWorkspaceView();
   }
-
   function renderUnmatchedCategoryOptions() {
     if (!state.root) return;
     const select = state.root.querySelector('[data-awe-unmatched-category]');
@@ -383,7 +258,6 @@
     select.innerHTML = state.categories.map(cat => `<option value="${escapeAttribute(cat)}"${cat === currentVal ? ' selected' : ''}>${escapeHTML(cat)}</option>`).join('');
     if (typeof syncCustomSelects === 'function') syncCustomSelects(state.root);
   }
-
   function renderWorkspaceView() {
     if (!state.root) return;
     state.root.dataset.aweView = state.activeView;
@@ -411,7 +285,6 @@
     renderTemporaryCandidates();
     if (typeof syncCustomSelects === 'function') syncCustomSelects(state.root);
   }
-
   function openDialog(name) {
     const dialog = state.root?.querySelector(`[data-awe-dialog="${name}"]`);
     if (!dialog) return;
@@ -421,7 +294,6 @@
       dialog.querySelector('textarea, input, button')?.focus();
     }, 20);
   }
-
   function closeDialog(name) {
     const dialog = state.root?.querySelector(`[data-awe-dialog="${name}"]`);
     if (dialog) dialog.hidden = true;
@@ -434,7 +306,6 @@
     if (name === 'delete-rule') state.pendingDeleteRuleIds = [];
     if (name === 'category-action') state.categoryAction = null;
   }
-
   function syncCategoryFooter() {
     const footer = state.root?.querySelector('[data-awe-category-footer]');
     if (!footer) return;
@@ -447,7 +318,6 @@
       else form.reset();
     }
   }
-
   function beginRuleDialogDrag(event) {
     if (event.button !== 0 || event.target.closest('button, input, select, textarea')) return;
     const handle = event.target.closest('[data-awe-rule-drag-handle]');
@@ -462,7 +332,6 @@
     panel.classList.add('is-dragging');
     event.preventDefault();
   }
-
   function moveRuleDialog(event) {
     const drag = state.dialogDrag;
     if (!drag || drag.pointerId !== event.pointerId) return;
@@ -473,18 +342,15 @@
     drag.panel.style.top = `${top}px`;
     event.preventDefault();
   }
-
   function endRuleDialogDrag(event) {
     if (!state.dialogDrag || (event?.pointerId != null && state.dialogDrag.pointerId !== event.pointerId)) return;
     state.dialogDrag.panel.classList.remove('is-dragging');
     state.dialogDrag = null;
   }
-
   function findRule(id) { return state.rules.find(rule => rule.id === id) || null; }
   function replacementIdentity(value) {
     return String(value || '').normalize('NFKC').trim().replace(/\s+/gu, ' ').toLocaleLowerCase();
   }
-
   function adoptExistingReplacementRule(options = {}) {
     const form = state.root?.querySelector('[data-awe-rule-form]');
     if (!form || form.elements.ruleId.value) return null;
@@ -506,13 +372,11 @@
     if (options.notify !== false) toast(`“${existing.replace}” already exists. Editing its existing rule.`);
     return existing;
   }
-
   function renderDraftAliases() {
     const list = state.root?.querySelector('[data-awe-source-word-list]');
     if (!list) return;
     list.innerHTML = state.draftAliases.map((alias, index) => `<span class="awe-source-word-chip"><span>${escapeHTML(alias)}</span><button type="button" data-awe-action="remove-source-word" data-alias-index="${index}" aria-label="Remove ${escapeAttribute(alias)}">×</button></span>`).join('');
   }
-
   function setSourceWordInputOpen(open, options = {}) {
     const row = state.root?.querySelector('[data-awe-word-input-row]');
     const input = state.root?.querySelector('[data-awe-source-word-input]');
@@ -522,7 +386,6 @@
     if (open && options.focus !== false) window.setTimeout(() => input.focus(), 0);
     if (!open) input.value = '';
   }
-
   function commitSourceWordInput(options = {}) {
     const input = state.root?.querySelector('[data-awe-source-word-input]');
     if (!input) return false;
@@ -535,7 +398,6 @@
     if (options.keepOpen !== true) setSourceWordInputOpen(false);
     return Boolean(alias);
   }
-
   function syncFinderHelp() {
     const select = state.root?.querySelector('[data-awe-finder-mode]');
     if (!select) return;
@@ -546,7 +408,6 @@
     })[select.value];
     select.title = explanation;
   }
-
   function openRuleDialog(rule = null, preferredCategory = 'General') {
     const form = state.root?.querySelector('[data-awe-rule-form]');
     if (!form) return;
@@ -568,7 +429,6 @@
     openDialog('rule');
     window.setTimeout(() => form.elements.replacement.focus(), 20);
   }
-
   function saveRule(event) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -602,7 +462,6 @@
     ensureCategories(); renderAll(false); closeDialog('rule'); persistSoon();
     toast(index >= 0 ? 'Rule updated.' : 'Rule added.');
   }
-
   function requestRuleDeletion(ids) {
     const validIds = [...new Set(ids)].filter(id => findRule(id));
     if (!validIds.length) return;
@@ -615,7 +474,6 @@
       : 'These selected rules will be permanently removed from the replacement dictionary.';
     openDialog('delete-rule');
   }
-
   function confirmRuleDeletion() {
     const ids = new Set(state.pendingDeleteRuleIds);
     if (!ids.size) { closeDialog('delete-rule'); return; }
@@ -630,7 +488,6 @@
     persistSoon();
     toast(deletedCount === 1 ? 'Rule deleted.' : `${deletedCount} rules deleted.`);
   }
-
   function addCategory(event) {
     event.preventDefault();
     const input = event.currentTarget.elements.categoryName;
@@ -646,7 +503,6 @@
     syncCategoryFooter();
     persistSoon();
   }
-
   function renameCategory(category) {
     if (isNamingCategory(category)) {
       toast('Naming categories का नाम Naming panel से बदला जा सकता है।', 'error');
@@ -655,7 +511,6 @@
     state.editingCategory = category;
     renderCategoryList();
   }
-
   function saveCategoryRename(event) {
     event.preventDefault();
     const form = event.target;
@@ -675,14 +530,12 @@
     state.editingCategory = '';
     renderAll(false); renderCategoryList(); persistSoon();
   }
-
   function openCategoryAction(category) {
     if (!state.categories.includes(category)) return;
     state.categoryAction = { category, stage: 'choices' };
     renderCategoryActionDialog();
     openDialog('category-action');
   }
-
   function renderCategoryActionDialog() {
     const operation = state.categoryAction;
     const dialog = state.root?.querySelector('[data-awe-dialog="category-action"]');
@@ -709,12 +562,10 @@
     dialog.querySelector('[data-awe-action="move-category-and-delete"]').hidden = protectedCategory;
     if (typeof syncCustomSelects === 'function') syncCustomSelects(dialog);
   }
-
   function clearCategorySelection(category) {
     selectedRulesInCategory(category).forEach(rule => state.selectedRuleIds.delete(rule.id));
     if (findRule(state.selectionAnchorRuleId)?.category === category) state.selectionAnchorRuleId = '';
   }
-
   function completeCategoryAction(action) {
     const operation = state.categoryAction;
     if (!operation) return;
@@ -744,13 +595,11 @@
     if (movesRules) toast(`${affected.toLocaleString()} rules moved${deletesCategory ? ' and category deleted' : ''}.`);
     else toast(`${affected.toLocaleString()} rules deleted${deletesCategory ? ' with the category' : ''}.`);
   }
-
   function downloadJSON(payload, filename) {
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }));
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = filename; anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-
   function exportCompatibleDictionary() {
     const dictionary = {};
     state.rules.forEach(rule => {
@@ -762,12 +611,10 @@
     downloadJSON(dictionary, `${safeFilename(document.title)}-compatible-dictionary.json`);
     toast('Compatible dictionary exported.');
   }
-
   function exportStudioDictionary() {
     downloadJSON({ format: 'lm-advanced-word-editing', version: 1, exportedAt: new Date().toISOString(), categories: state.categories, rules: state.rules }, `${safeFilename(document.title)}-word-editing-dictionary.json`);
     toast('Full Studio dictionary exported.');
   }
-
   function extractImportedDictionary(payload) {
     const imported = { rules: [], categories: [], format: 'unknown' };
     if (Array.isArray(payload) || Array.isArray(payload?.rules)) {
@@ -797,7 +644,6 @@
     imported.categories = imported.rules.length ? ['Imported'] : [];
     imported.format = 'simple'; return imported;
   }
-
   async function importDictionaryFile(file) {
     try {
       const contents = await file.text();
@@ -822,12 +668,10 @@
       toast(`${imported.rules.length.toLocaleString()} rules and ${aliases.toLocaleString()} aliases imported.`);
     } catch (error) { toast(`Dictionary import failed: ${error.message}`, 'error'); }
   }
-
   function finderSettings(rule) {
     const mode = ['saved', 'raw', 'deep'].includes(rule.finderMode) ? rule.finderMode : 'saved';
     return { mode, foldCase: mode !== 'saved', requiresWholeWord: mode !== 'deep', acceptsTrailingHindiMatras: mode === 'raw' };
   }
-
   function createTrie() { return { children: new Map(), terminals: [] }; }
   function addFinderTerm(root, term, rule, priority, settings) {
     let node = root;
@@ -838,13 +682,11 @@
     }
     node.terminals.push({ rule, priority, length: Array.from(term).length, canAbsorbTrailingHindiMatras: settings.acceptsTrailingHindiMatras && DEVANAGARI.test(term) });
   }
-
   function chooseMatch(first, second) {
     if (!first) return second; if (!second) return first;
     if (first.length !== second.length) return first.length > second.length ? first : second;
     return first.priority <= second.priority ? first : second;
   }
-
   function finderMatch(root, source, start, settings) {
     let node = root; let best = null;
     for (let position = start; position < source.length; position += 1) {
@@ -859,7 +701,6 @@
     }
     return best;
   }
-
   function runReplacementEngine(text, rules = state.rules) {
     const activeRules = rules.map(normaliseRule).filter(Boolean);
     if (!activeRules.length) return { text: String(text ?? ''), count: 0, matches: [] };
@@ -881,7 +722,6 @@
     output.push(source.slice(cursor).join(''));
     return { text: output.join(''), count: matches.length, matches };
   }
-
   function syncEditorQuickAction() {
     const editorWrap = document.getElementById('editor-wrap');
     if (!editorWrap) return;
@@ -899,7 +739,6 @@
     }
     button.hidden = !state.showEditorQuickAction;
   }
-
   function editorDockPanelState() {
     return {
       keepEditorReplacements: state.keepEditorReplacements,
@@ -909,7 +748,6 @@
       temporaryCount: state.temporaryCandidates.length
     };
   }
-
   function syncEditorDockPanel() {
     const panelState = editorDockPanelState();
     const keepButton = document.getElementById('wordEditingKeepBtn');
@@ -934,7 +772,6 @@
         : 'Collection off';
     }
   }
-
   async function setKeepEditorReplacementsFromDock(enabled) {
     await restore();
     state.keepEditorReplacements = Boolean(enabled);
@@ -944,12 +781,10 @@
     persistSoon();
     return editorDockPanelState();
   }
-
   async function toggleKeepEditorReplacementsFromDock() {
     await restore();
     return setKeepEditorReplacementsFromDock(!state.keepEditorReplacements);
   }
-
   async function openEditorControlsFromDock(openTemporary = false) {
     await restore();
     state.activeView = 'editor';
@@ -963,7 +798,6 @@
       openDialog('temporary-candidates');
     });
   }
-
   function applyDictionaryToHTMLString(htmlString) {
     if (!htmlString || typeof htmlString !== 'string') return { html: htmlString, count: 0 };
     const parser = new DOMParser();
@@ -981,16 +815,13 @@
     });
     return { html: doc.body.innerHTML, count };
   }
-
   async function applyDictionaryToAllDrafts(options = {}) {
     await restore();
     if (!state.rules.length) {
       toast('The replacement dictionary is empty.', 'error');
       return { count: 0, changed: false };
     }
-
     let totalReplacements = 0;
-
     // 1. Process in-memory chapterDrafts
     if (typeof chapterDrafts !== 'undefined' && Array.isArray(chapterDrafts)) {
       chapterDrafts.forEach(draft => {
@@ -1003,7 +834,6 @@
         }
       });
     }
-
     // 2. Process in-memory chapters
     if (typeof chapters !== 'undefined' && Array.isArray(chapters)) {
       chapters.forEach(chapter => {
@@ -1016,7 +846,6 @@
         }
       });
     }
-
     // 3. Process in-memory chapterEditDrafts
     if (typeof chapterEditDrafts !== 'undefined' && chapterEditDrafts && typeof chapterEditDrafts === 'object') {
       Object.values(chapterEditDrafts).forEach(draft => {
@@ -1029,7 +858,6 @@
         }
       });
     }
-
     // 4. Process active editor DOM if currently visible
     const editor = document.getElementById('editor');
     if (editor) {
@@ -1059,7 +887,6 @@
         if (typeof captureEditorHistorySnapshot === 'function') captureEditorHistorySnapshot('advanced-word-editing-all-drafts-after', { force: true });
       }
     }
-
     // 5. Persist updated drafts & project manifest to storage & disk
     if (typeof saveToStorage === 'function') saveToStorage(true);
     if (typeof hasActiveStory === 'function' && hasActiveStory() && typeof projectDirectoryHandle !== 'undefined' && projectDirectoryHandle) {
@@ -1072,17 +899,14 @@
         console.error('Failed to write updated draft files:', err);
       }
     }
-
     if (totalReplacements > 0) {
       toast(`${totalReplacements.toLocaleString()} dictionary replacement${totalReplacements === 1 ? '' : 's'} applied across all project drafts.`);
     } else {
       toast('No dictionary replacements were found in any project draft.');
     }
-
     window.dispatchEvent(new CustomEvent('lm:advanced-word-editing-all-drafts-applied', { detail: { count: totalReplacements, source: options.source || 'settings' } }));
     return { count: totalReplacements, changed: totalReplacements > 0 };
   }
-
   async function applyDictionaryToEditor(options = {}) {
     await restore();
     if (typeof canEditActiveDocument === 'function' && !canEditActiveDocument()) {
@@ -1128,7 +952,6 @@
     window.dispatchEvent(new CustomEvent('lm:advanced-word-editing-editor-applied', { detail: { count: replacementCount, source: options.source || 'settings' } }));
     return { count: replacementCount, changed: true };
   }
-
   function namingEntryForReplacementWord(replacement) {
     try {
       if (typeof namingData === 'undefined' || !Array.isArray(namingData?.entries)) return null;
@@ -1141,24 +964,20 @@
       }) || null;
     } catch { return null; }
   }
-
   function namingCategoryTitle(categoryId) {
     try {
       if (typeof namingData === 'undefined') return '';
       return String(namingData?.categories?.find(category => category.id === categoryId)?.title || '').trim();
     } catch { return ''; }
   }
-
   function unmatchedObservationKey(source, replacement) {
     return `${replacementIdentity(replacement)}\u0000${replacementIdentity(source)}`;
   }
-
   function refreshTemporaryCandidates() {
     state.temporaryCandidates = [...state.unmatchedObservations.values()]
       .sort((first, second) => second.count - first.count || second.lastSeen - first.lastSeen);
     renderTemporaryCandidates();
   }
-
   function recordUnmatchedReplacement(source, replacement, count) {
     const safeCount = Math.max(1, Math.floor(Number(count) || 1));
     const key = unmatchedObservationKey(source, replacement);
@@ -1169,7 +988,6 @@
     candidate.count += safeCount;
     candidate.lastSeen = Date.now();
     state.unmatchedObservations.set(key, candidate);
-
     if (state.collectUnmatchedReplacements && candidate.count > state.unmatchedReplacementThreshold) {
       const category = state.unmatchedCategory || 'General';
       let rule = state.rules.find(item => replacementIdentity(item.replace) === replacementIdentity(replacement));
@@ -1195,7 +1013,6 @@
     }
     return candidate;
   }
-
   function renderTemporaryCandidates() {
     if (!state.root) return;
     const count = state.temporaryCandidates.length;
@@ -1216,7 +1033,6 @@
       </div>`).join('');
     syncEditorDockPanel();
   }
-
   function saveTemporaryCandidate(candidateId) {
     const candidate = state.temporaryCandidates.find(item => item.id === candidateId);
     if (!candidate) return;
@@ -1244,7 +1060,6 @@
       toast('This replacement is already present in the main dictionary.');
     }
   }
-
   async function learnFromEditorReplacement({ source, replacement, count = 1 } = {}) {
     await restore();
     if (!count) return { learned: false, reason: 'empty' };
@@ -1292,7 +1107,6 @@
     window.dispatchEvent(new CustomEvent('lm:advanced-word-editing-learned', { detail: { ruleId: rule.id, source: sourceWord, replacement: replacementWord, category } }));
     return { learned: true, rule: { ...rule, aliases: [...rule.aliases] } };
   }
-
   function handleClick(event) {
     const trigger = event.target.closest('[data-awe-action]');
     const exportPanel = state.root?.querySelector('[data-awe-export-panel]');
@@ -1428,7 +1242,6 @@
       toast('Replacement dictionary cleared.');
     }
   }
-
   function bind(root) {
     if (root.dataset.aweBound === 'true') return;
     root.dataset.aweBound = 'true';
@@ -1559,7 +1372,6 @@
       else if (modifier && event.altKey && event.key.toLowerCase() === 'f') { event.preventDefault(); root.querySelector('[data-awe-search]')?.focus(); }
     });
   }
-
   function markup() {
     const searchIcon = iconMarkup('search', 'awe-search-icon', '⌕');
     const clearSearchIcon = iconMarkup('close', 'awe-search-clear-icon', '×');
@@ -1591,7 +1403,6 @@
       <div class="awe-toast-region" data-awe-toast-region aria-live="polite"></div>
     </div>`;
   }
-
   async function mount(container = document) {
     const root = container.querySelector?.('[data-awe-root]');
     if (!root) return;
@@ -1611,7 +1422,6 @@
     setStorageStatus('Dictionary ready', 'success');
     if (importedBeforeRestore + importedAfterRestore > 0) persistSoon();
   }
-
   function getRules() { return state.rules.map(rule => ({ ...rule, aliases: [...rule.aliases] })); }
   function getActiveRules() { return getRules(); }
   function getTemporaryCandidates() { return state.temporaryCandidates.map(candidate => ({ ...candidate })); }
@@ -1624,7 +1434,6 @@
     syncCategoryFooter();
     openDialog('categories');
   }
-
   window.lmAdvancedWordEditing = Object.freeze({
     markup, mount, getRules, getActiveRules, runReplacementEngine, normaliseRule, extractImportedDictionary,
     openImport, openCategories, applyDictionaryToAllDrafts, applyDictionaryToEditor, learnFromEditorReplacement, getTemporaryCandidates,
@@ -1632,7 +1441,6 @@
     toggleKeepEditorReplacementsFromDock, openEditorControlsFromDock,
     loadDictionaryPayload, flush: persist
   });
-
   const initializeEditorIntegration = () => restore().then(() => {
     syncEditorQuickAction();
     syncEditorDockPanel();

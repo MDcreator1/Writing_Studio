@@ -8,14 +8,12 @@
   let newsFontToolsOpen = false;
   let newsToolDockDragState = null;
   let newsAutoScrollSuspended = false;
-
   const statusLabels = {
     draft: 'Draft',
     review: 'In Review',
     approved: 'Approved',
     published: 'Published'
   };
-
   const checklistItems = [
     { id: 'headline', label: 'हेडलाइन फाइनल' },
     { id: 'subhead', label: 'सब-हेड लिखा' },
@@ -26,7 +24,6 @@
     { id: 'editor', label: 'एडिटर की मंज़ूरी' },
     { id: 'legal', label: 'लीगल रिव्यू' }
   ];
-
   const templates = {
     breaking: {
       title: 'Breaking News',
@@ -59,7 +56,6 @@
       body: '[संदर्भ और पृष्ठभूमि]\n\n[मुख्य निष्कर्ष]\n\n[डेटा और आँकड़े]\n\n[तुलनात्मक विश्लेषण]\n\n[भविष्य की संभावनाएँ]'
     }
   };
-
   const icons = {
     news: '<svg viewBox="0 0 24 24"><path d="M19 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10l6 6v8a2 2 0 0 1-2 2z"/><path d="M14 4v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>',
     plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>',
@@ -90,7 +86,6 @@
     trash: '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
     x: '<svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>'
   };
-
   const newsDeskState = {
     articles: [],
     currentArticleId: '',
@@ -100,7 +95,6 @@
     isSaving: false,
     workspaceName: ''
   };
-
   function newsEscape(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({
       '&': '&amp;',
@@ -110,16 +104,13 @@
       "'": '&#39;'
     }[char]));
   }
-
   function icon(name) {
     return icons[name] || '';
   }
-
   function makeId(prefix = 'article') {
     if (window.crypto?.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
     return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
-
   function textToHtml(value) {
     const blocks = String(value || '')
       .replace(/\r\n?/g, '\n')
@@ -128,23 +119,19 @@
       .filter(Boolean);
     return blocks.map(block => `<p>${newsEscape(block).replace(/\n/g, '<br>')}</p>`).join('');
   }
-
   function htmlToPlainText(value) {
     const node = document.createElement('div');
     node.innerHTML = String(value || '');
     return node.textContent || '';
   }
-
   function formatDate(value) {
     const date = value ? new Date(value) : new Date();
     if (Number.isNaN(date.getTime())) return '';
     return date.toLocaleDateString('hi-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   }
-
   function statusLabel(status) {
     return statusLabels[status] || status || 'Draft';
   }
-
   function normalizeNewsSectionName(value = '') {
     const sectionMap = {
       'राष्ट्रीय': 'National',
@@ -158,7 +145,6 @@
     };
     return sectionMap[value] || value || 'National';
   }
-
   function normalizeNewsSourceType(value = '') {
     const sourceTypeMap = {
       'आधिकारिक': 'Official',
@@ -170,14 +156,12 @@
     };
     return sourceTypeMap[value] || value || 'Official';
   }
-
   function defaultChecklist() {
     return checklistItems.reduce((memo, item) => {
       memo[item.id] = false;
       return memo;
     }, {});
   }
-
   function createArticle(overrides = {}) {
     const now = new Date().toISOString();
     return normalizeArticle({
@@ -200,7 +184,6 @@
       ...overrides
     });
   }
-
   function sampleArticles() {
     return [
       createArticle({
@@ -228,7 +211,6 @@
       })
     ];
   }
-
   function normalizeArticle(article = {}) {
     const now = new Date().toISOString();
     const id = String(article.id || makeId('news'));
@@ -263,7 +245,6 @@
       updatedAt: article.updatedAt || article.createdAt || now
     };
   }
-
   function normalizeState(data = {}) {
     const articles = Array.isArray(data.articles) && data.articles.length
       ? data.articles.map(normalizeArticle)
@@ -277,11 +258,9 @@
       wordTarget: Number(data.wordTarget) > 0 ? Number(data.wordTarget) : 800
     };
   }
-
   function currentArticle() {
     return newsDeskState.articles.find(article => article.id === newsDeskState.currentArticleId) || newsDeskState.articles[0];
   }
-
   function storedNewsProjectManifest() {
     if (projectManifest) return projectManifest;
     try {
@@ -290,20 +269,16 @@
       return null;
     }
   }
-
   function isNewsProjectManifest(manifest) {
     return String(manifest?.type || '').trim().toLowerCase() === 'news';
   }
-
   function hasActiveNewsProjectDirectory() {
     return Boolean(projectDirectoryHandle && isNewsProjectManifest(storedNewsProjectManifest()));
   }
-
   function newsStorageKeySlug(value = '') {
     if (typeof uniqueNameKey === 'function') return uniqueNameKey(value);
     return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   }
-
   function newsLocalStorageKey() {
     const manifest = storedNewsProjectManifest();
     if (!isNewsProjectManifest(manifest)) return NEWS_STORAGE_KEY;
@@ -314,13 +289,11 @@
     const projectKey = newsStorageKeySlug(typeFolderName ? `${typeFolderName}/${folderName}` : folderName);
     return projectKey ? `${NEWS_STORAGE_KEY}:${projectKey}` : NEWS_STORAGE_KEY;
   }
-
   function newsSaveTargetLabel(saved = false) {
     if (hasActiveNewsProjectDirectory()) return saved ? 'Saved to project' : 'Project ready';
     if (workspaceDirectoryHandle) return saved ? 'Saved to workspace' : 'Workspace ready';
     return saved ? 'Saved in browser' : 'Browser memory';
   }
-
   function serializedState() {
     const manifest = storedNewsProjectManifest();
     return {
@@ -334,7 +307,6 @@
       articles: newsDeskState.articles
     };
   }
-
   function readLocalNewsState() {
     try {
       return normalizeState(JSON.parse(localStorage.getItem(newsLocalStorageKey()) || 'null') || {});
@@ -342,23 +314,19 @@
       return normalizeState();
     }
   }
-
   function writeLocalNewsState() {
     localStorage.setItem(newsLocalStorageKey(), JSON.stringify(serializedState()));
   }
-
   async function newsFileText(fileHandle) {
     if (typeof readFileText === 'function') return readFileText(fileHandle);
     return (await fileHandle.getFile()).text();
   }
-
   async function writeNewsFileText(fileHandle, value) {
     if (typeof writeFileText === 'function') return writeFileText(fileHandle, value);
     const writable = await fileHandle.createWritable();
     await writable.write(value);
     await writable.close();
   }
-
   async function newsWorkspaceFileHandle(options = {}) {
     if (hasActiveNewsProjectDirectory()) {
       return projectDirectoryHandle.getFileHandle(NEWS_WORKSPACE_FILE, { create: Boolean(options.create) });
@@ -367,7 +335,6 @@
     const directory = await workspaceDirectoryHandle.getDirectoryHandle(NEWS_WORKSPACE_DIR, { create: Boolean(options.create) });
     return directory.getFileHandle(NEWS_WORKSPACE_FILE, { create: Boolean(options.create) });
   }
-
   async function readWorkspaceNewsState() {
     if (!hasActiveNewsProjectDirectory() && !workspaceDirectoryHandle) return null;
     try {
@@ -378,14 +345,12 @@
       return null;
     }
   }
-
   async function writeWorkspaceNewsState() {
     if (!hasActiveNewsProjectDirectory() && !workspaceDirectoryHandle) return false;
     const handle = await newsWorkspaceFileHandle({ create: true });
     await writeNewsFileText(handle, JSON.stringify(serializedState(), null, 2));
     return true;
   }
-
   function applyNewsDeskState(state) {
     if (!state) return false;
     newsDeskState.articles = state.articles;
@@ -393,7 +358,6 @@
     newsDeskState.wordTarget = state.wordTarget;
     return true;
   }
-
   async function readNewsProjectManifestFromHandle(handle) {
     if (!handle) return null;
     try {
@@ -407,7 +371,6 @@
       return null;
     }
   }
-
   async function loadNewsProjectHandle(handle, options = {}) {
     if (!handle) return false;
     const manifest = await readNewsProjectManifestFromHandle(handle);
@@ -431,7 +394,6 @@
     }
     return true;
   }
-
   function setSaveState(state, label = '') {
     const dot = document.getElementById('newsSaveDot');
     const status = document.getElementById('newsSaveStatus');
@@ -442,7 +404,6 @@
     }
     if (status) status.textContent = label || (state === 'dirty' ? 'Saving...' : state === 'saved' ? 'Saved' : 'Local memory');
   }
-
   function showNewsToast(message) {
     const toast = document.getElementById('newsdeskToast');
     if (!toast) return;
@@ -451,19 +412,16 @@
     toast.classList.add('is-visible');
     newsDeskState.toastTimer = setTimeout(() => toast.classList.remove('is-visible'), 2200);
   }
-
   function showNewsWorkspaceNotice(message) {
     setSaveState('saved', 'Browser memory');
     showNewsToast(message);
   }
-
   function applyNewsTheme() {
     const mode = window.getStoredThemeMode?.() || (localStorage.getItem('lm_dark') === 'true' ? 'dark' : 'light');
     window.setStoredThemeMode?.(mode);
     window.applyLekhakThemeClasses?.(mode);
     window.syncThemePanelState?.();
   }
-
   function closeNewsdeskSidebarMenu() {
     const panel = document.getElementById('newsdeskSidebarMenuPanel');
     const button = document.getElementById('newsdeskSidebarMenuBtn');
@@ -473,7 +431,6 @@
       button.setAttribute('aria-expanded', 'false');
     }
   }
-
   function toggleNewsdeskSidebarMenu(event) {
     event?.preventDefault?.();
     event?.stopPropagation?.();
@@ -485,7 +442,6 @@
     button.classList.toggle('is-open', nextOpen);
     button.setAttribute('aria-expanded', String(nextOpen));
   }
-
   function renderSidebar() {
     const sidebar = document.getElementById('newsdeskSidebar');
     if (!sidebar) return;
@@ -534,7 +490,6 @@
     `;
     renderArticleList();
   }
-
   function newsWorkspaceLabel() {
     if (hasActiveNewsProjectDirectory()) {
       const manifest = storedNewsProjectManifest();
@@ -543,7 +498,6 @@
     if (newsDeskState.workspaceName) return `Workspace sync: ${newsDeskState.workspaceName}`;
     return 'Browser autosave active. Folder चुनने पर local file sync भी होगा।';
   }
-
   function templateIcon(key) {
     return {
       breaking: icon('bolt'),
@@ -553,7 +507,6 @@
       analysis: icon('chart')
     }[key] || icon('file');
   }
-
   function renderArticleList() {
     const list = document.getElementById('newsArticleList');
     if (!list) return;
@@ -571,7 +524,6 @@
       </button>
     `).join('');
   }
-
   function renderToolbar() {
     const toolbar = document.getElementById('newsdeskToolbar');
     if (!toolbar) return;
@@ -635,7 +587,6 @@
       </div>
     `;
   }
-
   function renderNewsFloatingTools() {
     const dock = document.getElementById('newsdeskFloatingTools');
     if (!dock) return;
@@ -694,11 +645,9 @@
     setupNewsToolDockDrag();
     restoreNewsToolDockPosition();
   }
-
   function clampNewsNumber(value, min, max) {
     return Math.min(Math.max(value, min), max);
   }
-
   function setNewsToolDock(open) {
     newsToolDockOpen = Boolean(open);
     const dock = document.getElementById('newsdeskFloatingTools');
@@ -710,11 +659,9 @@
     if (toggle) toggle.setAttribute('aria-expanded', String(newsToolDockOpen));
     if (!newsToolDockOpen) setNewsFontTools(false);
   }
-
   function toggleNewsToolDock() {
     setNewsToolDock(!newsToolDockOpen);
   }
-
   function setNewsFontTools(open) {
     newsFontToolsOpen = Boolean(open);
     const panel = document.getElementById('newsFontToolsSection');
@@ -722,18 +669,15 @@
     if (panel) panel.hidden = !newsFontToolsOpen;
     if (toggle) toggle.setAttribute('aria-expanded', String(newsFontToolsOpen));
   }
-
   function toggleNewsFontTools() {
     setNewsFontTools(!newsFontToolsOpen);
   }
-
   function focusNewsHeadline() {
     const headline = document.getElementById('newsHeadline');
     if (!headline) return;
     headline.focus();
     headline.setSelectionRange?.(headline.value.length, headline.value.length);
   }
-
   function syncNewsToolbarSummary(article = currentArticle()) {
     if (!article) return;
     const headline = article.headline?.trim() || 'Untitled article';
@@ -746,7 +690,6 @@
     if (section) section.textContent = normalizeNewsSectionName(article.section || 'National');
     if (updated) updated.textContent = formatDate(article.updatedAt || article.createdAt);
   }
-
   function newsToolDockBounds() {
     const shell = document.querySelector('.newsdesk-editor-shell');
     const dock = document.getElementById('newsdeskFloatingTools');
@@ -766,7 +709,6 @@
       maxTop: Math.max(topPadding, shell.clientHeight - dragHeight - padding)
     };
   }
-
   function setNewsToolDockPosition(left, top, persist = false) {
     const bounds = newsToolDockBounds();
     if (!bounds) return;
@@ -785,7 +727,6 @@
       }));
     }
   }
-
   function restoreNewsToolDockPosition() {
     try {
       const saved = JSON.parse(localStorage.getItem(NEWS_TOOL_DOCK_POSITION_KEY) || 'null');
@@ -801,7 +742,6 @@
       localStorage.removeItem(NEWS_TOOL_DOCK_POSITION_KEY);
     }
   }
-
   function setupNewsToolDockDrag() {
     const dock = document.getElementById('newsdeskFloatingTools');
     const handle = document.getElementById('newsToolDockDragHandle');
@@ -823,7 +763,6 @@
       event.preventDefault();
     };
   }
-
   function handleNewsToolDockPointerMove(event) {
     if (!newsToolDockDragState || newsToolDockDragState.pointerId !== event.pointerId) return;
     const deltaX = event.clientX - newsToolDockDragState.startX;
@@ -833,7 +772,6 @@
     document.getElementById('newsdeskFloatingTools')?.classList.add('is-dragging');
     setNewsToolDockPosition(newsToolDockDragState.startLeft + deltaX, newsToolDockDragState.startTop + deltaY, false);
   }
-
   function handleNewsToolDockPointerUp(event) {
     if (!newsToolDockDragState || newsToolDockDragState.pointerId !== event.pointerId) return;
     const dock = document.getElementById('newsdeskFloatingTools');
@@ -846,7 +784,6 @@
     dock?.classList.remove('is-dragging');
     newsToolDockDragState = null;
   }
-
   function renderPaper() {
     const paper = document.getElementById('newsdeskPaper');
     const article = currentArticle();
@@ -874,7 +811,6 @@
     loadArticleIntoEditor(article);
     bindEditorInputEvents(paper);
   }
-
   function renderInspector() {
     const inspector = document.getElementById('newsdeskInspector');
     if (!inspector) return;
@@ -902,7 +838,6 @@
           <label class="newsdesk-field"><span class="newsdesk-field-label">Publish Time</span><input class="newsdesk-control" id="newsPubTime" type="datetime-local"></label>
           <button class="newsdesk-primary-btn" type="button" onclick="publishNewsArticle()">${icon('send')} Publish</button>
         </div>
-
         <div class="newsdesk-card">
           <div class="newsdesk-card-title">${icon('source')} सोर्सेज़</div>
           <div class="newsdesk-source-list" id="newsSources"></div>
@@ -914,18 +849,15 @@
             </select>
           </label>
         </div>
-
         <div class="newsdesk-card">
           <div class="newsdesk-card-title">${icon('tag')} टैग्स / कीवर्ड्स</div>
           <div class="newsdesk-tags" id="newsTags"></div>
           <label class="newsdesk-field"><span class="newsdesk-field-label">Tag</span><input class="newsdesk-control" id="newsTagInput" type="text" placeholder="टैग लिखें + Enter"></label>
         </div>
-
         <div class="newsdesk-card">
           <div class="newsdesk-card-title">${icon('chart')} आर्टिकल स्टैट्स</div>
           <div id="newsStats"></div>
         </div>
-
         <div class="newsdesk-card">
           <div class="newsdesk-card-title">${icon('robot')} AI असिस्टेंट</div>
           <div class="newsdesk-ai-grid">
@@ -935,12 +867,10 @@
           </div>
           <div class="newsdesk-ai-output" id="newsAiOutput">AI panel अभी prompt तैयार करता है। Provider bridge अगले चरण में जोड़ा जा सकता है।</div>
         </div>
-
         <div class="newsdesk-card">
           <div class="newsdesk-card-title">${icon('checklist')} पब्लिशिंग चेकलिस्ट</div>
           <div class="newsdesk-check-list" id="newsChecklist"></div>
         </div>
-
         <div class="newsdesk-card">
           <div class="newsdesk-card-title">${icon('notes')} एडिटोरियल नोट्स</div>
           <textarea class="newsdesk-notes" id="newsNotes" placeholder="एडिटर के लिए नोट्स..."></textarea>
@@ -949,7 +879,6 @@
     `;
     bindInspectorEvents();
   }
-
   function loadArticleIntoEditor(article) {
     document.getElementById('newsHeadline').value = article.headline;
     document.getElementById('newsSubhead').value = article.subhead;
@@ -959,7 +888,6 @@
     syncInspectorValues(article);
     updateNewsStats();
   }
-
   function renderMetaStrip(article = currentArticle()) {
     const strip = document.getElementById('newsMetaStrip');
     if (!strip || !article) return;
@@ -970,7 +898,6 @@
       <span class="newsdesk-meta-pill">${icon('clock')} ${newsEscape(statusLabel(article.status))}</span>
     `;
   }
-
   function renderNewsSections(sections = []) {
     const wrap = document.getElementById('newsSections');
     if (!wrap) return;
@@ -985,7 +912,6 @@
     `).join('');
     bindEditorInputEvents(wrap);
   }
-
   function syncInspectorValues(article = currentArticle()) {
     if (!article) return;
     const setValue = (id, value) => {
@@ -1002,7 +928,6 @@
     renderTags();
     renderChecklist();
   }
-
   function bindEditorInputEvents(root) {
     root.querySelectorAll('textarea, input, [contenteditable="true"]').forEach(element => {
       element.addEventListener('input', () => {
@@ -1016,24 +941,20 @@
         updateNewsStats();
         scheduleNewsSave();
       });
-
       element.addEventListener('paste', () => {
         // पेस्ट करते ही स्क्रॉलिंग को अस्थायी रूप से रोकें
         newsAutoScrollSuspended = true;
       });
-
       element.addEventListener('mousedown', () => {
         // कहीं भी क्लिक करने पर ऑटो-स्क्रॉल फिर से चालू करें
         newsAutoScrollSuspended = false;
       });
-
       element.addEventListener('keydown', () => {
         // टाइपिंग शुरू करने या नेविगेशन कीज़ (Up/Down/Left/Right) दबाने पर स्क्रॉल चालू करें
         newsAutoScrollSuspended = false;
       });
     });
   }
-
   function bindInspectorEvents() {
     ['newsSectionName', 'newsAuthor', 'newsBeat', 'newsPubTime', 'newsNotes'].forEach(id => {
       document.getElementById(id)?.addEventListener('input', () => {
@@ -1055,11 +976,9 @@
       }
     });
   }
-
   function valueOf(id) {
     return document.getElementById(id)?.value || '';
   }
-
   function captureCurrentArticle(options = {}) {
     const article = currentArticle();
     if (!article || !document.getElementById('newsHeadline')) return;
@@ -1079,7 +998,6 @@
     article.notes = valueOf('newsNotes');
     if (options.touch !== false) article.updatedAt = new Date().toISOString();
   }
-
   function scheduleNewsSave() {
     clearTimeout(newsDeskState.saveTimer);
     captureCurrentArticle({ touch: false });
@@ -1087,7 +1005,6 @@
     setSaveState('dirty', 'Saving...');
     newsDeskState.saveTimer = setTimeout(() => saveNewsArticle(false), NEWS_AUTOSAVE_DELAY);
   }
-
   async function saveNewsArticle(showToast = false) {
     if (newsDeskState.isSaving) return;
     newsDeskState.isSaving = true;
@@ -1109,7 +1026,6 @@
       updateNewsStats();
     }
   }
-
   async function selectNewsWorkspaceFolder() {
     if (!('showDirectoryPicker' in window) || !('indexedDB' in window)) {
       showNewsWorkspaceNotice('यह browser local folder sync support नहीं करता। Browser autosave active है।');
@@ -1158,7 +1074,6 @@
       hideAppLoader?.();
     }
   }
-
   async function restoreNewsWorkspace() {
     try {
       if (typeof readWorkspaceHandle === 'function') {
@@ -1171,7 +1086,6 @@
           localStorage.setItem(WORKSPACE_FOLDER_KEY, workspaceHandle.name || '');
         }
       }
-
       if (typeof readProjectHandle === 'function') {
         const projectHandle = await readProjectHandle();
         if (
@@ -1186,7 +1100,6 @@
           }
         }
       }
-
       if (!workspaceDirectoryHandle) return;
       newsDeskState.workspaceName = workspaceDirectoryHandle.name || '';
       localStorage.setItem(WORKSPACE_FOLDER_KEY, workspaceDirectoryHandle.name || '');
@@ -1201,7 +1114,6 @@
       console.warn('NewsDesk workspace restore failed:', error);
     }
   }
-
   function selectNewsArticle(id) {
     captureCurrentArticle();
     newsDeskState.currentArticleId = id;
@@ -1212,7 +1124,6 @@
     syncInspectorValues();
     setSaveState('saved', newsSaveTargetLabel(false));
   }
-
   function newNewsArticle() {
     captureCurrentArticle();
     const article = createArticle({
@@ -1227,7 +1138,6 @@
     scheduleNewsSave();
     document.getElementById('newsHeadline')?.focus();
   }
-
   function loadNewsTemplate(key) {
     const template = templates[key];
     const article = currentArticle();
@@ -1244,7 +1154,6 @@
     scheduleNewsSave();
     showNewsToast(`${template.title} template loaded`);
   }
-
   function addNewsSection() {
     const article = currentArticle();
     if (!article) return;
@@ -1258,7 +1167,6 @@
     scheduleNewsSave();
     document.querySelector('.newsdesk-section-card:last-child .newsdesk-section-body')?.focus();
   }
-
   function removeNewsSection(id) {
     const article = currentArticle();
     if (!article) return;
@@ -1267,7 +1175,6 @@
     renderNewsSections(article.sections);
     scheduleNewsSave();
   }
-
   function renderSources() {
     const article = currentArticle();
     const list = document.getElementById('newsSources');
@@ -1283,7 +1190,6 @@
       </div>
     `).join('') : '<div class="newsdesk-source-text">अभी कोई source नहीं जोड़ा गया।</div>';
   }
-
   function addNewsSource() {
     const article = currentArticle();
     const input = document.getElementById('newsSourceInput');
@@ -1296,7 +1202,6 @@
     updateNewsStats();
     scheduleNewsSave();
   }
-
   function removeNewsSource(id) {
     const article = currentArticle();
     if (!article) return;
@@ -1305,7 +1210,6 @@
     updateNewsStats();
     scheduleNewsSave();
   }
-
   function renderTags() {
     const article = currentArticle();
     const wrap = document.getElementById('newsTags');
@@ -1316,7 +1220,6 @@
       </span>
     `).join('');
   }
-
   function addNewsTag() {
     const article = currentArticle();
     const input = document.getElementById('newsTagInput');
@@ -1327,7 +1230,6 @@
     renderTags();
     scheduleNewsSave();
   }
-
   function removeNewsTag(tag) {
     const article = currentArticle();
     if (!article) return;
@@ -1335,7 +1237,6 @@
     renderTags();
     scheduleNewsSave();
   }
-
   function renderChecklist() {
     const article = currentArticle();
     const wrap = document.getElementById('newsChecklist');
@@ -1350,7 +1251,6 @@
       `;
     }).join('');
   }
-
   function toggleNewsChecklist(input) {
     const article = currentArticle();
     if (!article) return;
@@ -1359,7 +1259,6 @@
     input.closest('.newsdesk-check-row')?.classList.toggle('is-done', input.checked);
     scheduleNewsSave();
   }
-
   function updateNewsStatus(status) {
     const article = currentArticle();
     if (!article) return;
@@ -1369,20 +1268,17 @@
     renderMetaStrip(article);
     scheduleNewsSave();
   }
-
   function publishNewsArticle() {
     const status = document.getElementById('newsStatus');
     if (status) status.value = 'published';
     updateNewsStatus('published');
     showNewsToast('✓ आर्टिकल प्रकाशित status में मार्क हुआ');
   }
-
   function articlePlainText(article = currentArticle()) {
     if (!article) return '';
     const sectionText = article.sections.map(section => `${section.title} ${htmlToPlainText(section.bodyHTML)}`).join(' ');
     return [article.headline, article.subhead, htmlToPlainText(article.bodyHTML), sectionText].join(' ').trim();
   }
-
   function updateNewsStats() {
     captureCurrentArticle({ touch: false });
     const article = currentArticle();
@@ -1413,26 +1309,22 @@
     if (wordCount) wordCount.textContent = `${words} शब्द`;
     if (readTime) readTime.textContent = `${mins} मिनट`;
   }
-
   function formatNews(command) {
     document.execCommand(command, false, null);
     updateNewsStats();
     scheduleNewsSave();
   }
-
   function formatNewsBlockquote() {
     document.execCommand('formatBlock', false, 'blockquote');
     updateNewsStats();
     scheduleNewsSave();
   }
-
   function insertNewsLink() {
     const url = prompt('URL दर्ज करें (https://...)');
     if (!url) return;
     document.execCommand('createLink', false, url);
     scheduleNewsSave();
   }
-
   function applyNewsFontFamily(value) {
     const editor = document.getElementById('newsBodyEditor');
     const fonts = {
@@ -1442,17 +1334,14 @@
     };
     if (editor) editor.style.fontFamily = fonts[value] || fonts.serif;
   }
-
   function applyNewsFontSize(value) {
     const editor = document.getElementById('newsBodyEditor');
     if (editor) editor.style.fontSize = value;
   }
-
   function toggleNewsFocus() {
     document.body.classList.toggle('newsdesk-focus-mode');
     document.getElementById('newsFocusBtn')?.classList.toggle('is-active', document.body.classList.contains('newsdesk-focus-mode'));
   }
-
   function newsAiAction(type) {
     captureCurrentArticle({ touch: false });
     const article = currentArticle();
@@ -1465,7 +1354,6 @@
     if (output) output.textContent = prompts[type] || 'AI prompt तैयार नहीं हो पाया।';
     showNewsToast('AI prompt तैयार है');
   }
-
   function showNewsStyleGuide() {
     showNewsToast('Style guide prompt inspector में लिखा गया');
     const output = document.getElementById('newsAiOutput');
@@ -1473,7 +1361,6 @@
       output.textContent = 'स्टाइल गाइड: संख्याएँ स्पष्ट रखें, तारीख absolute लिखें, quotes attribution के साथ दें, abbreviations पहली बार पूरे लिखें, headline में साफ sentence case रखें।';
     }
   }
-
   function showNewsSeoTips() {
     showNewsToast('SEO tips inspector में लिखे गए');
     const output = document.getElementById('newsAiOutput');
@@ -1481,7 +1368,6 @@
       output.textContent = 'SEO tips: मुख्य keyword headline के पहले हिस्से में रखें, 3-5 tags चुनें, meta summary अलग रखें, source links और image alt text final pass में verify करें।';
     }
   }
-
   function renderAll() {
     renderSidebar();
     renderToolbar();
@@ -1491,7 +1377,6 @@
     window.initCustomSelects?.();
     setSaveState('saved', newsSaveTargetLabel(false));
   }
-
   async function initNewsDesk() {
     applyNewsTheme();
     const stored = readLocalNewsState();
@@ -1514,7 +1399,6 @@
     document.addEventListener('pointermove', handleNewsToolDockPointerMove);
     document.addEventListener('pointerup', handleNewsToolDockPointerUp);
   }
-
   window.saveNewsArticle = saveNewsArticle;
   window.restoreNewsWorkspace = restoreNewsWorkspace;
   window.toggleNewsdeskSidebarMenu = toggleNewsdeskSidebarMenu;
@@ -1544,6 +1428,5 @@
   window.newsAiAction = newsAiAction;
   window.showNewsStyleGuide = showNewsStyleGuide;
   window.showNewsSeoTips = showNewsSeoTips;
-
   document.addEventListener('DOMContentLoaded', initNewsDesk);
 })();

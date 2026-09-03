@@ -744,6 +744,17 @@
       return false;
     }
 
+    // The keydown path performs the logical deletion itself and prevents the
+    // browser's later beforeinput event. Give the editor journal the same
+    // pre-mutation signal that a native deletion would have received.
+    if (event.type === 'keydown') {
+      options.onBeforeLogicalEdit?.({
+        editor,
+        inputType: direction === 'backward' ? 'deleteContentBackward' : 'deleteContentForward',
+        unit
+      });
+    }
+
     event.preventDefault();
     event.stopImmediatePropagation?.();
     event.__lmHindiLogicalDelete = true;
