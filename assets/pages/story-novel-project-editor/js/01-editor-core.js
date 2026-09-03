@@ -550,6 +550,9 @@ let editorHistoryTimer = null;
 let editorHistoryMemoryStore = { version: 1, documents: {} };
 let editorHistoryPersistentCleanupDone = false;
 let isApplyingEditorHistorySnapshot = false;
+let editorHistoryInputContext = null;
+let editorHistoryComposition = null;
+let editorHistoryTransactionSequence = 0;
 
 function emptyEditorHistoryStore() {
   return { version: 1, documents: {} };
@@ -613,15 +616,274 @@ function activeEditorHistoryDocumentKey() {
   if (!hasActiveStory()) return '';
   const projectKey = activeEditorHistoryProjectKey();
   if (isTrashDraftActive()) {
-    const trashKey = chapterTrashDrafts[curTrashDraft]?.contentPath || `trash-${curTrashDraft}`;
+    const trash = chapterTrashDrafts[curTrashDraft] || {};
+    const trashKey = trash.id || trash.createdAt || trash.originalId || `trash-${curTrashDraft}`;
     return `${projectKey}::trash::${trashKey}`;
   }
   if (isDraftActive()) {
     const draft = chapterDrafts[curDraft] || {};
-    return `${projectKey}::draft::${draft.contentPath || draft.id || curDraft}`;
+    return `${projectKey}::draft::${draft.id || draft.createdAt || curDraft}`;
   }
   const chapter = chapters[curChap] || {};
-  return `${projectKey}::chapter::${chapter.contentPath || chapter.id || chapterStorageKey(curChap)}`;
+  return `${projectKey}::chapter::${chapter.id || chapter.createdAt || chapterStorageKey(curChap)}`;
+}
+
+function editorHistorySelectionSignature(snapshot) {
+  if (!snapshot) return '';
+  const startIdentity = snapshot.start?.paragraph ?? snapshot.startBlock?.path ?? snapshot.startTextOffset;
+  const startOffset = snapshot.start?.offsetInParagraph ?? snapshot.startBlock?.offset ?? snapshot.startTextOffset;
+  const endIdentity = snapshot.end?.paragraph ?? snapshot.endBlock?.path ?? snapshot.endTextOffset;
+  const endOffset = snapshot.end?.offsetInParagraph ?? snapshot.endBlock?.offset ?? snapshot.endTextOffset;
+  return JSON.stringify([
+    startIdentity,
+    startOffset,
+    endIdentity,
+    endOffset,
+    Boolean(snapshot.collapsed)
+  ]);
+}
+
+function editorHistoryInputFamily(inputType = '') {
+  if (inputType === 'historyUndo' || inputType === 'historyRedo') return 'native-history';
+  if (inputType === 'deleteContentBackward') return 'backspace';
+  if (inputType === 'deleteContentForward') return 'forward-delete';
+  if (inputType.startsWith('delete')) return 'selection-delete';
+  if (inputType === 'insertFromPaste' || inputType === 'insertFromDrop') return 'paste';
+  if (inputType === 'insertReplacementText') return 'replacement';
+  if (inputType.startsWith('format')) return 'formatting';
+  if (inputType === 'insertParagraph' || inputType === 'insertLineBreak') return 'paragraph-boundary';
+  if (inputType === 'insertCompositionText' || inputType === 'deleteCompositionText') return 'composition';
+  if (inputType === 'insertText') return 'typing';
+  return inputType || 'input';
+}
+
+function editorHistoryShouldMerge(previousOperation, nextOperation, elapsed, sameCaret, compositionContinues = false) {
+  if (!previousOperation || !nextOperation || !sameCaret) return false;
+  if (compositionContinues) return true;
+  if (elapsed > EDITOR_HISTORY_INPUT_GROUP_MS) return false;
+  if (nextOperation.type === 'typing' && previousOperation.type === 'typing') {
+    return !previousOperation.endsWordBoundary;
+  }
+  if (nextOperation.type === 'backspace' && previousOperation.type === 'typing') {
+    return !nextOperation.crossesWhitespace;
+  }
+  if (nextOperation.type === 'backspace' && previousOperation.type === 'backspace') {
+    return !nextOperation.crossesWhitespace && !previousOperation.crossesWhitespace;
+  }
+  return false;
+}
+
+function editorHistoryContentPatch(beforeHTML = '', afterHTML = '') {
+  const before = String(beforeHTML || '');
+  const after = String(afterHTML || '');
+  let start = 0;
+  const sharedLimit = Math.min(before.length, after.length);
+  while (start < sharedLimit && before[start] === after[start]) start += 1;
+  let beforeEnd = before.length;
+  let afterEnd = after.length;
+  while (beforeEnd > start && afterEnd > start && before[beforeEnd - 1] === after[afterEnd - 1]) {
+    beforeEnd -= 1;
+    afterEnd -= 1;
+  }
+  return {
+    range: { start, end: beforeEnd },
+    removedContent: before.slice(start, beforeEnd),
+    insertedContent: after.slice(start, afterEnd)
+  };
+}
+
+function editorHistoryInsertedWordSegments(value = '') {
+  const source = String(value || '');
+  const segments = [];
+  let offset = 0;
+  while (offset < source.length) {
+    const start = offset;
+    while (offset < source.length && /\s/u.test(source[offset])) offset += 1;
+    while (offset < source.length && !/\s/u.test(source[offset])) offset += 1;
+    if (offset > start) segments.push(source.slice(start, offset));
+  }
+  return segments;
+}
+
+function editorHistoryPlainTextInsertionPlan(beforeHTML = '', afterHTML = '') {
+  const beforeText = editorHTMLToText(beforeHTML);
+  const afterText = editorHTMLToText(afterHTML);
+  let start = 0;
+  const sharedLimit = Math.min(beforeText.length, afterText.length);
+  while (start < sharedLimit && beforeText[start] === afterText[start]) start += 1;
+  let beforeEnd = beforeText.length;
+  let afterEnd = afterText.length;
+  while (beforeEnd > start && afterEnd > start && beforeText[beforeEnd - 1] === afterText[afterEnd - 1]) {
+    beforeEnd -= 1;
+    afterEnd -= 1;
+  }
+  if (beforeEnd !== start) return null;
+  const insertedText = afterText.slice(start, afterEnd);
+  const segments = editorHistoryInsertedWordSegments(insertedText);
+  if (segments.filter(segment => segment.trim()).length < 2) return null;
+  return { beforeText, afterText, start, afterEnd, segments };
+}
+
+function editorHistorySelectionAtTextOffset(offset = 0) {
+  const safeOffset = Math.max(0, Number(offset) || 0);
+  return {
+    startPath: null,
+    startOffset: 0,
+    endPath: null,
+    endOffset: 0,
+    startTextOffset: safeOffset,
+    endTextOffset: safeOffset,
+    startBlock: null,
+    endBlock: null,
+    collapsed: true,
+    direction: 'forward'
+  };
+}
+
+function appendEditorHistoryPhraseSnapshots(currentSnapshot, finalSnapshot) {
+  const editor = document.getElementById('editor');
+  if (!editor || !isEditorPlainTextMode(editor)) return false;
+  if (!currentSnapshot || finalSnapshot?.operation?.type !== 'typing') return false;
+  const plan = editorHistoryPlainTextInsertionPlan(currentSnapshot.html, finalSnapshot.html);
+  if (!plan) return false;
+
+  let accumulated = '';
+  let previousSnapshot = currentSnapshot;
+  let previousSelection = finalSnapshot.operation.beforeSelection || currentSnapshot.selection;
+  plan.segments.forEach((segment, index) => {
+    accumulated += segment;
+    const isFinal = index === plan.segments.length - 1;
+    const nextText = plan.beforeText.slice(0, plan.start) + accumulated + plan.afterText.slice(plan.afterEnd);
+    const nextSelection = isFinal
+      ? finalSnapshot.selection
+      : editorHistorySelectionAtTextOffset(plan.start + accumulated.length);
+    const nextSnapshot = isFinal
+      ? finalSnapshot
+      : {
+          html: textToEditorHTML(nextText),
+          selection: nextSelection,
+          reason: 'input',
+          timestamp: finalSnapshot.timestamp,
+          operation: null
+        };
+    nextSnapshot.operation = {
+      ...finalSnapshot.operation,
+      beforeSelection: previousSelection,
+      afterSelection: nextSelection,
+      transactionId: `${finalSnapshot.operation.transactionId}:word-${index + 1}`,
+      endsWordBoundary: true,
+      ...editorHistoryContentPatch(previousSnapshot.html, nextSnapshot.html)
+    };
+    editorHistoryStack.push(nextSnapshot);
+    previousSnapshot = nextSnapshot;
+    previousSelection = nextSelection;
+  });
+  if (editorHistoryStack.length > EDITOR_HISTORY_LIMIT) {
+    editorHistoryStack = editorHistoryStack.slice(-EDITOR_HISTORY_LIMIT);
+  }
+  editorHistoryIndex = editorHistoryStack.length - 1;
+  persistEditorHistory();
+  return true;
+}
+
+function editorHistoryBeforeInput(event) {
+  if (isApplyingEditorHistorySnapshot) return;
+  if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (event.inputType === 'historyRedo') redoEditorHistory();
+    else undoEditorHistory();
+    return;
+  }
+  const editor = document.getElementById('editor');
+  const selection = activeVirtualEditorDocument
+    ? captureVirtualEditorGlobalSelection(editor, activeVirtualEditorDocument)
+    : currentEditorHistorySelection(editor);
+  const isRangeDeletion = (event.inputType === 'deleteContentBackward' || event.inputType === 'deleteContentForward') &&
+    selection && !selection.collapsed;
+  let family = isRangeDeletion ? 'selection-delete' : editorHistoryInputFamily(event.inputType);
+  const isTypingWhitespace = family === 'typing' && /\s/u.test(String(event.data || ''));
+  let crossesWhitespace = false;
+  if (family === 'backspace' && selection?.collapsed) {
+    const source = activeVirtualEditorDocument
+      ? editorHTMLToText(activeEditorHTMLBuffer || activeVirtualEditorDocument.html || '')
+      : editor.textContent || '';
+    const offset = activeVirtualEditorDocument
+      ? virtualEditorParagraphStartOffset(source, selection.start?.paragraph || 0) + (selection.start?.offsetInParagraph || 0)
+      : selection.startTextOffset;
+    crossesWhitespace = Number.isFinite(offset) && offset > 0 && /\s/u.test(source.slice(offset - 1, offset));
+  }
+  const pending = editorHistoryInputContext;
+  const selectionSignature = editorHistorySelectionSignature(selection);
+  const sameComposition = Boolean(
+    editorHistoryComposition &&
+    pending?.transactionId &&
+    pending.transactionId === editorHistoryComposition.id
+  );
+  const pendingContinues = Boolean(
+    editorHistoryTimer &&
+    pending &&
+    (
+      sameComposition ||
+      (
+        pending.afterSelectionSignature &&
+        pending.afterSelectionSignature === selectionSignature &&
+        !isTypingWhitespace &&
+        !pending.endsWordBoundary &&
+        !pending.crossesWhitespace &&
+        !crossesWhitespace &&
+        (
+          (family === 'typing' && pending.family === 'typing') ||
+          (family === 'backspace' && ['typing', 'backspace'].includes(pending.family))
+        )
+      )
+    )
+  );
+  if (editorHistoryTimer && pending && !pendingContinues) {
+    if (isTypingWhitespace && pending.family === 'typing') pending.endsWordBoundary = true;
+    clearTimeout(editorHistoryTimer);
+    editorHistoryTimer = null;
+    captureEditorHistorySnapshot('input', { context: pending });
+  }
+  editorHistoryInputContext = {
+    inputType: event.inputType || '',
+    family,
+    data: event.data ?? '',
+    crossesWhitespace,
+    // Whitespace starts the following word transaction. The preceding word is
+    // committed before the browser inserts this boundary character.
+    endsWordBoundary: false,
+    beforeSelection: pendingContinues
+      ? pending.beforeSelection
+      : editorHistoryComposition?.beforeSelection || selection,
+    selectionSignature,
+    afterSelectionSignature: '',
+    transactionId: pendingContinues ? pending.transactionId : editorHistoryComposition?.id || null,
+    timestamp: Date.now()
+  };
+}
+
+function editorHistoryAfterInput() {
+  if (!editorHistoryInputContext || isApplyingEditorHistorySnapshot) return;
+  const editor = document.getElementById('editor');
+  const selection = activeVirtualEditorDocument
+    ? captureVirtualEditorGlobalSelection(editor, activeVirtualEditorDocument)
+    : currentEditorHistorySelection(editor);
+  editorHistoryInputContext.afterSelectionSignature = editorHistorySelectionSignature(selection);
+}
+
+function editorHistoryCompositionStart() {
+  editorHistoryComposition = {
+    id: `composition-${++editorHistoryTransactionSequence}`,
+    beforeSelection: activeVirtualEditorDocument
+      ? captureVirtualEditorGlobalSelection(document.getElementById('editor'), activeVirtualEditorDocument)
+      : currentEditorHistorySelection()
+  };
+}
+
+function editorHistoryCompositionEnd() {
+  if (editorHistoryInputContext) editorHistoryInputContext.family = 'typing';
+  editorHistoryComposition = null;
 }
 
 function trimEditorHistoryStore(store, activeKey = editorHistoryDocKey) {
@@ -762,15 +1024,31 @@ function currentEditorHistorySelection(editor = document.getElementById('editor'
     return null;
   }
 
-  return {
+  const snapshot = {
     startPath: editorHistoryNodePath(editor, range.startContainer),
     startOffset: range.startOffset,
     endPath: editorHistoryNodePath(editor, range.endContainer),
     endOffset: range.endOffset,
     startTextOffset: editorHistoryTextOffset(editor, range.startContainer, range.startOffset),
     endTextOffset: editorHistoryTextOffset(editor, range.endContainer, range.endOffset),
-    collapsed: range.collapsed
+    collapsed: range.collapsed,
+    direction: selection.anchorNode === range.endContainer && selection.anchorOffset === range.endOffset
+      ? 'backward'
+      : 'forward'
   };
+  const blockFor = node => (node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement)
+    ?.closest?.('p, div, li, blockquote');
+  const blockPosition = (container, offset) => {
+    const block = blockFor(container);
+    if (!block || !editor.contains(block)) return null;
+    return {
+      path: editorHistoryNodePath(editor, block),
+      offset: editorHistoryTextOffset(block, container, offset)
+    };
+  };
+  snapshot.startBlock = blockPosition(range.startContainer, range.startOffset);
+  snapshot.endBlock = blockPosition(range.endContainer, range.endOffset);
+  return snapshot;
 }
 
 function restoreEditorHistorySelection(editor, selectionSnapshot) {
@@ -784,8 +1062,14 @@ function restoreEditorHistorySelection(editor, selectionSnapshot) {
   let endOffset = clampEditorHistoryOffset(endNode, selectionSnapshot.endOffset);
 
   if (!startNode || !endNode) {
-    const startPosition = editorHistoryPositionForTextOffset(editor, selectionSnapshot.startTextOffset);
-    const endPosition = editorHistoryPositionForTextOffset(editor, selectionSnapshot.endTextOffset);
+    const blockPosition = blockSnapshot => {
+      const block = editorHistoryNodeFromPath(editor, blockSnapshot?.path);
+      return block ? editorHistoryPositionForTextOffset(block, blockSnapshot.offset) : null;
+    };
+    const startPosition = blockPosition(selectionSnapshot.startBlock) ||
+      editorHistoryPositionForTextOffset(editor, selectionSnapshot.startTextOffset);
+    const endPosition = blockPosition(selectionSnapshot.endBlock) ||
+      editorHistoryPositionForTextOffset(editor, selectionSnapshot.endTextOffset);
     startNode = startPosition.node;
     startOffset = startPosition.offset;
     endNode = endPosition.node;
@@ -798,6 +1082,9 @@ function restoreEditorHistorySelection(editor, selectionSnapshot) {
     range.setEnd(endNode, endOffset);
     selection.removeAllRanges();
     selection.addRange(range);
+    if (selectionSnapshot.direction === 'backward' && typeof selection.setBaseAndExtent === 'function') {
+      selection.setBaseAndExtent(endNode, endOffset, startNode, startOffset);
+    }
     savedEditorRange = range.cloneRange();
     return true;
   } catch (error) {
@@ -830,11 +1117,15 @@ function restoreEditorHistorySelectionByTextOffset(editor, selectionSnapshot) {
 function createEditorHistorySnapshot(reason = 'input') {
   const editor = document.getElementById('editor');
   if (!editor) return null;
+  const selection = activeVirtualEditorDocument
+    ? captureVirtualEditorGlobalSelection(editor, activeVirtualEditorDocument)
+    : currentEditorHistorySelection(editor);
   return {
     html: getCleanEditorHTML(),
-    selection: currentEditorHistorySelection(editor),
+    selection,
     reason,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    operation: null
   };
 }
 
@@ -895,6 +1186,19 @@ function captureEditorHistorySnapshot(reason = 'input', options = {}) {
   if (!ensureEditorHistoryForCurrentDocument()) return false;
   const snapshot = createEditorHistorySnapshot(reason);
   if (!snapshot) return false;
+  const context = options.context || (reason === 'input' ? editorHistoryInputContext : null);
+  if (reason === 'input') editorHistoryInputContext = null;
+  const family = context?.family || reason;
+  snapshot.operation = {
+    type: family,
+    inputType: context?.inputType || reason,
+    data: context?.data ?? '',
+    beforeSelection: context?.beforeSelection || null,
+    afterSelection: snapshot.selection,
+    transactionId: context?.transactionId || editorHistoryComposition?.id || `edit-${++editorHistoryTransactionSequence}`,
+    endsWordBoundary: Boolean(context?.endsWordBoundary ?? (family === 'typing' && /\s/u.test(String(context?.data || '')))),
+    crossesWhitespace: Boolean(context?.crossesWhitespace)
+  };
 
   const currentSnapshot = editorHistoryStack[editorHistoryIndex];
   if (currentSnapshot?.html === snapshot.html) {
@@ -906,20 +1210,36 @@ function captureEditorHistorySnapshot(reason = 'input', options = {}) {
     persistEditorHistory();
     return false;
   }
+  Object.assign(snapshot.operation, editorHistoryContentPatch(currentSnapshot?.html || '', snapshot.html));
 
   if (editorHistoryIndex < editorHistoryStack.length - 1) {
     editorHistoryStack = editorHistoryStack.slice(0, editorHistoryIndex + 1);
   }
 
-  const shouldMergeTyping = !options.force &&
-    reason === 'input' &&
-    currentSnapshot?.reason === 'input' &&
-    snapshot.timestamp - currentSnapshot.timestamp <= EDITOR_HISTORY_INPUT_GROUP_MS;
+  if (appendEditorHistoryPhraseSnapshots(currentSnapshot, snapshot)) return true;
+
+  const previousOperation = currentSnapshot?.operation;
+  const elapsed = snapshot.timestamp - (currentSnapshot?.timestamp || 0);
+  const sameCaret = context?.selectionSignature &&
+    context.selectionSignature === editorHistorySelectionSignature(currentSnapshot?.selection);
+  const compositionContinues = Boolean(editorHistoryComposition && previousOperation?.transactionId === editorHistoryComposition.id);
+  const shouldMergeTyping = !options.force && reason === 'input' &&
+    editorHistoryShouldMerge(previousOperation, snapshot.operation, elapsed, sameCaret, compositionContinues);
 
   if (shouldMergeTyping) {
+    const transactionBaseline = editorHistoryStack[editorHistoryIndex - 1]?.html || '';
     editorHistoryStack[editorHistoryIndex] = {
       ...snapshot,
-      createdAt: currentSnapshot.createdAt || currentSnapshot.timestamp
+      createdAt: currentSnapshot.createdAt || currentSnapshot.timestamp,
+      operation: {
+        ...snapshot.operation,
+        type: previousOperation?.type === 'typing' ? 'typing' : family,
+        beforeSelection: previousOperation?.beforeSelection || snapshot.operation.beforeSelection,
+        transactionId: previousOperation?.transactionId || snapshot.operation.transactionId,
+        endsWordBoundary: snapshot.operation.endsWordBoundary,
+        crossesWhitespace: snapshot.operation.crossesWhitespace,
+        ...editorHistoryContentPatch(transactionBaseline, snapshot.html)
+      }
     };
   } else {
     editorHistoryStack.push(snapshot);
@@ -935,6 +1255,10 @@ function scheduleEditorHistorySnapshot(reason = 'input') {
   if (isApplyingEditorHistorySnapshot) return;
   clearTimeout(editorHistoryTimer);
   editorHistoryTimer = setTimeout(() => {
+    if (editorHistoryComposition) {
+      scheduleEditorHistorySnapshot(reason);
+      return;
+    }
     editorHistoryTimer = null;
     captureEditorHistorySnapshot(reason);
   }, EDITOR_HISTORY_INPUT_DEBOUNCE_MS);
@@ -951,10 +1275,44 @@ function flushEditorHistorySnapshot(reason = 'flush') {
 function restoreEditorHistorySnapshot(snapshot, options = {}) {
   const editor = document.getElementById('editor');
   if (!editor || !snapshot) return false;
-  // Full-document history snapshots must never replace a bounded virtual DOM.
-  // Virtual undo needs paragraph/revision history and is intentionally disabled
-  // until that representation is available.
-  if (activeVirtualEditorDocument) return false;
+  const targetSelection = options.selection || snapshot.selection;
+  if (activeVirtualEditorDocument) {
+    const state = activeVirtualEditorDocument;
+    const documentItem = state.documentItem;
+    const html = snapshot.html || '';
+    const paragraphs = virtualEditorLogicalParagraphs(editorHTMLToText(html));
+    activeEditorHTMLBuffer = html;
+    activeEditorHTMLBufferVersion += 1;
+    committedEditorHTMLBufferVersion = activeEditorHTMLBufferVersion;
+    if (documentItem) documentItem.content = html;
+    startVirtualEditorDocument(documentItem, editorDocumentLoadSequence, html);
+    const target = targetSelection?.start;
+    if (target && Number.isFinite(target.paragraph) && activeVirtualEditorDocument) {
+      const start = Math.max(0, Math.min(
+        Math.max(0, paragraphs.length - VIRTUAL_EDITOR_WINDOW_SIZE),
+        target.paragraph - Math.floor(VIRTUAL_EDITOR_WINDOW_SIZE / 2)
+      ));
+      applyVirtualEditorWindow({
+        documentKey: activeVirtualEditorDocument.key,
+        start,
+        end: Math.min(paragraphs.length, start + VIRTUAL_EDITOR_WINDOW_SIZE),
+        total: paragraphs.length,
+        windowText: paragraphs.slice(start, start + VIRTUAL_EDITOR_WINDOW_SIZE).join('\n'),
+        html
+      }, { caretAnchor: target, windowSize: VIRTUAL_EDITOR_WINDOW_SIZE });
+      const endTarget = targetSelection?.end || target;
+      if (endTarget.paragraph >= start && endTarget.paragraph < start + VIRTUAL_EDITOR_WINDOW_SIZE) {
+        restoreVirtualEditorGlobalSelection(editor, {
+          start: { ...target, paragraph: target.paragraph - start },
+          end: { ...endTarget, paragraph: endTarget.paragraph - start },
+          collapsed: targetSelection?.collapsed !== false,
+          direction: targetSelection?.direction || 'forward'
+        });
+      }
+    }
+    handleEditorContentInput();
+    return true;
+  }
 
   isApplyingEditorHistorySnapshot = true;
   try {
@@ -976,15 +1334,10 @@ function restoreEditorHistorySnapshot(snapshot, options = {}) {
 
   requestAnimationFrame(() => {
     editor.focus({ preventScroll: true });
-    const preservedSelection = options.preserveSelection || null;
-    const restoredSelection = preservedSelection
-      ? restoreEditorHistorySelectionByTextOffset(editor, preservedSelection)
-      : restoreEditorHistorySelection(editor, snapshot.selection);
+    const restoredSelection = restoreEditorHistorySelection(editor, targetSelection);
     if (!restoredSelection) {
-      const fallbackOffset = Number.isFinite(Number(preservedSelection?.startTextOffset))
-        ? Number(preservedSelection.startTextOffset)
-        : Number.isFinite(Number(snapshot.selection?.startTextOffset))
-          ? Number(snapshot.selection.startTextOffset)
+      const fallbackOffset = Number.isFinite(Number(targetSelection?.startTextOffset))
+          ? Number(targetSelection.startTextOffset)
           : 0;
       const fallbackPosition = editorHistoryPositionForTextOffset(editor, fallbackOffset);
       const range = document.createRange();
@@ -1001,12 +1354,13 @@ function restoreEditorHistorySnapshot(snapshot, options = {}) {
 }
 
 function undoEditorHistory() {
-  const preservedSelection = currentEditorHistorySelection();
-  flushEditorHistorySnapshot('undo-entry');
+  if (editorHistoryTimer || editorHistoryInputContext) flushEditorHistorySnapshot('undo-entry');
+  else if (!ensureEditorHistoryForCurrentDocument()) return false;
   if (!editorHistoryStack.length || editorHistoryIndex <= 0) return false;
+  const operation = editorHistoryStack[editorHistoryIndex]?.operation;
   editorHistoryIndex -= 1;
   const restored = restoreEditorHistorySnapshot(editorHistoryStack[editorHistoryIndex], {
-    preserveSelection: preservedSelection,
+    selection: operation?.beforeSelection || editorHistoryStack[editorHistoryIndex]?.selection,
     autoScroll: false
   });
   if (restored) persistEditorHistory();
@@ -1016,10 +1370,10 @@ function undoEditorHistory() {
 function redoEditorHistory() {
   if (!ensureEditorHistoryForCurrentDocument()) return false;
   if (!editorHistoryStack.length || editorHistoryIndex >= editorHistoryStack.length - 1) return false;
-  const preservedSelection = currentEditorHistorySelection();
   editorHistoryIndex += 1;
-  const restored = restoreEditorHistorySnapshot(editorHistoryStack[editorHistoryIndex], {
-    preserveSelection: preservedSelection,
+  const snapshot = editorHistoryStack[editorHistoryIndex];
+  const restored = restoreEditorHistorySnapshot(snapshot, {
+    selection: snapshot.operation?.afterSelection || snapshot.selection,
     autoScroll: false
   });
   if (restored) persistEditorHistory();
@@ -1067,6 +1421,20 @@ window.scheduleEditorHistorySnapshot = scheduleEditorHistorySnapshot;
 window.flushEditorHistorySnapshot = flushEditorHistorySnapshot;
 window.resetEditorHistoryForActiveDocument = resetEditorHistoryForActiveDocument;
 window.handleEditorHistoryShortcut = handleEditorHistoryShortcut;
+window.getEditorHistoryDiagnostics = function getEditorHistoryDiagnostics() {
+  const nextUndo = editorHistoryIndex > 0 ? editorHistoryStack[editorHistoryIndex] : null;
+  const nextRedo = editorHistoryIndex < editorHistoryStack.length - 1 ? editorHistoryStack[editorHistoryIndex + 1] : null;
+  return {
+    documentKey: editorHistoryDocKey,
+    undoEntries: Math.max(0, editorHistoryIndex),
+    redoEntries: Math.max(0, editorHistoryStack.length - editorHistoryIndex - 1),
+    totalEntries: editorHistoryStack.length,
+    nextUndoType: nextUndo?.operation?.type || nextUndo?.reason || null,
+    nextUndoMatches: nextUndo ? nextUndo.html === getCleanEditorHTML() : false,
+    nextRedoType: nextRedo?.operation?.type || nextRedo?.reason || null,
+    currentIndex: editorHistoryIndex
+  };
+};
 
 function normalizeScanText(value) {
   return String(value || '')
@@ -3192,6 +3560,10 @@ async function init() {
   });
   editor.addEventListener('input', syncEditorPlaceholderState);
   editor.addEventListener('input', handleEditorParagraphGapInput);
+  editor.addEventListener('input', editorHistoryAfterInput);
+  editor.addEventListener('beforeinput', editorHistoryBeforeInput, true);
+  editor.addEventListener('compositionstart', editorHistoryCompositionStart, true);
+  editor.addEventListener('compositionend', editorHistoryCompositionEnd, true);
   editor.addEventListener('beforeinput', captureVirtualEditorBeforeInputContext, true);
   window.addEventListener('keydown', handleRestrictedInputSessionKeydown, true);
   editor.addEventListener('beforeinput', guardLockedEditorMutation);
@@ -3201,6 +3573,7 @@ async function init() {
       canEdit: () => typeof canEditActiveDocument !== 'function' || canEditActiveDocument(),
       onLogicalEdit({ range } = {}) {
         if (range) savedEditorRange = range.cloneRange();
+        editorHistoryAfterInput();
         syncEditorPlaceholderState();
         handleEditorContentInput();
         updateFormattingButtons({ syncFromSelection: false });
@@ -8520,7 +8893,8 @@ function captureVirtualEditorGlobalSelection(editor, state) {
   return {
     start: endpoint(snapshot.startTextOffset),
     end: endpoint(snapshot.endTextOffset),
-    collapsed: snapshot.collapsed
+    collapsed: snapshot.collapsed,
+    direction: snapshot.direction
   };
 }
 
@@ -8540,6 +8914,9 @@ function restoreVirtualEditorGlobalSelection(editor, snapshot) {
   const selection = window.getSelection();
   selection?.removeAllRanges();
   selection?.addRange(range);
+  if (snapshot.direction === 'backward' && typeof selection?.setBaseAndExtent === 'function') {
+    selection.setBaseAndExtent(end.node, end.offset, start.node, start.offset);
+  }
   savedEditorRange = range.cloneRange();
   return true;
 }
