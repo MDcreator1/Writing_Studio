@@ -9,21 +9,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lekhak Manch — Story/Novel Project Editor</title>
   <link rel="stylesheet" href="assets/shared/css/00-base.css?v=20260610-project-library">
-  <link rel="stylesheet" href="assets/shared/css/01-find-modals.css?v=20260811-advanced-select-menu-height">
+  <link rel="stylesheet" href="assets/shared/css/01-find-modals.css?v=20260904-hidden-custom-select-scrollbar">
   <link rel="stylesheet"
     href="assets/pages/story-novel-project-editor/css/00-editor-layout.css?v=20260814-bulk-draft-promote">
   <link rel="stylesheet"
     href="assets/pages/story-novel-project-editor/css/01-floating-tools.css?v=20260814-word-editing-quick-panel">
   <link rel="stylesheet"
-    href="assets/pages/story-novel-project-editor/css/02-side-panels.css?v=20260811-inline-similar-name-input">
+    href="assets/pages/story-novel-project-editor/css/02-side-panels.css?v=20260904-draft-origin-state">
   <link rel="stylesheet"
     href="assets/pages/story-novel-project-editor/css/03-focus-responsive.css?v=20260609-dock-row-layout">
   <link rel="stylesheet"
-    href="assets/pages/story-novel-project-editor/css/04-advanced-draft-promote.css?v=20260705-advanced-promote">
+    href="assets/pages/story-novel-project-editor/css/04-advanced-draft-promote.css?v=20260904-workflow-font-size">
   <link rel="stylesheet"
-    href="assets/pages/story-novel-project-editor/css/05-text-import.css?v=20260810-import-panel-stages">
+    href="assets/pages/story-novel-project-editor/css/05-text-import.css?v=20260904-import-remainder-draft">
   <link rel="stylesheet"
-    href="assets/pages/story-novel-project-editor/css/06-advanced-editor-settings.css?v=20260813-awe-control-polish">
+    href="assets/pages/story-novel-project-editor/css/06-advanced-editor-settings.css?v=20260904-workflow-font-size">
   <link rel="stylesheet"
     href="assets/pages/story-novel-project-editor/css/07-advanced-word-editing.css?v=20260814-threshold-stepper">
   <link rel="stylesheet" href="assets/shared/css/99-theme-overrides.css?v=20260608-theme-option-previews">
@@ -831,6 +831,7 @@
           </div>
           <small id="namingPanelHint" class="lm-id-namingPanelHint">Categories are story-wide; names are shown for the
             active chapter.</small>
+          <small id="namingDeepScanStatus" class="naming-deep-scan-status" role="status" aria-live="polite" hidden></small>
           <button class="naming-deep-scan-btn" id="namingDeepScanBtn" type="button"
             onclick="deepScanAllNamingEntries(this)" title="Deep scan story to update names' first appearance"
             aria-label="Deep scan story to update names' first appearance">
@@ -930,6 +931,10 @@
           <button class="name-panel-close name-detail-close" type="button" onclick="closeNameDetailPanel()">
             <span data-lm-icon="close"></span>
           </button>
+        </div>
+        <div class="name-detail-aliases-box lm-id-nameDetailAliasesBox" id="nameDetailAliasesBox" hidden>
+          <span class="name-detail-alias-label">Similar</span>
+          <div class="name-detail-alias-values" id="nameDetailAliasesValues"></div>
         </div>
         <div class="name-detail-description-wrap">
           <p id="nameDetailDescription" class="lm-id-nameDetailDescription">Description</p>
@@ -1220,37 +1225,50 @@
   <script src="assets/shared/js/01-shortcut-tooltips.js?v=20260608-file-renames"></script>
   <script src="assets/shared/js/02-floating-panel-focus-return.js?v=20260608-file-renames"></script>
   <script src="assets/shared/js/03-theme-controller.js?v=20260608-file-renames"></script>
-  <script src="assets/shared/js/04a-state-defaults-normalization.js?v=20260903-js-module-split"></script>
-  <script src="assets/shared/js/04b-editor-document-state.js?v=20260903-js-module-split"></script>
+  <script src="assets/shared/js/04a-state-defaults-normalization.js?v=20260904-naming-data-safety"></script>
+  <script src="assets/shared/js/04b-editor-document-state.js?v=20260903-document-safety"></script>
   <script src="assets/shared/js/05-floating-panel-positions.js?v=20260610-ai-connection-floating"></script>
-  <script src="assets/shared/js/05a-editor-advanced-config.js?v=20260813-awe-control-polish"></script>
-  <script src="assets/shared/js/05b-advanced-word-editing.js?v=20260814-temporary-category-policy"></script>
-  <script src="assets/shared/js/06a-project-storage-foundation.js?v=20260903-js-module-split"></script>
-  <script src="assets/shared/js/06b-workspace-restore-autosave.js?v=20260903-js-module-split"></script>
-  <script src="assets/shared/js/06c-workspace-library-settings.js?v=20260903-js-module-split"></script>
-  <script src="assets/shared/js/06d-editor-paste-settings.js?v=20260903-js-module-split"></script>
+  <script src="assets/shared/js/05aa-advanced-import-promote-settings.js?v=20260904-workflow-font-size"></script>
+  <script src="assets/shared/js/05a-editor-advanced-config.js?v=20260904-switchable-workflow-settings"></script>
+  <script src="assets/shared/js/05b-advanced-word-editing.js?v=20260903-project-dictionary-reset"></script>
+    <script src="assets/shared/js/06a-project-storage-foundation.js?v=20260904-naming-projection-race-guard"></script>
+    <script src="assets/shared/js/06aa-naming-file-safety.js?v=20260904-naming-projection-race-guard"></script>
+  <script src="assets/shared/js/06b-workspace-restore-autosave.js?v=20260904-compact-manifest-cache"></script>
+  <script src="assets/shared/js/06c-workspace-library-settings.js?v=20260903-document-safety"></script>
+  <script src="assets/shared/js/06d-editor-paste-settings.js?v=20260904-centered-custom-select-menu"></script>
   <script
     src="assets/pages/story-novel-project-editor/js/00-hindi-unicode-input.js?v=20260619-large-input-defer"></script>
+    <script src="assets/pages/story-novel-project-editor/js/00e-initial-rendering-store.js?v=20260904-naming-projection-race-guard"></script>
+  <script src="assets/pages/story-novel-project-editor/js/00f-rendering-snapshot-tools.js?v=20260904-all-naming-snapshots"></script>
+  <script src="assets/pages/story-novel-project-editor/js/00a-chapter-sidebar-data.js?v=20260904-metadata-only-manifest"></script>
+  <script src="assets/pages/story-novel-project-editor/js/00b-workspace-section-loader.js?v=20260903-safe-lazy-data"></script>
+  <script src="assets/pages/story-novel-project-editor/js/00c-facts-panel-data.js?v=20260903-legacy-facts-recovery"></script>
+  <script src="assets/pages/story-novel-project-editor/js/00d-first-project-open-repair.js?v=20260903-first-open-mismatch-repair"></script>
   <script src="assets/pages/story-novel-project-editor/js/01a-editor-foundation-history.js?v=20260903-js-module-split"></script>
   <script src="assets/pages/story-novel-project-editor/js/01b-history-auto-scroll.js?v=20260903-js-module-split"></script>
   <script src="assets/pages/story-novel-project-editor/js/01c-auto-scroll-find.js?v=20260903-js-module-split"></script>
   <script src="assets/pages/story-novel-project-editor/js/01d-editor-init-chapters.js?v=20260903-js-module-split"></script>
   <script src="assets/pages/story-novel-project-editor/js/01e-chapter-parts.js?v=20260903-js-module-split"></script>
-  <script src="assets/pages/story-novel-project-editor/js/01f-drafts-management.js?v=20260903-js-module-split"></script>
+  <script src="assets/pages/story-novel-project-editor/js/01f-drafts-management.js?v=20260903-document-safety"></script>
   <script src="assets/pages/story-novel-project-editor/js/01g-trash-drafts-virtualization.js?v=20260903-js-module-split"></script>
-  <script src="assets/pages/story-novel-project-editor/js/01h-virtual-editor-pipeline.js?v=20260903-js-module-split"></script>
-  <script src="assets/pages/story-novel-project-editor/js/01i-draft-promote-smart-clipboard.js?v=20260903-js-module-split"></script>
+  <script src="assets/pages/story-novel-project-editor/js/01h-virtual-editor-pipeline.js?v=20260904-six-category-drafts"></script>
+  <script src="assets/pages/story-novel-project-editor/js/01i-draft-promote-smart-clipboard.js?v=20260903-naming-snapshot-refresh"></script>
   <script
     src="assets/pages/story-novel-project-editor/js/02a-find-replace-core.js?v=20260903-js-module-split"></script>
   <script src="assets/pages/story-novel-project-editor/js/02b-editor-formatting-ai.js?v=20260903-js-module-split"></script>
   <script src="assets/pages/story-novel-project-editor/js/02c-find-results-word-editing.js?v=20260903-js-module-split"></script>
+  <script src="assets/pages/story-novel-project-editor/js/02d-side-info-scroll-thumbs.js?v=20260904-import-remainder-draft"></script>
   <script
-    src="assets/pages/story-novel-project-editor/js/03a-naming-panel-core.js?v=20260903-js-module-split"></script>
-  <script src="assets/pages/story-novel-project-editor/js/03b-naming-categories-search.js?v=20260903-js-module-split"></script>
-  <script src="assets/pages/story-novel-project-editor/js/03c-naming-deep-scan-facts.js?v=20260903-js-module-split"></script>
+    src="assets/pages/story-novel-project-editor/js/03a-naming-panel-core.js?v=20260904-draft-origin-state"></script>
+  <script src="assets/pages/story-novel-project-editor/js/03b-naming-categories-search.js?v=20260904-draft-origin-state"></script>
+  <script src="assets/pages/story-novel-project-editor/js/03d-naming-category-sort.js?v=20260904-draft-first-appearance-sort"></script>
+  <script src="assets/pages/story-novel-project-editor/js/03aa-naming-deep-scan-source.js?v=20260904-naming-content-hash-v3"></script>
+  <script src="assets/pages/story-novel-project-editor/js/03e-name-detail-aliases.js?v=20260904-name-detail-aliases"></script>
+  <script src="assets/pages/story-novel-project-editor/js/03c-naming-deep-scan-facts.js?v=20260904-draft-origin-state"></script>
   <script src="assets/pages/story-novel-project-editor/js/04-editor-boot.js?v=20260608-file-renames"></script>
   <script
-    src="assets/pages/story-novel-project-editor/js/05-advanced-draft-promote.js?v=20260810-import-raw-threshold"></script>
+    src="assets/pages/story-novel-project-editor/js/05-advanced-draft-promote.js?v=20260904-import-remainder-draft"></script>
+  <script src="assets/pages/story-novel-project-editor/js/05a-advanced-import-splitting.js?v=20260904-import-remainder-draft"></script>
   <script src="assets/pages/story-novel-project-editor/js/06-text-import.js?v=20260810-import-panel-stages"></script>
 </body>
 

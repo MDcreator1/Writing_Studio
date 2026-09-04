@@ -36,9 +36,6 @@
   font: inherit;
 }
 
-.lm-custom-select-trigger {
-  min-height: 28px !important;
-}
 
 .awe-name-panel-close {
   border: none !important;
@@ -51,6 +48,11 @@
   background: var(--surface-raised);
   color: var(--ink);
   cursor: pointer;
+}
+
+.awe-workspace .awe-threshold-field .lm-custom-select-trigger {
+  height: 28px;
+  min-height: 28px;
 }
 
 .awe-workspace button:hover {

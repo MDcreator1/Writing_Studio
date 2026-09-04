@@ -106,6 +106,10 @@ async function requestPromoteDraftToChapter(draftIndex, anchor = null) {
 async function switchDraft(index) {
   ensureChapters();
   if (index < 0 || index >= chapterDrafts.length || (isDraftActive() && index === curDraft)) return;
+  if (!(await ensureDraftContentLoaded(index))) {
+    showMiniReminder('Draft content load नहीं हुआ; सुरक्षित रूप से switch रोक दिया गया।');
+    return;
+  }
   selectedDraftIndexes.clear();
   lastSelectedDraftIndex = index;
   selectedChapterIndexes.clear();
@@ -140,13 +144,15 @@ async function switchDraft(index) {
   syncImmediateSidebarDocumentHighlight('draft', curDraft, sequence);
   updateChapterStatus();
   scheduleEditorDocumentPostRender(sequence, documentItem, {
-    commitPreviousSnapshot: () => {
-      commitHiddenSwitchedSnapshotToMemory(switchedSnapshot);
-    },
-    cleanupPreviousEditDraft: () => switchedSnapshot.mode === 'chapter-edit-draft'
+    commitPreviousSnapshot: () => commitHiddenSwitchedSnapshotToMemory(switchedSnapshot),
+    cleanupPreviousEditDraft: () => !switchedSnapshot.canPersist
+      ? false
+      : switchedSnapshot.mode === 'chapter-edit-draft'
       ? cleanupActiveChapterEditDraftIfUnchanged(previousChapterIndex, switchedSnapshot.chapterEditKey || previousChapterEditKey)
       : false,
-    savePreviousDocument: previousEditDraftRemoved => wasDraftActive
+    savePreviousDocument: previousEditDraftRemoved => !switchedSnapshot.canPersist || switchedSnapshot.projectHandle !== projectDirectoryHandle
+      ? Promise.resolve()
+      : wasDraftActive
       ? writeDraftToLocalFile(previousDraftIndex, switchedSnapshot.text || '')
       : switchedSnapshot.mode === 'chapter-edit-draft' && !previousEditDraftRemoved
         ? writeChapterEditDraftToLocalFile(switchedSnapshot.chapterEditKey || previousChapterEditKey, switchedSnapshot.text || '')
@@ -157,6 +163,10 @@ async function switchDraft(index) {
 
 async function promoteDraftToChapter(draftIndex, destination = 'part') {
   ensureChapters();
+  if (!(await ensureDraftContentLoaded(draftIndex))) {
+    showMiniReminder('Draft content load नहीं हुआ; promote रोक दिया गया।');
+    return;
+  }
   const draft = chapterDrafts[draftIndex];
   if (!draft) return;
 
@@ -233,8 +243,7 @@ async function promoteDraftToChapter(draftIndex, destination = 'part') {
   setDraftBoxSaveIndicator('busy');
   loadEditor();
   renderChapters();
-  renderTags();
-  renderNotes();
+  renderActiveWorkspaceSidePanel();
   updateChapterStatus();
 
   try {
@@ -517,6 +526,12 @@ async function deleteDraftsByIndexes(indexes = [], loaderLabel = text().deleteDr
     showDraftDeleteBlockedReminder();
     return;
   }
+  const loadedDrafts = await Promise.all(deleteIndexes.map(index => ensureDraftContentLoaded(index)));
+  if (loadedDrafts.some(loaded => !loaded)) {
+    showMiniReminder('कुछ drafts load नहीं हुए; delete रोक दिया गया।');
+    return;
+  }
+  await window.LmInitialRendering?.ensureFullNamingData?.();
 
   let namingCleanupAction = options.namingCleanupAction === 'delete'
     ? 'delete'
@@ -625,8 +640,7 @@ async function deleteDraftsByIndexes(indexes = [], loaderLabel = text().deleteDr
   setDraftBoxSaveIndicator('busy');
   renderChapters();
   if (sidebarFocusTargetAfterDelete) focusSidebarItemAfterRender(sidebarFocusTargetAfterDelete);
-  renderTags();
-  renderNotes();
+  renderActiveWorkspaceSidePanel();
   updateChapterStatus();
   saveToStorage(false);
 
@@ -754,8 +768,7 @@ async function restoreTrashDraftsByIndexes(indexes = [], loaderLabel = text().re
   closeDraftActionsPanel();
   renderChapters();
   loadEditor();
-  renderTags();
-  renderNotes();
+  renderActiveWorkspaceSidePanel();
   updateChapterStatus();
   saveToStorage(false);
 
@@ -1174,6 +1187,8 @@ function handleEditorContentInput(event = null) {
   // Both editor sizes retain the innerHTML bridge and processing pipeline.
   // Only large documents attach that pipeline to a virtual backing document.
   stageEditorHTMLForMemoryCommit();
+  const namingWasLoaded = activeSidePanel === 'naming' || window.LmWorkspaceSectionLoader?.isReady?.('naming');
+  if (namingWasLoaded) window.LmInitialRendering?.queueActiveNamingSnapshotRefresh?.();
   scheduleSaveButtonTypingIdleCheck();
   if (!isApplyingEditorHistorySnapshot) scheduleEditorHistorySnapshot('input');
 }
@@ -1223,13 +1238,24 @@ function editorSelectionIntersectsEditor(range, editor) {
   return Boolean(startNode && editor.contains(startNode)) || Boolean(endNode && editor.contains(endNode));
 }
 
+function editorSelectionIsContained(range, editor) {
+  if (!range || !editor) return false;
+  const startNode = range.startContainer?.nodeType === Node.ELEMENT_NODE
+    ? range.startContainer
+    : range.startContainer?.parentNode;
+  const endNode = range.endContainer?.nodeType === Node.ELEMENT_NODE
+    ? range.endContainer
+    : range.endContainer?.parentNode;
+  return Boolean(startNode && endNode && editor.contains(startNode) && editor.contains(endNode));
+}
+
 function selectedEditorCopyPayload() {
   const editor = document.getElementById('editor');
   const selection = window.getSelection?.();
   if (!editor || !selection || !selection.rangeCount || selection.isCollapsed) return null;
 
   const range = selection.getRangeAt(0);
-  if (!editorSelectionIntersectsEditor(range, editor)) return null;
+  if (!editorSelectionIntersectsEditor(range, editor) || !editorSelectionIsContained(range, editor)) return null;
 
   const plainText = selection.toString().replace(/\r\n?/g, '\n').trimEnd();
   if (!plainText.trim()) return null;
@@ -1250,21 +1276,23 @@ function selectedEditorCopyPayload() {
   return { plainText, htmlText };
 }
 
-function writeSmartCopyPayload(payload) {
+async function writeSmartCopyPayload(payload) {
   const plainText = payload?.plainText || '';
   if (!plainText) return false;
   const htmlText = payload.htmlText || (typeof textToEditorHTML === 'function' ? textToEditorHTML(plainText) : '');
 
   if (navigator.clipboard && window.ClipboardItem && htmlText) {
-    const blob = new Blob([htmlText], { type: 'text/html' });
-    const blobPlain = new Blob([plainText], { type: 'text/plain' });
-    navigator.clipboard.write([new ClipboardItem({ 'text/html': blob, 'text/plain': blobPlain })])
-      .then(() => handleSmartCopySuccess('Copied!'))
-      .catch(() => fallbackSmartCopy(plainText));
-  } else {
-    fallbackSmartCopy(plainText);
+    try {
+      const blob = new Blob([htmlText], { type: 'text/html' });
+      const blobPlain = new Blob([plainText], { type: 'text/plain' });
+      await navigator.clipboard.write([new ClipboardItem({ 'text/html': blob, 'text/plain': blobPlain })]);
+      handleSmartCopySuccess('Copied!');
+      return true;
+    } catch (_error) {
+      return fallbackSmartCopy(plainText);
+    }
   }
-  return true;
+  return fallbackSmartCopy(plainText);
 }
 
 function writeSelectedEditorCopyEvent(event, payload) {
@@ -1284,22 +1312,76 @@ function handleEditorCopy(event) {
   if (payload) writeSelectedEditorCopyEvent(event, payload);
 }
 
-function doSmartCopy() {
+function smartCopyTextParts(editor) {
+  const virtualState = typeof activeVirtualEditorDocument !== 'undefined' ? activeVirtualEditorDocument : null;
+  if (virtualState?.documentItem === activeEditorDocument() && Array.isArray(virtualState.sessionParagraphs)) {
+    return virtualState.sessionParagraphs.map(part => String(part || '')).filter(part => part.trim());
+  }
+
+  const clone = editor.cloneNode(true);
+  clone.querySelectorAll?.('script, style, meta, link').forEach(node => node.remove());
+  unwrapHighlights(clone);
+  normalizeEditorGapMarkers(clone);
+  const sourceText = typeof editorHTMLToText === 'function'
+    ? editorHTMLToText(clone.innerHTML)
+    : cleanPlainTextEditorValue(clone);
+  return String(sourceText || '').replace(/\r\n?/g, '\n').split(/\n+/).map(part => part.trim()).filter(Boolean);
+}
+
+function smartCopyPayloadFromParts(parts, enabled, mode) {
+  if (!parts.length) return null;
+  if (mode === 'single') {
+    return {
+      plainText: parts.join('\n'),
+      htmlText: `<p>${parts.map(part => escapeHtml(part)).join('<br>')}</p>`
+    };
+  }
+  const gaps = enabled ? ((typeof copyParagraphGaps !== 'undefined') ? copyParagraphGaps : 1) : 1;
+  const gapHtml = gaps > 0 ? Array(gaps).fill('<p><br></p>').join('\n') : '';
+  const separatorHTML = gaps > 0 ? `\n${gapHtml}\n` : '\n';
+  return {
+    plainText: parts.join('\n'.repeat(gaps + 1)),
+    htmlText: parts.map(part => `<p>${escapeHtml(part)}</p>`).join(separatorHTML)
+  };
+}
+
+async function doSmartCopy() {
   const editor = document.getElementById('editor');
   if (!editor) return;
 
   const selectedPayload = selectedEditorCopyPayload();
   if (selectedPayload) {
-    writeSmartCopyPayload(selectedPayload);
+    await writeSmartCopyPayload(selectedPayload);
     return;
   }
 
   const enabled = typeof isCopySettingsEnabled === 'undefined' || isCopySettingsEnabled;
   const mode = enabled ? ((typeof copyParaMode !== 'undefined') ? copyParaMode : 'gap') : 'gap';
 
-  // Collect all paragraph text content
+  const virtualState = typeof activeVirtualEditorDocument !== 'undefined' ? activeVirtualEditorDocument : null;
+  if (virtualState?.documentItem === activeEditorDocument()) {
+    if (typeof flushVirtualEditorPatchBatch === 'function' && virtualEditorPendingPatchBatch) flushVirtualEditorPatchBatch();
+    if (typeof activeEditorHTMLBridgePromise !== 'undefined') {
+      try { await Promise.resolve(activeEditorHTMLBridgePromise); } catch (_error) { /* sessionParagraphs already contains the live patch */ }
+    }
+    const payload = smartCopyPayloadFromParts(smartCopyTextParts(editor), enabled, mode);
+    if (payload) await writeSmartCopyPayload(payload);
+    return;
+  }
+
+  // Preserve rich paragraph HTML when the whole document follows the normal
+  // paragraph structure. Mixed/non-paragraph documents use the complete text
+  // extraction path below so no blocks are silently omitted.
   const paragraphs = Array.from(editor.querySelectorAll('p'))
     .filter(p => !p.dataset.editorParagraphGap && !p.classList.contains('editor-paragraph-gap-br') && !p.dataset.fileParagraphGap);
+  const completeParts = smartCopyTextParts(editor);
+  const paragraphParts = paragraphs.map(p => p.textContent || '').filter(part => part.trim());
+  const hasMixedDocumentContent = completeParts.join('\n') !== paragraphParts.map(part => part.trim()).join('\n');
+  if (hasMixedDocumentContent || !paragraphs.length) {
+    const payload = smartCopyPayloadFromParts(completeParts, enabled, mode);
+    if (payload) await writeSmartCopyPayload(payload);
+    return;
+  }
   const plainModeParts = (!paragraphs.length && isEditorPlainTextMode(editor))
     ? cleanPlainTextEditorValue(editor).split(/\n+/).map(part => part.trim()).filter(Boolean)
     : [];
@@ -1341,7 +1423,7 @@ function doSmartCopy() {
 
   if (!plainText) return;
 
-  writeSmartCopyPayload({ plainText, htmlText });
+  await writeSmartCopyPayload({ plainText, htmlText });
 }
 
 function fallbackSmartCopy(text) {
@@ -1351,9 +1433,12 @@ function fallbackSmartCopy(text) {
   ta.style.opacity = '0';
   document.body.appendChild(ta);
   ta.select();
-  try { document.execCommand('copy'); } catch (e) { /* ignore */ }
+  let copied = false;
+  try { copied = document.execCommand('copy') !== false; } catch (_error) { copied = false; }
   document.body.removeChild(ta);
-  handleSmartCopySuccess('Copied!');
+  if (copied) handleSmartCopySuccess('Copied!');
+  else showSmartCopyToast('Copy failed. Please allow clipboard access and try again.');
+  return copied;
 }
 
 function showSmartCopyToast(msg) {

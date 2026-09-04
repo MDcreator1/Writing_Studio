@@ -318,11 +318,186 @@ body.is-text-import-open {
 }
 
 .advanced-promote-panel.is-text-import .advanced-promote-settings-bar {
-  grid-template-columns: minmax(150px, 180px) minmax(170px, 210px) minmax(190px, 1fr) minmax(145px, 180px);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.advanced-promote-panel.is-text-import .advanced-promote-settings-bar > label,
+.advanced-promote-panel.is-text-import .advanced-promote-settings-bar > fieldset {
+  box-sizing: border-box;
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.advanced-promote-panel.is-text-import .advanced-promote-settings-bar > label {
+  padding: 6px 8px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 42%, transparent);
+  transition: border-color .16s ease, background .16s ease, box-shadow .16s ease;
+}
+
+.advanced-promote-panel.is-text-import .advanced-promote-settings-bar > label:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.advanced-promote-panel.is-text-import .advanced-promote-settings-bar input,
+.advanced-promote-panel.is-text-import .advanced-promote-settings-bar select {
+  width: auto;
+}
+
+.advanced-promote-panel.is-text-import #advancedPromoteWordLimitInp {
+  width: 100%;
+}
+
+.advanced-promote-panel.is-text-import .advanced-import-word-limit-control {
+  width: 142px;
+}
+
+.advanced-promote-panel.is-text-import .advanced-import-target-field {
+  width: 190px;
+}
+
+.advanced-promote-panel.is-text-import .advanced-import-split-field {
+  width: 220px;
+}
+
+.advanced-promote-panel.is-text-import :is(.advanced-import-target-field, .advanced-import-split-field) > .lm-custom-select {
+  width: 100%;
+}
+
+.advanced-promote-panel.is-text-import :is(.advanced-import-target-field, .advanced-import-split-field) .lm-custom-select-caret {
+  display: inline-flex;
+  visibility: hidden;
+}
+
+.advanced-promote-panel.is-text-import :is(.advanced-import-target-field, .advanced-import-split-field) :is(.lm-custom-select-trigger:hover, .lm-custom-select.is-open .lm-custom-select-trigger) .lm-custom-select-caret {
+  visibility: visible;
+}
+
+.advanced-promote-panel.is-text-import #advancedImportCustomWordInp {
+  width: 190px;
+}
+
+.advanced-promote-panel.is-text-import .advanced-promote-action-field {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.advanced-promote-panel.is-text-import .advanced-promote-settings-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.advanced-promote-panel.is-text-import .advanced-promote-action-field :is(.advanced-promote-create-btn, .advanced-promote-apply-btn) {
+  min-width: 124px;
+}
+
+.advanced-promote-created-view.is-import-layout .advanced-promote-chapter-index-list {
+  padding-top: 10px;
+}
+
+.advanced-promote-created-view.is-import-layout .advanced-promote-chapter-index {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.advanced-promote-chapter-list-btn.is-imported-source {
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface-raised));
+}
+
+.advanced-import-index-separator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 3px 2px 1px;
+  color: var(--muted);
+  font-size: var(--font-size-2xs);
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.advanced-import-index-separator::before,
+.advanced-import-index-separator::after {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: var(--border);
+}
+
+.advanced-import-index-separator span {
+  white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--accent) 15%, var(--border));
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: var(--surface-raised);
+}
+
+.advanced-import-index-separator.is-remainder {
+  margin-top: 9px;
+}
+
+.advanced-promote-chapter-list-btn.is-remainder-source {
+  border-color: color-mix(in srgb, var(--accent) 16%, var(--border));
+  background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+}
+
+.advanced-import-source-only {
+  min-width: 0;
+  min-height: 0;
+  padding: 14px 16px;
+  background: var(--surface);
+}
+
+.advanced-import-source-only.is-remainder-draft {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.advanced-import-source-only.is-remainder-draft .advanced-promote-section-head {
+  margin-bottom: 10px;
+}
+
+.advanced-import-source-only.is-remainder-draft textarea {
+  min-height: 0;
+}
+
+.advanced-import-source-only textarea {
+  width: 100%;
+  height: 100%;
+  min-height: 340px;
+  resize: none;
+  padding: 18px 20px;
+  border: 1px solid color-mix(in srgb, var(--accent) 13%, var(--border));
+  border-radius: 12px;
+  outline: none;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--advanced-promote-content-font-size, 14px);
+  line-height: 1.72;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 5%, transparent),
+    0 8px 24px color-mix(in srgb, var(--ink) 6%, transparent);
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+
+.advanced-import-source-only textarea:focus {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent),
+    0 8px 24px color-mix(in srgb, var(--ink) 6%, transparent);
 }
 
 .advanced-promote-panel.is-text-import .advanced-promote-settings-bar.has-destination {
-  grid-template-columns: minmax(140px, 170px) minmax(160px, 190px) minmax(180px, 1fr) minmax(245px, 1fr) minmax(140px, 175px);
+  display: flex;
 }
 
 .advanced-promote-panel.is-text-import .advanced-promote-settings-bar select,
@@ -343,6 +518,12 @@ body.is-text-import-open {
   height: 44px;
   padding-right: 38px;
   cursor: pointer;
+}
+
+.advanced-promote-panel.is-text-import #advancedImportTarget,
+.advanced-promote-panel.is-text-import #advancedImportSplitMode {
+  width: auto;
+  min-width: 0;
 }
 
 .advanced-import-custom-input-wrap {
@@ -427,6 +608,10 @@ body.is-text-import-open {
 
   .advanced-promote-panel.is-text-import .advanced-promote-settings-bar,
   .advanced-promote-panel.is-text-import .advanced-promote-settings-bar.has-destination {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
+  }
+
+  .advanced-import-source-only {
+    padding: 10px;
   }
 }

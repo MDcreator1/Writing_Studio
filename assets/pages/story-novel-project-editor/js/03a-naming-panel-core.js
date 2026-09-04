@@ -1101,13 +1101,14 @@ function handleCategoryInputKey(event) {
   }
 }
 
-function toggleNamingCategory(categoryId) {
+async function toggleNamingCategory(categoryId) {
   const isClosingCurrent = expandedNamingCategoryId === categoryId;
   expandedNamingCategoryId = isClosingCurrent ? '' : categoryId;
 
   if (window.activeExpandedCategoryWithShowMore) {
     if (isClosingCurrent || window.activeExpandedCategoryWithShowMore !== expandedNamingCategoryId) {
       window.activeExpandedCategoryWithShowMore = null;
+      window.activeExpandedCategoryWithShowMoreDocumentKey = '';
       window.categorySearchQuery = '';
       window.categorySortOption = 'status';
       const globalRow = document.querySelector('.naming-search-sort-row');
@@ -1116,6 +1117,7 @@ function toggleNamingCategory(categoryId) {
     }
   }
 
+  if (!isClosingCurrent) await window.LmInitialRendering?.ensureNamingCategoryData?.(categoryId);
   renderTags();
 }
 
@@ -1334,7 +1336,7 @@ function categoryVisibilityToggleButton(categoryId, isVisible, extraClass = '', 
 }
 
 function namingCategoryGlobalCount(categoryId) {
-  return namingData.entries.filter(entry => entry.categoryId === categoryId).length;
+  return window.LmInitialRendering?.namingCategoryCount?.(categoryId) ?? namingData.entries.filter(entry => entry.categoryId === categoryId).length;
 }
 
 function canDeleteNamingCategory(categoryId) {
@@ -1383,12 +1385,13 @@ function deleteNamingCategory(categoryId, event = null) {
   renderTags();
   if (keepManagerOpen) refreshCategoryManagerPanel();
   else closeCategoryActionPanel();
-  saveNamingData();
+  saveNamingData({ allowCategoryRemoval: true });
   showSidePanelSaveLine(text().categoryDeleted);
 }
 
-function setNamingCategoryChapterVisibility(categoryId, hidden) {
+async function setNamingCategoryChapterVisibility(categoryId, hidden) {
   namingData = normalizeNamingData(namingData);
+  window.activeNamingShowAllCategoriesKey = '';
   const keepManagerOpen = isCategoryManagerPanelOpen();
   const chapterKey = currentNamingChapterKey();
   const hiddenSet = hiddenCategoriesForChapter(chapterKey);
@@ -1416,15 +1419,15 @@ function setNamingCategoryChapterVisibility(categoryId, hidden) {
   renderTags();
   if (keepManagerOpen) refreshCategoryManagerPanel();
   else closeCategoryActionPanel();
-  saveNamingData();
+  await window.LmInitialRendering?.syncActiveNamingVisibility?.();
   showSidePanelSaveLine(hidden ? text().categoryHiddenSaved : text().categoryShownSaved);
 }
 
-function hideNamingCategoryForChapter(categoryId) {
-  setNamingCategoryChapterVisibility(categoryId, true);
+async function hideNamingCategoryForChapter(categoryId) {
+  await setNamingCategoryChapterVisibility(categoryId, true);
 }
 
-function showNamingCategoryForChapter(categoryId) {
-  setNamingCategoryChapterVisibility(categoryId, false);
+async function showNamingCategoryForChapter(categoryId) {
+  await window.LmInitialRendering?.ensureNamingCategoryData?.(categoryId);
+  await setNamingCategoryChapterVisibility(categoryId, false);
 }
-

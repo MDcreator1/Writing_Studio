@@ -562,72 +562,95 @@ async function createStoryFromInfoForm() {
 }
 
 async function ensureChapterContentLoaded(chapterIndex = curChap) {
-  if (typeof chapterIndex !== 'number' || chapterIndex < 0 || !Array.isArray(chapters) || chapterIndex >= chapters.length) return;
+  if (typeof chapterIndex !== 'number' || chapterIndex < 0 || !Array.isArray(chapters) || chapterIndex >= chapters.length) return false;
   const chapter = chapters[chapterIndex];
-  if (!chapter) return;
-  if (!chapter.content) {
-    await loadChapterContent(chapter);
-  }
+  if (!chapter) return false;
+  return loadChapterContent(chapter);
 }
 
 async function ensureDraftContentLoaded(draftIndex = curDraft) {
-  if (typeof draftIndex !== 'number' || draftIndex < 0 || !Array.isArray(chapterDrafts) || draftIndex >= chapterDrafts.length) return;
+  if (typeof draftIndex !== 'number' || draftIndex < 0 || !Array.isArray(chapterDrafts) || draftIndex >= chapterDrafts.length) return false;
   const draft = chapterDrafts[draftIndex];
-  if (!draft) return;
-  if (!draft.content) {
-    await loadDraftContent(draft);
-  }
+  if (!draft) return false;
+  return loadDraftContent(draft);
 }
 
 async function ensureActiveDocumentContentLoaded() {
   if (typeof isDraftActive === 'function' && isDraftActive()) {
-    await ensureDraftContentLoaded(curDraft);
+    return ensureDraftContentLoaded(curDraft);
   } else {
-    await ensureChapterContentLoaded(curChap);
+    return ensureChapterContentLoaded(curChap);
   }
 }
 
 async function loadChapterContent(chapter) {
-  if (!chapter) return;
-  if (chapter.content) {
+  if (!chapter) return false;
+  if (chapter._contentLoadState === 'quarantined') return true;
+  if (chapter._contentLoadState === 'loaded' || chapter.content) {
+    chapter._contentLoadState = 'loaded';
     chapter._wordCount = storageWordCountFromEditorHTML(chapter.content);
-    return;
+    return true;
   }
-  if (!chapter.contentPath) return;
+  if (!chapter.contentPath) return false;
 
   try {
     if (projectDirectoryHandle) {
-      const fileHandle = await getProjectFileHandle(chapter.contentPath, { create: true });
+      const fileHandle = await getProjectFileHandle(chapter.contentPath);
       chapter.contentHandle = fileHandle;
       const fileText = await readFileText(fileHandle);
+      if (!fileText.trim() && Number(chapter._wordCount ?? chapter.wordCount) > 0) {
+        const repaired = await window.LmFirstProjectOpenMismatchRepair?.repairDocument?.('chapter', chapter);
+        if (!repaired) {
+          Object.assign(chapter, { _contentLoadState: 'quarantined', _contentUnavailableReason: 'empty-file-word-count-mismatch' });
+          showMiniReminder('Chapter file खाली है; document read-only mode में खोला गया।');
+          return true;
+        }
+      }
       chapter.content = textToEditorHTML(fileText);
       chapter._wordCount = storageWordCountFromText(fileText);
-      return;
+      chapter._contentLoadState = 'loaded';
+      return true;
     }
   } catch (error) {
+    chapter._contentLoadState = 'failed';
     console.warn('Chapter content load failed:', chapter.contentPath, error);
   }
+  return false;
 }
 
 async function loadDraftContent(draft) {
-  if (!draft) return;
-  if (draft.content) {
+  if (!draft) return false;
+  if (draft._contentLoadState === 'quarantined') return true;
+  if (draft._contentLoadState === 'loaded' || draft.content) {
+    draft._contentLoadState = 'loaded';
     draft._wordCount = storageWordCountFromEditorHTML(draft.content);
-    return;
+    return true;
   }
-  if (!draft.contentPath) return;
+  if (!draft.contentPath) return false;
 
   try {
     if (projectDirectoryHandle) {
-      const fileHandle = await getProjectFileHandle(draft.contentPath, { create: true });
+      const fileHandle = await getProjectFileHandle(draft.contentPath);
       draft.contentHandle = fileHandle;
       const fileText = await readFileText(fileHandle);
+      if (!fileText.trim() && Number(draft._wordCount ?? draft.wordCount) > 0) {
+        const repaired = await window.LmFirstProjectOpenMismatchRepair?.repairDocument?.('draft', draft);
+        if (!repaired) {
+          Object.assign(draft, { _contentLoadState: 'quarantined', _contentUnavailableReason: 'empty-file-word-count-mismatch' });
+          showMiniReminder('Draft file खाली है; document read-only mode में खोला गया।');
+          return true;
+        }
+      }
       draft.content = textToEditorHTML(fileText);
       draft._wordCount = storageWordCountFromText(fileText);
+      draft._contentLoadState = 'loaded';
+      return true;
     }
   } catch (error) {
+    draft._contentLoadState = 'failed';
     console.warn('Draft content load failed:', draft.contentPath, error);
   }
+  return false;
 }
 
 async function loadChapterEditDraftContent(draft) {
@@ -635,7 +658,7 @@ async function loadChapterEditDraftContent(draft) {
 
   try {
     if (projectDirectoryHandle) {
-      const fileHandle = await getProjectFileHandle(draft.contentPath, { create: true });
+      const fileHandle = await getProjectFileHandle(draft.contentPath);
       draft.contentHandle = fileHandle;
       const fileText = await readFileText(fileHandle);
       draft.content = textToEditorHTML(fileText);
@@ -646,6 +669,38 @@ async function loadChapterEditDraftContent(draft) {
   } catch (error) {
     console.warn('Chapter edit draft content load failed:', draft.contentPath, error);
   }
+}
+
+async function loadTrashDraftContent(draft) {
+  if (!draft) return false;
+  if (draft._contentLoadState === 'loaded' || draft.content) {
+    draft._contentLoadState = 'loaded';
+    return true;
+  }
+  if (!draft.contentPath || !projectDirectoryHandle) return false;
+  try {
+    const fileHandle = await getProjectFileHandle(draft.contentPath);
+    draft.contentHandle = fileHandle;
+    const fileText = await readFileText(fileHandle);
+    draft.content = textToEditorHTML(fileText);
+    draft._wordCount = storageWordCountFromText(fileText);
+    draft._contentLoadState = 'loaded';
+    return true;
+  } catch (error) {
+    draft._contentLoadState = 'failed';
+    console.warn('Trash draft content load failed:', draft.contentPath, error);
+  }
+  return false;
+}
+
+async function ensureProjectDocumentContentsLoaded(options = {}) {
+  const tasks = [];
+  if (options.chapters) chapters.forEach(chapter => tasks.push(loadChapterContent(chapter)));
+  if (options.drafts) chapterDrafts.forEach(draft => tasks.push(loadDraftContent(draft)));
+  if (options.trash) chapterTrashDrafts.forEach(draft => tasks.push(loadTrashDraftContent(draft)));
+  const results = await Promise.all(tasks);
+  if (results.some(result => result !== true)) throw new Error('One or more document files could not be loaded safely.');
+  return true;
 }
 
 function text() {
@@ -1432,7 +1487,6 @@ function updatePasteSettingsUI() {
     row.style.opacity = isPasteSettingsEnabled ? '1' : '0.5';
     row.style.pointerEvents = isPasteSettingsEnabled ? 'auto' : 'none';
   });
-
   // ── 3. Independent global-format auto-apply state ────────────
   if (autoApplyToggleBtn) {
     autoApplyToggleBtn.setAttribute('aria-pressed', String(smartPasteAutoApply));
@@ -1443,4 +1497,3 @@ function updatePasteSettingsUI() {
   }
   if (typeof syncAdvancedQuickControlsFromRuntime === 'function') syncAdvancedQuickControlsFromRuntime();
 }
-

@@ -20,6 +20,10 @@ function advancedPromoteCopy(key, fallback = '') {
   return typeof value === 'string' && value ? value : fallback;
 }
 
+function advancedPromoteIcon(name, className = '') {
+  return typeof window.lmIcon === 'function' ? window.lmIcon(name, className) : '';
+}
+
 function advancedPromoteNormalizedText(value = '') {
   return String(value || '')
     .replace(/\u00a0/g, ' ')
@@ -169,7 +173,9 @@ function advancedPromoteConclusionStorageKey() {
   return `${ADVANCED_PROMOTE_CONCLUSION_STORAGE_PREFIX}:${encodeURIComponent(folderName)}`;
 }
 
-function advancedPromoteReadPermanentConclusion() {
+function advancedPromoteReadPermanentConclusion(mode = 'promote') {
+  const managed = window.LmAdvancedImportPromoteSettings?.readPermanentConclusion?.(mode);
+  if (typeof managed === 'string') return managed;
   try {
     return localStorage.getItem(advancedPromoteConclusionStorageKey()) || '';
   } catch (error) {
@@ -178,7 +184,8 @@ function advancedPromoteReadPermanentConclusion() {
   }
 }
 
-function advancedPromoteSavePermanentConclusion(value = '') {
+function advancedPromoteSavePermanentConclusion(value = '', mode = 'promote') {
+  if (window.LmAdvancedImportPromoteSettings?.savePermanentConclusion?.(mode, value)) return;
   try {
     localStorage.setItem(advancedPromoteConclusionStorageKey(), String(value || ''));
   } catch (error) {
@@ -219,6 +226,12 @@ function advancedPromoteHasInvalidChapters(state) {
 function advancedPromoteDefaultTitle(baseTitle = '', index = 0) {
   const cleanBase = String(baseTitle || advancedPromoteCopy('chapterTitleLabel', 'Chapter')).trim() || advancedPromoteCopy('chapterTitleLabel', 'Chapter');
   return `${cleanBase} ${index + 1}`;
+}
+
+function advancedImportDocumentTitle(state, index = 0, target = state?.importTarget) {
+  const documentType = target === 'chapters' ? 'Chapter' : 'Draft';
+  const sourceTitle = String(state?.draftTitle || '').trim();
+  return `${sourceTitle || 'Imported'} ${documentType} ${index + 1}`;
 }
 
 function advancedPromoteUniqueChapterTitle(baseTitle = '', usedKeys = new Set()) {
@@ -277,106 +290,6 @@ function advancedPromoteGenerateChapters(sourceText = '', options = {}) {
 
 function advancedImportUsesRawMode(state = advancedDraftPromoteState) {
   return Boolean(state?.mode === 'import' && state.wordLimit > advancedPromoteWordCount(state.sourceText));
-}
-
-function advancedImportCustomWordRegex(value = '') {
-  const escaped = String(value || '').trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  if (!escaped) return null;
-  return new RegExp(`(?<![\\p{L}\\p{N}\\p{M}_])${escaped}(?![\\p{L}\\p{N}\\p{M}_])`, 'giu');
-}
-
-function advancedImportCustomSplit(sourceText = '', customWord = '', wordLimit = 2500) {
-  const source = advancedPromoteNormalizedText(sourceText);
-  const regex = advancedImportCustomWordRegex(customWord);
-  if (!source || !regex) return { valid: false, reason: 'Enter a custom split word.', parts: [] };
-  if (advancedPromoteWordCount(source) < wordLimit) {
-    return { valid: false, reason: `The imported text has fewer than ${wordLimit} words.`, parts: [] };
-  }
-  const occurrences = Array.from(source.matchAll(regex)).map(match => match.index);
-  if (occurrences.length < ADVANCED_IMPORT_CUSTOM_MINIMUM_OCCURRENCES) {
-    return { valid: false, reason: `The custom word needs at least ${ADVANCED_IMPORT_CUSTOM_MINIMUM_OCCURRENCES} occurrences.`, parts: [], occurrences: occurrences.length };
-  }
-
-  const parts = [];
-  let cursor = 0;
-  while (cursor < source.length) {
-    const boundary = occurrences.find(position => position > cursor && advancedPromoteWordCount(source.slice(cursor, position)) >= wordLimit);
-    if (!Number.isFinite(boundary)) break;
-    const part = source.slice(cursor, boundary).trim();
-    if (part) parts.push(part);
-    cursor = boundary;
-  }
-
-  const remainder = source.slice(cursor).trim();
-  if (!parts.length) {
-    return {
-      valid: false,
-      reason: `No occurrence creates a chapter of at least ${wordLimit} words.`,
-      parts: [],
-      occurrences: occurrences.length
-    };
-  }
-  if (remainder) {
-    if (advancedPromoteWordCount(remainder) < wordLimit) parts[parts.length - 1] = `${parts[parts.length - 1]}\n\n${remainder}`.trim();
-    else parts.push(remainder);
-  }
-  const valid = parts.length >= 2 && parts.every(part => advancedPromoteWordCount(part) >= wordLimit);
-  return {
-    valid,
-    reason: valid ? '' : 'The occurrences cannot produce at least two chapters at this word parameter.',
-    parts: valid ? parts : [],
-    occurrences: occurrences.length
-  };
-}
-
-function advancedImportAutoSplit(sourceText = '', wordLimit = 2500) {
-  let remaining = advancedPromoteNormalizedText(sourceText);
-  const parts = [];
-  while (advancedPromoteWordCount(remaining) > wordLimit) {
-    const matches = Array.from(remaining.matchAll(/[\p{L}\p{N}\p{M}]+(?:['’\-][\p{L}\p{N}\p{M}]+)*/gu));
-    const target = matches[Math.max(0, wordLimit - 1)];
-    if (!target) break;
-    const minimumBoundary = target.index + target[0].length;
-    const lookAhead = remaining.slice(minimumBoundary, minimumBoundary + ADVANCED_IMPORT_SMART_LOOK_AHEAD);
-    const sentenceMatch = lookAhead.match(/^[\s\S]*?[।.!?](?=\s|$)/u);
-    const newlineIndex = lookAhead.indexOf('\n');
-    const sentenceBoundary = sentenceMatch ? minimumBoundary + sentenceMatch[0].length : -1;
-    const newlineBoundary = newlineIndex >= 0 ? minimumBoundary + newlineIndex : -1;
-    const smartBoundaries = [sentenceBoundary, newlineBoundary].filter(position => position >= minimumBoundary);
-    const boundary = smartBoundaries.length ? Math.min(...smartBoundaries) : minimumBoundary;
-    const part = remaining.slice(0, boundary).trim();
-    const rest = remaining.slice(boundary).trim();
-    if (!part || !rest || part === remaining) break;
-    parts.push(part);
-    remaining = rest;
-  }
-  if (remaining) {
-    if (parts.length && advancedPromoteWordCount(remaining) < wordLimit) {
-      parts[parts.length - 1] = `${parts[parts.length - 1]}\n\n${remaining}`.trim();
-    } else {
-      parts.push(remaining);
-    }
-  }
-  return parts;
-}
-
-function advancedImportGenerateChapters(state) {
-  const customResult = state.splitMode === 'custom'
-    ? advancedImportCustomSplit(state.sourceText, state.customWord, state.wordLimit)
-    : null;
-  const parts = customResult ? customResult.parts : advancedImportAutoSplit(state.sourceText, state.wordLimit);
-  return {
-    valid: customResult ? customResult.valid : parts.length > 0,
-    reason: customResult?.reason || '',
-    chapters: parts.map((body, index) => ({
-      id: `advanced-import-${Date.now()}-${index}`,
-      title: advancedPromoteDefaultTitle(state.draftTitle, index),
-      body,
-      conclusion: state.permanentConclusion,
-      usesPermanentConclusion: true
-    })),
-    remainderText: ''
-  };
 }
 
 function advancedPromoteSyncDraftSnapshot(draftIndex) {
@@ -445,6 +358,19 @@ async function requestRawPromoteDraftToChapter(draftIndex, anchor = null) {
 }
 
 async function requestAdvancedPromoteDraftToChapter(draftIndex, anchor = null) {
+  const workflowDefaults = window.LmAdvancedImportPromoteSettings?.read?.() || {};
+  if (workflowDefaults.promoteAutoOpenAboveLimit !== false) {
+    if (!(await ensureDraftContentLoaded(draftIndex))) {
+      showMiniReminder('Draft content load नहीं हुआ; promote panel नहीं खोला गया।');
+      return;
+    }
+    const sourceWords = advancedPromoteWordCount(advancedPromoteSourceTextForDraft(draftIndex));
+    const wordLimit = clampNumber(parseInt(workflowDefaults.promoteWordCount, 10) || 2500, 100, 50000);
+    if (sourceWords > wordLimit) {
+      await openAdvancedDraftPromotePanel(draftIndex);
+      return;
+    }
+  }
   openDraftPromoteModePanel(draftIndex, anchor || document.getElementById('promoteDraftBtn'));
 }
 
@@ -460,21 +386,27 @@ function ensureAdvancedDraftPromoteModal() {
   return modal;
 }
 
-function openAdvancedDraftPromotePanel(draftIndex) {
+async function openAdvancedDraftPromotePanel(draftIndex) {
+  if (!(await ensureDraftContentLoaded(draftIndex))) {
+    showMiniReminder('Draft content load नहीं हुआ; promote panel नहीं खोला गया।');
+    return;
+  }
   const draft = advancedPromoteSyncDraftSnapshot(draftIndex);
   if (!draft) return;
 
   const sourceText = advancedPromoteSourceTextForDraft(draftIndex);
-  const wordLimit = 2500;
+  const workflowDefaults = window.LmAdvancedImportPromoteSettings?.read?.() || {};
+  const wordLimit = clampNumber(parseInt(workflowDefaults.promoteWordCount, 10) || 2500, 100, 50000);
   const manifest = normalizeProjectManifest(projectManifest || createProjectManifest());
   const showDestination = hasRawChaptersInPanel(manifest);
-  const permanentConclusion = advancedPromoteReadPermanentConclusion();
+  const permanentConclusion = advancedPromoteReadPermanentConclusion('promote');
   advancedDraftPromoteState = {
     mode: 'draft',
     draftIndex,
     draftTitle: draft.title || `${text().draftPrefix} ${draftIndex + 1}`,
     sourceText,
     generatedSourceText: sourceText,
+    contentFontSize: clampNumber(parseInt(workflowDefaults.promoteFontSize, 10) || 14, 10, 30),
     wordLimit,
     generatedWordLimit: wordLimit,
     chapterCount: advancedPromoteDefaultChapterCount(sourceText, wordLimit),
@@ -487,7 +419,7 @@ function openAdvancedDraftPromotePanel(draftIndex) {
     customSplitValid: true,
     customSplitReason: '',
     customValidationVisible: false,
-    destination: 'part',
+    destination: workflowDefaults.promoteDestination === 'raw' ? 'raw' : 'part',
     showDestination,
     activeView: 'chapters',
     selectedChapterIndex: 0,
@@ -511,24 +443,27 @@ function openAdvancedDraftPromotePanel(draftIndex) {
 function openAdvancedTextImportPanel(sourceText = '', sourceTitle = '') {
   const normalizedSource = advancedPromoteNormalizedText(sourceText);
   if (!normalizedSource) return;
-  const wordLimit = ADVANCED_IMPORT_DEFAULT_WORDS;
+  const workflowDefaults = window.LmAdvancedImportPromoteSettings?.read?.() || {};
+  const wordLimit = clampNumber(parseInt(workflowDefaults.importWordCount, 10) || ADVANCED_IMPORT_DEFAULT_WORDS, ADVANCED_IMPORT_MINIMUM_WORDS, ADVANCED_IMPORT_MAXIMUM_WORDS);
   const manifest = normalizeProjectManifest(projectManifest || createProjectManifest());
-  const permanentConclusion = advancedPromoteReadPermanentConclusion();
+  const permanentConclusion = advancedPromoteReadPermanentConclusion('import');
   advancedDraftPromoteState = {
     mode: 'import',
     draftIndex: -1,
     draftTitle: String(sourceTitle || 'Imported Text').trim() || 'Imported Text',
     sourceText: normalizedSource,
     generatedSourceText: normalizedSource,
+    contentFontSize: clampNumber(parseInt(workflowDefaults.importFontSize, 10) || 14, 10, 30),
     wordLimit,
     generatedWordLimit: wordLimit,
     chapterCount: 1,
     generatedChapterCount: 1,
     permanentConclusion,
-    splitMode: 'auto',
-    generatedSplitMode: 'auto',
-    customWord: '',
-    generatedCustomWord: '',
+    splitMode: workflowDefaults.importSplitMode === 'custom' ? 'custom' : 'auto',
+    generatedSplitMode: workflowDefaults.importSplitMode === 'custom' ? 'custom' : 'auto',
+    customWord: String(workflowDefaults.importCustomWord || '').trim(),
+    generatedCustomWord: String(workflowDefaults.importCustomWord || '').trim(),
+    importTarget: workflowDefaults.importTarget === 'chapters' ? 'chapters' : 'drafts',
     customSplitValid: true,
     customSplitReason: '',
     customValidationVisible: false,
@@ -543,6 +478,7 @@ function openAdvancedTextImportPanel(sourceText = '', sourceTitle = '') {
     ? { chapters: [], valid: true, reason: '' }
     : advancedImportGenerateChapters(advancedDraftPromoteState);
   advancedDraftPromoteState.chapters = generated.chapters;
+  advancedDraftPromoteState.remainderText = generated.remainderText;
   advancedDraftPromoteState.customSplitValid = generated.valid;
   advancedDraftPromoteState.customSplitReason = generated.reason;
   renderAdvancedDraftPromotePanel();
@@ -565,26 +501,34 @@ function advancedPromoteDestinationHTML(state) {
     </fieldset>`;
 }
 
-function advancedPromoteSourceViewHTML(state) {
+function advancedPromoteSettingsBarHTML(state) {
   const copy = text();
-  const sourceWords = advancedPromoteWordCount(state.sourceText);
-  const remainderWords = advancedPromoteWordCount(state.remainderText);
-  const splitIsStale = advancedPromoteSplitIsStale(state);
   const rawImportMode = advancedImportUsesRawMode(state);
-  return `
-    <main class="advanced-promote-source-view">
-      <div class="advanced-promote-settings-bar ${state.showDestination ? 'has-destination' : ''}">
-        <label>
-          <span>${escapeHtml(copy.advancedPromoteWordLimit || 'Words per chapter')}</span>
-          <input id="advancedPromoteWordLimitInp" type="number" min="${state.mode === 'import' ? ADVANCED_IMPORT_MINIMUM_WORDS : 100}" max="${state.mode === 'import' ? ADVANCED_IMPORT_MAXIMUM_WORDS : 50000}" step="100" value="${state.wordLimit}" oninput="updateAdvancedPromoteSetting('wordLimit', this.value)">
+  const applyBlockReason = advancedPromoteApplyBlockReason(state);
+  const createButton = rawImportMode
+    ? `<button class="advanced-promote-create-btn is-raw-import" type="button" onclick="applyAdvancedTextImportRaw()">${state.importTarget === 'chapters' ? 'Import as Chapter' : 'Raw Import'}</button>`
+    : `<button class="advanced-promote-create-btn ${state.mode === 'import' && state.splitMode === 'custom' && !state.customSplitValid ? 'is-validation-blocked' : ''}" type="button" aria-disabled="${state.mode === 'import' && state.splitMode === 'custom' && !state.customSplitValid}" onclick="generateAdvancedPromoteChaptersFromPanel()">${escapeHtml(state.mode === 'import' ? (state.importTarget === 'chapters' ? 'Create Chapters' : 'Create Drafts') : (copy.advancedPromoteCreate || 'Create Chapters'))}</button>`;
+  return `<div class="advanced-promote-settings-bar ${state.showDestination ? 'has-destination' : ''}">
+        ${state.mode === 'import' ? `<label class="advanced-import-target-field">
+          <span>Import as</span>
+          <select id="advancedImportTarget" onchange="updateAdvancedImportTarget(this.value)">
+            <option value="drafts" ${state.importTarget === 'chapters' ? '' : 'selected'}>Draft</option>
+            <option value="chapters" ${state.importTarget === 'chapters' ? 'selected' : ''}>Chapter directly</option>
+          </select>
         </label>
-        ${state.mode === 'import' ? `
-          <label>
+          <label class="advanced-import-split-field">
             <span>Split method</span>
             <select id="advancedImportSplitMode" data-menu-max-height="${ADVANCED_IMPORT_SELECT_HEIGHT}" onchange="updateAdvancedImportSplitMode(this.value)">
               <option value="auto" ${state.splitMode === 'auto' ? 'selected' : ''}>Auto smart split</option>
               <option value="custom" ${state.splitMode === 'custom' ? 'selected' : ''}>Custom word split</option>
             </select>
+          </label>
+          <label class="advanced-import-word-limit-field">
+            <span>${escapeHtml(copy.advancedPromoteWordLimit || 'Words per chapter')}</span>
+            <span class="advanced-import-word-limit-control advanced-number-stepper dock-fsize-control">
+              <input class="dock-fsize-inp advanced-number-input" id="advancedPromoteWordLimitInp" data-advanced-runtime-key="advanced-promote-word-limit" type="number" min="${ADVANCED_IMPORT_MINIMUM_WORDS}" max="${ADVANCED_IMPORT_MAXIMUM_WORDS}" step="100" value="${state.wordLimit}" oninput="updateAdvancedPromoteSetting('wordLimit', this.value)">
+              <span class="dock-fsize-stepper" aria-label="Words per chapter controls"><button class="dock-fsize-step" type="button" aria-label="Increase words per chapter" onclick="stepAdvancedNumberInput(event, 'advanced-promote-word-limit', 1)">${advancedPromoteIcon('collapseChevron', 'step-chevron-svg lm-chevron-up')}</button><button class="dock-fsize-step" type="button" aria-label="Decrease words per chapter" onclick="stepAdvancedNumberInput(event, 'advanced-promote-word-limit', -1)">${advancedPromoteIcon('collapseChevron', 'step-chevron-svg lm-chevron-down')}</button></span>
+            </span>
           </label>
           <label class="advanced-import-custom-word" ${state.splitMode === 'custom' ? '' : 'hidden'}>
             <span>Custom split word</span>
@@ -592,50 +536,35 @@ function advancedPromoteSourceViewHTML(state) {
               <input class="${state.customSplitValid ? 'is-valid' : (state.customValidationVisible ? 'is-invalid' : '')}" id="advancedImportCustomWordInp" type="text" value="${escapeHtml(state.customWord)}" placeholder="e.g. अध्याय" oninput="updateAdvancedImportCustomWord(this.value)">
               <span class="advanced-import-validation-float ${state.customValidationVisible && !state.customSplitValid ? 'is-visible' : ''}" data-advanced-import-validation>${escapeHtml(state.customSplitReason || 'Choose a valid split word.')}</span>
             </span>
-          </label>` : `
-          <label>
+        </label>` : `<label class="advanced-promote-action-field advanced-promote-number-field">
+          <span>${escapeHtml(copy.advancedPromoteWordLimit || 'Words per chapter')}</span>
+          <span class="advanced-promote-number-control advanced-number-stepper dock-fsize-control">
+            <input class="dock-fsize-inp advanced-number-input" id="advancedPromoteWordLimitInp" data-advanced-runtime-key="advanced-promote-word-limit" type="number" min="100" max="50000" step="100" value="${state.wordLimit}" oninput="updateAdvancedPromoteSetting('wordLimit', this.value)">
+            <span class="dock-fsize-stepper" aria-label="Words per chapter controls"><button class="dock-fsize-step" type="button" aria-label="Increase words per chapter" onclick="stepAdvancedNumberInput(event, 'advanced-promote-word-limit', 1)">${advancedPromoteIcon('collapseChevron', 'step-chevron-svg lm-chevron-up')}</button><button class="dock-fsize-step" type="button" aria-label="Decrease words per chapter" onclick="stepAdvancedNumberInput(event, 'advanced-promote-word-limit', -1)">${advancedPromoteIcon('collapseChevron', 'step-chevron-svg lm-chevron-down')}</button></span>
+          </span>
+        </label>
+          <label class="advanced-promote-action-field advanced-promote-number-field">
             <span>${escapeHtml(copy.advancedPromoteChapterCount || 'Chapter count')}</span>
-            <input id="advancedPromoteChapterCountInp" type="number" min="1" max="50" value="${state.chapterCount}" oninput="updateAdvancedPromoteSetting('chapterCount', this.value)">
+            <span class="advanced-promote-number-control advanced-number-stepper dock-fsize-control">
+              <input class="dock-fsize-inp advanced-number-input" id="advancedPromoteChapterCountInp" data-advanced-runtime-key="advanced-promote-chapter-count" type="number" min="1" max="50" step="1" value="${state.chapterCount}" oninput="updateAdvancedPromoteSetting('chapterCount', this.value)">
+              <span class="dock-fsize-stepper" aria-label="Chapter count controls"><button class="dock-fsize-step" type="button" aria-label="Increase chapter count" onclick="stepAdvancedNumberInput(event, 'advanced-promote-chapter-count', 1)">${advancedPromoteIcon('collapseChevron', 'step-chevron-svg lm-chevron-up')}</button><button class="dock-fsize-step" type="button" aria-label="Decrease chapter count" onclick="stepAdvancedNumberInput(event, 'advanced-promote-chapter-count', -1)">${advancedPromoteIcon('collapseChevron', 'step-chevron-svg lm-chevron-down')}</button></span>
+            </span>
           </label>`}
         ${advancedPromoteDestinationHTML(state)}
-        ${rawImportMode
-          ? '<button class="advanced-promote-create-btn is-raw-import" type="button" onclick="applyAdvancedTextImportRaw()">Raw Import</button>'
-          : `<button class="advanced-promote-create-btn ${state.mode === 'import' && state.splitMode === 'custom' && !state.customSplitValid ? 'is-validation-blocked' : ''}" type="button" aria-disabled="${state.mode === 'import' && state.splitMode === 'custom' && !state.customSplitValid}" onclick="generateAdvancedPromoteChaptersFromPanel()">${escapeHtml(state.mode === 'import' ? 'Create Drafts' : (copy.advancedPromoteCreate || 'Create Chapters'))}</button>`}
-      </div>
-
-      <section class="advanced-promote-conclusion-setting">
-        <div class="advanced-promote-section-head">
-          <div>
-            <strong>${escapeHtml(copy.advancedPromotePermanentConclusion || 'Permanent conclusion')}</strong>
-            <p>${escapeHtml(copy.advancedPromotePermanentConclusionBody || 'Saved for this project and automatically added to every created chapter.')}</p>
+        <div class="advanced-promote-settings-actions">
+          <div class="advanced-promote-action-field is-create-action">
+            <strong>${escapeHtml(rawImportMode ? 'Import' : 'Creation')}</strong>
+            ${createButton}
           </div>
-          <span>${state.permanentConclusion ? escapeHtml(copy.advancedPromoteConclusionReady || 'Auto-add on') : escapeHtml(copy.advancedPromoteConclusionEmpty || 'No conclusion set')}</span>
+          ${rawImportMode ? '' : `<div class="advanced-promote-action-field is-apply-action">
+            <strong>${escapeHtml(state.mode === 'import' ? 'Final import' : 'Promotion')}</strong>
+            <span class="advanced-promote-apply-input-wrap">
+              <button class="advanced-promote-apply-btn ${applyBlockReason ? 'is-validation-blocked' : ''}" type="button" aria-disabled="${Boolean(applyBlockReason)}" onclick="handleAdvancedPromoteApplyClick(event)">${escapeHtml(state.mode === 'import' ? 'Advanced Import' : (copy.advancedPromoteApply || 'Promote Chapters'))}</button>
+              <span class="advanced-import-validation-float advanced-promote-apply-validation" data-advanced-promote-apply-validation>${escapeHtml(applyBlockReason)}</span>
+            </span>
+          </div>`}
         </div>
-        <textarea id="advancedPromotePermanentConclusionInp" rows="3" placeholder="${escapeHtml(copy.advancedPromoteConclusionPlaceholder || 'Write the reusable chapter conclusion...')}" oninput="updateAdvancedPromotePermanentConclusion(this.value)">${escapeHtml(state.permanentConclusion)}</textarea>
-      </section>
-
-      <section class="advanced-promote-source-workspace">
-        <div class="advanced-promote-section-head">
-          <div>
-            <strong>${escapeHtml(copy.advancedPromoteFullSource || copy.advancedPromoteSource || 'Source draft')}</strong>
-            <p class="advanced-promote-stale-note" ${splitIsStale ? '' : 'hidden'}>${escapeHtml(copy.advancedPromoteRegenerateRequired || 'Source changed. Create chapters again before promoting.')}</p>
-          </div>
-          <span data-advanced-promote-source-words>${sourceWords} ${escapeHtml(copy.words || 'words')}</span>
-        </div>
-        <textarea id="advancedPromoteSourceText" oninput="updateAdvancedPromoteSourceText(this.value)">${escapeHtml(state.sourceText)}</textarea>
-      </section>
-
-      <section class="advanced-promote-source-remainder" ${state.mode === 'import' ? 'hidden' : (state.chapters.length || state.remainderText ? '' : 'hidden')}>
-        <div class="advanced-promote-section-head">
-          <div>
-            <strong>${escapeHtml(copy.advancedPromoteRemainder || 'Text staying in source draft')}</strong>
-            <p>${escapeHtml(copy.advancedPromoteRemainderBody || 'This text is not promoted and will remain saved in the same draft.')}</p>
-          </div>
-          <span>${remainderWords} ${escapeHtml(copy.words || 'words')}</span>
-        </div>
-        <textarea rows="5" oninput="updateAdvancedPromoteRemainderText(this.value)">${escapeHtml(state.remainderText)}</textarea>
-      </section>
-    </main>`;
+      </div>`;
 }
 
 function advancedPromoteChapterListHTML(state) {
@@ -645,14 +574,14 @@ function advancedPromoteChapterListHTML(state) {
   }
 
   return state.chapters.map((chapter, index) => {
-    const bodyWords = advancedPromoteWordCount(advancedPromoteChapterBody(chapter));
-    const isSelected = index === state.selectedChapterIndex;
+    const fullWords = advancedPromoteWordCount(advancedPromoteChapterFullText(chapter));
+    const isSelected = state.activeView === 'chapters' && index === state.selectedChapterIndex;
     return `
       <button class="advanced-promote-chapter-list-btn ${isSelected ? 'is-selected' : ''}" type="button" data-advanced-promote-list-index="${index}" onclick="selectAdvancedPromoteChapter(${index})" aria-pressed="${isSelected}">
         <span class="advanced-promote-chapter-number">${String(index + 1).padStart(2, '0')}</span>
         <span class="advanced-promote-chapter-list-copy">
           <strong data-advanced-promote-list-title="${index}">${escapeHtml(chapter.title)}</strong>
-          <small><span data-advanced-promote-list-words="${index}">${bodyWords}</span> ${escapeHtml(copy.advancedPromoteWords || copy.words || 'words')} · ${chapter.conclusion ? escapeHtml(copy.advancedPromoteConclusionAdded || 'Conclusion added') : escapeHtml(copy.advancedPromoteNoConclusion || 'No conclusion')}</small>
+          <small><span data-advanced-promote-list-words="${index}">${fullWords}</span> ${escapeHtml(copy.advancedPromoteWords || copy.words || 'words')}</small>
         </span>
       </button>`;
   }).join('');
@@ -669,104 +598,135 @@ function advancedPromoteSelectedChapterHTML(state) {
   }
 
   const index = state.selectedChapterIndex;
-  const body = advancedPromoteChapterBody(chapter);
+  const bodyWords = advancedPromoteWordCount(advancedPromoteChapterBody(chapter));
+  const conclusionWords = advancedPromoteWordCount(chapter.conclusion || '');
   const fullText = advancedPromoteChapterFullText(chapter);
-  const bodyWords = advancedPromoteWordCount(body);
-  const finalWords = advancedPromoteWordCount(fullText);
-  const lastLine = advancedPromoteLastSentence(body) || (copy.advancedPromoteEmptyChapter || 'This chapter is empty.');
-  const conclusionMode = chapter.usesPermanentConclusion
-    ? (copy.advancedPromotePermanentStatus || 'Permanent conclusion')
-    : (copy.advancedPromoteCustomStatus || 'Custom conclusion');
-  const isReady = advancedPromoteChapterIsReady(chapter, state);
-  const readinessLabel = isReady
-    ? (copy.advancedPromoteReady || 'Ready')
-    : (copy.advancedPromoteBelowParameter || 'Below parameter');
-
+  const fullWords = advancedPromoteWordCount(fullText);
+  const numberLabel = String(index + 1).padStart(2, '0');
   return `
     <section class="advanced-promote-chapter-preview" data-advanced-promote-chapter="${index}">
       <header class="advanced-promote-chapter-preview-head">
-        <label>
-          <span>${escapeHtml(state.mode === 'import' ? 'Draft title' : (copy.chapterTitleLabel || 'Chapter title'))}</span>
-          <input type="text" value="${escapeHtml(chapter.title)}" oninput="updateAdvancedPromoteChapterTitle(${index}, this.value)">
-        </label>
+        <div class="advanced-promote-chapter-identity">
+          <span class="advanced-promote-preview-number">${numberLabel}</span>
+          <label class="advanced-promote-chapter-title-inline">
+            <input type="text" value="${escapeHtml(chapter.title)}" oninput="updateAdvancedPromoteChapterTitle(${index}, this.value)" aria-label="${escapeHtml(copy.chapterTitleLabel || 'Chapter title')}">
+          </label>
+        </div>
+        <div class="advanced-promote-chapter-meta" aria-live="polite">
+          <span><b data-advanced-promote-body-words>${bodyWords}</b> ${escapeHtml(copy.advancedPromoteBodyWords || 'words')}</span>
+          <span data-advanced-promote-full-word-state ${conclusionWords ? '' : 'hidden'}><b data-advanced-promote-final-words>${fullWords}</b> ${escapeHtml(copy.advancedPromoteFinalWords || 'full words')}</span>
+          <span data-advanced-promote-conclusion-status>${escapeHtml(conclusionWords ? (copy.advancedPromoteConclusionAdded || 'Conclusion added') : (copy.advancedPromoteNoConclusion || 'No conclusion'))}</span>
+        </div>
         <div class="advanced-promote-chapter-actions">
-          <button type="button" onclick="focusAdvancedPromoteChapterEditor(${index})">${escapeHtml(copy.advancedPromoteEdit || 'Edit')}</button>
-          <button type="button" onclick="copyAdvancedPromoteChapter(${index})">${escapeHtml(copy.advancedPromoteCopy || 'Copy')}</button>
-          <button type="button" onclick="clearAdvancedPromoteChapter(${index})">${escapeHtml(copy.advancedPromoteClear || 'Clear')}</button>
-          <button type="button" class="is-danger" onclick="deleteAdvancedPromoteChapter(${index})">${escapeHtml(copy.advancedPromoteDelete || 'Delete')}</button>
+          <button type="button" data-advanced-promote-edit-btn onclick="focusAdvancedPromoteChapterEditor(${index})" title="${escapeHtml(copy.advancedPromoteEdit || 'Edit')}" aria-label="${escapeHtml(copy.advancedPromoteEdit || 'Edit')}">${advancedPromoteIcon('edit', 'advanced-promote-action-icon')}</button>
+          <button type="button" onclick="copyAdvancedPromoteChapter(${index})" title="${escapeHtml(copy.advancedPromoteCopy || 'Copy')}" aria-label="${escapeHtml(copy.advancedPromoteCopy || 'Copy')}">${advancedPromoteIcon('smartCopyDefault', 'advanced-promote-action-icon')}</button>
+          <button type="button" class="is-danger" onclick="deleteAdvancedPromoteChapter(${index})" title="${escapeHtml(copy.advancedPromoteDelete || 'Delete')}" aria-label="${escapeHtml(copy.advancedPromoteDelete || 'Delete')}">${advancedPromoteIcon('delete', 'advanced-promote-action-icon')}</button>
         </div>
       </header>
 
-      <div class="advanced-promote-chapter-status" aria-live="polite">
-        <span class="${isReady ? 'is-ready' : 'is-warning'}" data-advanced-promote-readiness>${escapeHtml(readinessLabel)}</span>
-        <span><b data-advanced-promote-body-words>${bodyWords}</b> ${escapeHtml(copy.advancedPromoteBodyWords || 'body words')}</span>
-        <span><b data-advanced-promote-final-words>${finalWords}</b> ${escapeHtml(copy.advancedPromoteFinalWords || 'final words')}</span>
-        <span data-advanced-promote-conclusion-status>${escapeHtml(conclusionMode)}</span>
-      </div>
-
-      <div class="advanced-promote-last-line" ${state.mode === 'import' ? 'hidden' : ''}>
-        <span>${escapeHtml(copy.advancedPromoteLastLine || 'Last line')}</span>
-        <p data-advanced-promote-last-line>${escapeHtml(lastLine)}</p>
-      </div>
-
-      <label class="advanced-promote-chapter-editor">
-        <span>${escapeHtml(copy.advancedPromoteFullPreview || 'Full chapter preview / edit')}</span>
-        <textarea oninput="updateAdvancedPromoteChapterText(${index}, this.value)">${escapeHtml(body)}</textarea>
-      </label>
-
-      <section class="advanced-promote-chapter-conclusion">
-        <div class="advanced-promote-section-head">
-          <div>
-            <strong>${escapeHtml(copy.advancedPromoteChapterConclusion || 'Chapter conclusion')}</strong>
-            <p>${escapeHtml(copy.advancedPromoteChapterConclusionBody || 'This is appended to the chapter when promoted.')}</p>
-          </div>
-          <button type="button" onclick="usePermanentAdvancedPromoteConclusion(${index})">${escapeHtml(copy.advancedPromoteUsePermanent || 'Use permanent')}</button>
-        </div>
-        <textarea rows="5" oninput="updateAdvancedPromoteChapterConclusion(${index}, this.value)">${escapeHtml(chapter.conclusion || '')}</textarea>
+      <section class="advanced-promote-full-chapter">
+        <div class="advanced-promote-full-reading" data-advanced-promote-full-reading>${escapeHtml(fullText)}</div>
+        <textarea class="advanced-promote-full-editor" hidden oninput="updateAdvancedPromoteChapterFullText(${index}, this.value)">${escapeHtml(fullText)}</textarea>
       </section>
     </section>`;
 }
 
+function advancedImportRemainderViewHTML(state) {
+  const words = advancedPromoteWordCount(state.remainderText);
+  return `<section class="advanced-import-source-only is-remainder-draft"><div class="advanced-promote-section-head"><div><strong>Remainder Text</strong><p>This text will be saved as a draft when the chapters are imported.</p></div><span>${words} ${escapeHtml(text().words || 'words')}</span></div><textarea oninput="updateAdvancedPromoteRemainderText(this.value)">${escapeHtml(state.remainderText)}</textarea></section>`;
+}
+
+function advancedPromoteRemainderViewHTML(state) {
+  const copy = text();
+  const words = advancedPromoteWordCount(state.remainderText);
+  return `<section class="advanced-promote-chapter-preview is-remainder-preview">
+    <header class="advanced-promote-chapter-preview-head">
+      <div class="advanced-promote-chapter-identity">
+        <span class="advanced-promote-preview-number">DR</span>
+        <div class="advanced-promote-remainder-identity"><strong>${escapeHtml(state.draftTitle || copy.advancedPromoteSource || 'Source Draft')}</strong></div>
+      </div>
+      <div class="advanced-promote-chapter-meta" aria-live="polite">
+        <span><b data-advanced-promote-remainder-words>${words}</b> ${escapeHtml(copy.words || 'words')}</span>
+        <span>${escapeHtml(copy.advancedPromoteRemainderBody || 'Stays saved in the source draft')}</span>
+      </div>
+    </header>
+    <section class="advanced-promote-full-chapter">
+      <textarea class="advanced-promote-full-editor" aria-label="${escapeHtml(copy.advancedPromoteRemainder || 'Remainder Text')}" oninput="updateAdvancedPromoteRemainderText(this.value)">${escapeHtml(state.remainderText)}</textarea>
+    </section>
+  </section>`;
+}
+
 function advancedPromoteCreatedViewHTML(state) {
   const copy = text();
+  if (state.mode === 'import') {
+    const remainderWords = advancedPromoteWordCount(state.remainderText);
+    const importedSelected = state.activeView === 'source';
+    const remainderSelected = state.activeView === 'remainder';
+    const createdLabel = state.importTarget === 'chapters' ? 'Created Chapters' : 'Created Drafts';
+    const remainderIndex = state.importTarget === 'chapters' && state.remainderText
+      ? `<div class="advanced-import-index-separator is-remainder"><span>Remainder Text · As Draft</span></div><button class="advanced-promote-chapter-list-btn is-remainder-source ${remainderSelected ? 'is-selected' : ''}" type="button" onclick="setAdvancedPromoteView('remainder')" aria-pressed="${remainderSelected}"><span class="advanced-promote-chapter-number">DR</span><span class="advanced-promote-chapter-list-copy"><strong>Remainder Text</strong><small>${remainderWords} ${escapeHtml(copy.words || 'words')}</small></span></button>`
+      : '';
+    const detail = remainderSelected
+      ? advancedImportRemainderViewHTML(state)
+      : importedSelected
+        ? `<section class="advanced-import-source-only"><textarea id="advancedPromoteSourceText" oninput="updateAdvancedPromoteSourceText(this.value)">${escapeHtml(state.sourceText)}</textarea></section>`
+        : advancedPromoteSelectedChapterHTML(state);
+    return `<main class="advanced-promote-created-view is-import-layout has-settings-bar">${advancedPromoteSettingsBarHTML(state)}<aside class="advanced-promote-chapter-index"><div class="advanced-promote-chapter-index-list"><button class="advanced-promote-chapter-list-btn is-imported-source ${importedSelected ? 'is-selected' : ''}" type="button" onclick="setAdvancedPromoteView('source')" aria-pressed="${importedSelected}"><span class="advanced-promote-chapter-number">IN</span><span class="advanced-promote-chapter-list-copy"><strong>Imported Text</strong><small>${advancedPromoteWordCount(state.sourceText)} ${escapeHtml(copy.words || 'words')}</small></span></button><div class="advanced-import-index-separator"><span>${createdLabel}</span></div>${advancedPromoteChapterListHTML(state)}${remainderIndex}</div>${state.chapters.length ? `<div class="advanced-promote-index-footer"><button type="button" onclick="reverseAdvancedPromoteCreation()">${escapeHtml(copy.advancedPromoteReverse || 'Reverse Creation')}</button></div>` : ''}</aside>${detail}</main>`;
+  }
+  const sourceSelected = state.activeView === 'source';
+  const remainderSelected = state.activeView === 'remainder';
   const remainderWords = advancedPromoteWordCount(state.remainderText);
+  const remainderIndex = state.remainderText
+    ? `<div class="advanced-import-index-separator is-remainder"><span>Remainder Text · In Draft</span></div><button class="advanced-promote-chapter-list-btn is-remainder-source ${remainderSelected ? 'is-selected' : ''}" type="button" onclick="setAdvancedPromoteView('remainder')" aria-pressed="${remainderSelected}"><span class="advanced-promote-chapter-number">DR</span><span class="advanced-promote-chapter-list-copy"><strong>${escapeHtml(state.draftTitle || copy.advancedPromoteSource || 'Source Draft')}</strong><small>${remainderWords} ${escapeHtml(copy.words || 'words')}</small></span></button>`
+    : '';
+  const detail = remainderSelected
+    ? advancedPromoteRemainderViewHTML(state)
+    : sourceSelected
+      ? advancedPromoteSourceDetailHTML(state)
+      : advancedPromoteSelectedChapterHTML(state);
   return `
-    <main class="advanced-promote-created-view">
+    <main class="advanced-promote-created-view is-import-layout has-settings-bar">
+      ${advancedPromoteSettingsBarHTML(state)}
       <aside class="advanced-promote-chapter-index">
-        <div class="advanced-promote-section-head">
-          <strong>${escapeHtml(state.mode === 'import' ? 'Created drafts' : (copy.advancedPromoteCreatedChapters || 'Created chapters'))}</strong>
-          <span>${state.chapters.length}</span>
-        </div>
-        <div class="advanced-promote-chapter-index-list">${advancedPromoteChapterListHTML(state)}</div>
-        <div class="advanced-promote-remainder-status" ${state.mode === 'import' ? 'hidden' : ''}>
-          <strong>${escapeHtml(copy.advancedPromoteRemainder || 'Source draft remainder')}</strong>
-          <span>${remainderWords} ${escapeHtml(copy.words || 'words')}</span>
-          <p>${escapeHtml(copy.advancedPromoteRemainderBody || 'This text stays saved in the source draft.')}</p>
-        </div>
+        <div class="advanced-promote-chapter-index-list"><button class="advanced-promote-chapter-list-btn is-imported-source ${sourceSelected ? 'is-selected' : ''}" type="button" onclick="setAdvancedPromoteView('source')" aria-pressed="${sourceSelected}"><span class="advanced-promote-chapter-number">SR</span><span class="advanced-promote-chapter-list-copy"><strong>${escapeHtml(copy.advancedPromoteSource || 'Source Draft')}</strong><small>${advancedPromoteWordCount(state.sourceText)} ${escapeHtml(copy.words || 'words')}</small></span></button><div class="advanced-import-index-separator"><span>${escapeHtml(copy.advancedPromoteCreatedChapters || 'Created Chapters')}</span></div>${advancedPromoteChapterListHTML(state)}${remainderIndex}</div>
+        ${state.chapters.length ? `<div class="advanced-promote-index-footer"><button type="button" onclick="reverseAdvancedPromoteCreation()">${escapeHtml(copy.advancedPromoteReverse || 'Reverse Creation')}</button></div>` : ''}
       </aside>
-      ${advancedPromoteSelectedChapterHTML(state)}
+      ${detail}
     </main>`;
 }
 
-function advancedPromoteSummaryHTML(state, metrics) {
-  const copy = text();
-  return `
-    <div class="advanced-promote-summary" aria-live="polite">
-      <div class="advanced-promote-view-tabs" role="tablist" aria-label="${escapeHtml(copy.advancedPromoteViews || 'Advanced promote views')}">
-        <button type="button" role="tab" aria-selected="${state.activeView === 'source'}" class="${state.activeView === 'source' ? 'is-active' : ''}" onclick="setAdvancedPromoteView('source')">
-          ${escapeHtml(state.mode === 'import' ? 'Imported Text' : (copy.advancedPromoteSource || 'Source Draft'))}
-          <span>${metrics.sourceWords}</span>
-        </button>
-        <button type="button" role="tab" aria-selected="${state.activeView === 'chapters'}" class="${state.activeView === 'chapters' ? 'is-active' : ''}" onclick="setAdvancedPromoteView('chapters')">
-          ${escapeHtml(state.mode === 'import' ? 'Created Drafts' : (copy.advancedPromoteCreatedChapters || 'Created Chapters'))}
-          <span>${state.chapters.length}</span>
-        </button>
-      </div>
-      <div class="advanced-promote-summary-metrics">
-        <span>${metrics.chapterWords} ${escapeHtml(copy.words || 'words')} ${escapeHtml(copy.advancedPromoteProposed || 'proposed')}</span>
-        ${state.mode === 'import' ? '' : `<span>${metrics.remainderWords} ${escapeHtml(copy.words || 'words')} ${escapeHtml(copy.advancedPromoteRemaining || 'remaining')}</span>`}
-      </div>
-    </div>`;
+function advancedPromoteSourceDetailHTML(state) {
+  return `<section class="advanced-promote-source-view is-index-detail">
+    <textarea id="advancedPromoteSourceText" aria-label="${escapeHtml(text().advancedPromoteSource || 'Source Draft')}" oninput="updateAdvancedPromoteSourceText(this.value)">${escapeHtml(state.sourceText)}</textarea>
+  </section>`;
+}
+
+function advancedPromoteChapterTitleConflict(state) {
+  if (!state || (state.mode === 'import' && state.importTarget !== 'chapters')) return null;
+  const generatedKeys = new Map();
+  for (let index = 0; index < state.chapters.length; index += 1) {
+    const chapter = state.chapters[index];
+    if (!advancedPromoteChapterBody(chapter)) continue;
+    const title = String(chapter.title || advancedPromoteDefaultTitle(state.draftTitle, index)).trim();
+    const key = uniqueNameKey(title);
+    if (chapterTitleExists(title)) return { index, title, type: 'existing' };
+    if (generatedKeys.has(key)) return { index, title, type: 'generated' };
+    generatedKeys.set(key, index);
+  }
+  return null;
+}
+
+function advancedPromoteApplyBlockReason(state) {
+  if (!state) return 'The promote panel is not ready.';
+  if (advancedPromoteSplitIsStale(state)) return text().advancedPromoteRegenerateRequired || 'Source or split settings changed. Create chapters again before promoting.';
+  if (!state.chapters.some(chapter => advancedPromoteChapterBody(chapter))) return text().advancedPromoteCreateFirst || 'Create at least one chapter first.';
+  if (advancedPromoteHasInvalidChapters(state) && !state.allowShortImportChapter) return text().advancedPromoteBelowParameterBody || 'Every non-empty chapter must meet the word parameter before promotion.';
+  if (state.mode === 'import' && state.customSplitValid === false && !state.allowShortImportChapter) return state.customSplitReason || 'Choose a valid custom split word.';
+  const conflict = advancedPromoteChapterTitleConflict(state);
+  if (!conflict) return '';
+  return conflict.type === 'existing'
+    ? `“${conflict.title}” title वाला chapter पहले से मौजूद है। Promote करने से पहले इसका नाम बदलें।`
+    : `“${conflict.title}” title generated chapters में एक से अधिक बार है। हर chapter को अलग नाम दें।`;
 }
 
 function renderAdvancedDraftPromotePanel() {
@@ -776,6 +736,7 @@ function renderAdvancedDraftPromotePanel() {
     modal.hidden = true;
     return;
   }
+  const isInitialOpen = modal.hidden;
 
   if (state.chapters.length) {
     state.selectedChapterIndex = clampNumber(state.selectedChapterIndex, 0, state.chapters.length - 1);
@@ -784,40 +745,19 @@ function renderAdvancedDraftPromotePanel() {
   }
 
   const copy = text();
-  const metrics = {
-    sourceWords: advancedPromoteWordCount(state.sourceText),
-    chapterWords: state.chapters.reduce((total, chapter) => total + advancedPromoteWordCount(advancedPromoteChapterBody(chapter)), 0),
-    remainderWords: advancedPromoteWordCount(state.remainderText)
-  };
-  const hasChapters = state.chapters.some(chapter => advancedPromoteChapterBody(chapter));
-  const hasInvalidChapters = advancedPromoteHasInvalidChapters(state);
-  const splitIsStale = advancedPromoteSplitIsStale(state);
-  const rawImportMode = advancedImportUsesRawMode(state);
-  const activeViewHTML = state.activeView === 'source'
-    ? advancedPromoteSourceViewHTML(state)
-    : advancedPromoteCreatedViewHTML(state);
+  const activeViewHTML = advancedPromoteCreatedViewHTML(state);
 
   modal.innerHTML = `
-    <section class="advanced-promote-panel ${state.mode === 'import' ? 'is-text-import' : ''}" role="dialog" aria-modal="true" aria-labelledby="advancedPromoteTitle">
+    <section class="advanced-promote-panel ${state.mode === 'import' ? 'is-text-import' : ''} ${isInitialOpen ? 'is-entering' : ''}" style="--advanced-promote-content-font-size:${state.contentFontSize || 14}px" role="dialog" aria-modal="true" aria-labelledby="advancedPromoteTitle">
       <header class="advanced-promote-header">
         <div>
-          <span class="advanced-promote-kicker">${escapeHtml(state.mode === 'import' ? 'Text splitter' : (copy.advancedPromoteKicker || 'Draft splitter'))}</span>
           <h2 id="advancedPromoteTitle">${escapeHtml(state.mode === 'import' ? 'Advanced Text Import' : (copy.advancedPromoteTitle || 'Advanced Promote'))}</h2>
-          <p>${escapeHtml(state.draftTitle)}</p>
+          ${state.mode === 'import' ? '' : `<p>${escapeHtml(state.draftTitle)}</p>`}
         </div>
         <button class="advanced-promote-close" type="button" onclick="closeAdvancedDraftPromotePanel()" aria-label="${escapeHtml(copy.close || 'Close')}">${CROSS_CLOSE_SVG}</button>
       </header>
 
-      ${advancedPromoteSummaryHTML(state, metrics)}
       <div class="advanced-promote-body">${activeViewHTML}</div>
-
-      ${rawImportMode ? '' : `<footer class="advanced-promote-footer">
-        <button type="button" onclick="reverseAdvancedPromoteCreation()" ${state.chapters.length ? '' : 'disabled'}>${escapeHtml(copy.advancedPromoteReverse || 'Reverse Creation')}</button>
-        <button type="button" onclick="closeAdvancedDraftPromotePanel()">${escapeHtml(copy.storyInfoCancel || 'Cancel')}</button>
-        <button class="advanced-promote-apply-btn" type="button" onclick="applyAdvancedDraftPromote()" ${hasChapters && !hasInvalidChapters && !splitIsStale && state.customSplitValid !== false ? '' : 'disabled'}>
-          ${escapeHtml(state.mode === 'import' ? 'Advanced Import' : (copy.advancedPromoteApply || 'Promote Chapters'))}
-        </button>
-      </footer>`}
     </section>`;
 
   modal.hidden = false;
@@ -839,7 +779,7 @@ function closeAdvancedDraftPromotePanel() {
 function setAdvancedPromoteView(view = 'chapters') {
   if (!advancedDraftPromoteState) return;
   syncAdvancedPromoteControlsFromPanel();
-  advancedDraftPromoteState.activeView = view === 'source' ? 'source' : 'chapters';
+  advancedDraftPromoteState.activeView = view === 'source' ? 'source' : view === 'remainder' ? 'remainder' : 'chapters';
   renderAdvancedDraftPromotePanel();
 }
 
@@ -873,8 +813,7 @@ function updateAdvancedPromoteSetting(setting, value) {
   }
   const staleNote = document.querySelector('.advanced-promote-stale-note');
   if (staleNote) staleNote.hidden = !advancedPromoteSplitIsStale(state);
-  const applyButton = document.querySelector('.advanced-promote-apply-btn');
-  if (applyButton) applyButton.disabled = advancedPromoteSplitIsStale(state) || !state.chapters.some(chapter => advancedPromoteChapterBody(chapter));
+  refreshAdvancedPromoteApplyButton();
 }
 
 function updateAdvancedImportSplitMode(value = 'auto') {
@@ -891,6 +830,19 @@ function updateAdvancedImportSplitMode(value = 'auto') {
   }
   state.customValidationVisible = false;
   state.activeView = 'source';
+  renderAdvancedDraftPromotePanel();
+}
+
+function updateAdvancedImportTarget(value = 'drafts') {
+  const state = advancedDraftPromoteState;
+  if (!state || state.mode !== 'import') return;
+  state.importTarget = value === 'chapters' ? 'chapters' : 'drafts';
+  const generated = advancedImportUsesRawMode(state) ? { chapters: [], remainderText: '', valid: true, reason: '' } : advancedImportGenerateChapters(state);
+  state.chapters = generated.chapters;
+  state.remainderText = generated.remainderText;
+  state.customSplitValid = generated.valid;
+  state.customSplitReason = generated.reason;
+  if (state.activeView === 'remainder' && !state.remainderText) state.activeView = 'source';
   renderAdvancedDraftPromotePanel();
 }
 
@@ -913,8 +865,7 @@ function updateAdvancedImportCustomWord(value = '') {
   const createButton = document.querySelector('.advanced-promote-create-btn');
   createButton?.classList.toggle('is-validation-blocked', !validation.valid);
   createButton?.setAttribute('aria-disabled', String(!validation.valid));
-  const applyButton = document.querySelector('.advanced-promote-apply-btn');
-  if (applyButton) applyButton.disabled = true;
+  refreshAdvancedPromoteApplyButton();
 }
 
 function updateAdvancedPromoteSourceText(value = '') {
@@ -935,8 +886,7 @@ function updateAdvancedPromoteSourceText(value = '') {
   if (wordNode) wordNode.textContent = `${advancedPromoteWordCount(state.sourceText)} ${text().words || 'words'}`;
   const staleNote = document.querySelector('.advanced-promote-stale-note');
   if (staleNote) staleNote.hidden = !advancedPromoteSplitIsStale(state);
-  const applyButton = document.querySelector('.advanced-promote-apply-btn');
-  if (applyButton) applyButton.disabled = true;
+  refreshAdvancedPromoteApplyButton();
 }
 
 function updateAdvancedPromoteRemainderText(value = '') {
@@ -948,7 +898,7 @@ function updateAdvancedPromotePermanentConclusion(value = '') {
   const state = advancedDraftPromoteState;
   if (!state) return;
   state.permanentConclusion = String(value || '').replace(/\r\n?/g, '\n');
-  advancedPromoteSavePermanentConclusion(state.permanentConclusion);
+  advancedPromoteSavePermanentConclusion(state.permanentConclusion, state.mode === 'import' ? 'import' : 'promote');
   state.chapters.forEach(chapter => {
     if (chapter.usesPermanentConclusion) chapter.conclusion = state.permanentConclusion;
   });
@@ -960,73 +910,86 @@ function updateAdvancedPromoteChapterTitle(index, value = '') {
   chapter.title = String(value || '').trimStart();
   const listTitle = document.querySelector(`[data-advanced-promote-list-title="${index}"]`);
   if (listTitle) listTitle.textContent = chapter.title || advancedPromoteDefaultTitle(advancedDraftPromoteState.draftTitle, index);
+  refreshAdvancedPromoteApplyButton();
+}
+
+function refreshAdvancedPromoteApplyButton() {
+  const state = advancedDraftPromoteState;
+  const button = document.querySelector('.advanced-promote-apply-btn');
+  if (!state || !button) return;
+  const reason = advancedPromoteApplyBlockReason(state);
+  button.classList.toggle('is-validation-blocked', Boolean(reason));
+  button.setAttribute('aria-disabled', String(Boolean(reason)));
+  const validation = document.querySelector('[data-advanced-promote-apply-validation]');
+  if (validation) {
+    validation.textContent = reason;
+    if (!reason) validation.classList.remove('is-visible');
+  }
+}
+
+function handleAdvancedPromoteApplyClick(event) {
+  event?.preventDefault?.();
+  const state = syncAdvancedPromoteControlsFromPanel();
+  const reason = advancedPromoteApplyBlockReason(state);
+  if (!reason) {
+    applyAdvancedDraftPromote();
+    return;
+  }
+  const validation = document.querySelector('[data-advanced-promote-apply-validation]');
+  if (!validation) {
+    showMiniReminder(reason);
+    return;
+  }
+  validation.textContent = reason;
+  validation.classList.remove('is-visible');
+  requestAnimationFrame(() => validation.classList.add('is-visible'));
 }
 
 function refreshAdvancedPromoteChapterMetrics(index) {
   const chapter = advancedDraftPromoteState?.chapters?.[index];
   const preview = document.querySelector(`[data-advanced-promote-chapter="${index}"]`);
   if (!chapter || !preview) return;
-  const body = advancedPromoteChapterBody(chapter);
   const fullText = advancedPromoteChapterFullText(chapter);
-  const bodyWords = advancedPromoteWordCount(body);
+  const bodyWords = advancedPromoteWordCount(advancedPromoteChapterBody(chapter));
+  const conclusionWords = advancedPromoteWordCount(chapter.conclusion || '');
   const finalWords = advancedPromoteWordCount(fullText);
-  const lastLine = advancedPromoteLastSentence(body) || (text().advancedPromoteEmptyChapter || 'This chapter is empty.');
-  const conclusionMode = chapter.usesPermanentConclusion
-    ? (text().advancedPromotePermanentStatus || 'Permanent conclusion')
-    : (text().advancedPromoteCustomStatus || 'Custom conclusion');
-  const isReady = advancedPromoteChapterIsReady(chapter);
-  const readinessNode = preview.querySelector('[data-advanced-promote-readiness]');
   const bodyWordNode = preview.querySelector('[data-advanced-promote-body-words]');
   const finalWordNode = preview.querySelector('[data-advanced-promote-final-words]');
-  const lastLineNode = preview.querySelector('[data-advanced-promote-last-line]');
-  const conclusionNode = preview.querySelector('[data-advanced-promote-conclusion-status]');
+  const fullWordState = preview.querySelector('[data-advanced-promote-full-word-state]');
+  const conclusionState = preview.querySelector('[data-advanced-promote-conclusion-status]');
   const listWordNode = document.querySelector(`[data-advanced-promote-list-words="${index}"]`);
-  if (readinessNode) {
-    readinessNode.textContent = isReady
-      ? (text().advancedPromoteReady || 'Ready')
-      : (text().advancedPromoteBelowParameter || 'Below parameter');
-    readinessNode.classList.toggle('is-ready', isReady);
-    readinessNode.classList.toggle('is-warning', !isReady);
-  }
   if (bodyWordNode) bodyWordNode.textContent = bodyWords;
   if (finalWordNode) finalWordNode.textContent = finalWords;
-  if (lastLineNode) lastLineNode.textContent = lastLine;
-  if (conclusionNode) conclusionNode.textContent = conclusionMode;
-  if (listWordNode) listWordNode.textContent = bodyWords;
-  const applyButton = document.querySelector('.advanced-promote-apply-btn');
-  if (applyButton) {
-    applyButton.disabled = advancedPromoteSplitIsStale(advancedDraftPromoteState) ||
-      advancedPromoteHasInvalidChapters(advancedDraftPromoteState) ||
-      !advancedDraftPromoteState.chapters.some(item => advancedPromoteChapterBody(item));
-  }
+  if (fullWordState) fullWordState.hidden = !conclusionWords;
+  if (conclusionState) conclusionState.textContent = conclusionWords
+    ? (text().advancedPromoteConclusionAdded || 'Conclusion added')
+    : (text().advancedPromoteNoConclusion || 'No conclusion');
+  if (listWordNode) listWordNode.textContent = finalWords;
+  refreshAdvancedPromoteApplyButton();
 }
 
-function updateAdvancedPromoteChapterText(index, value = '') {
+function updateAdvancedPromoteChapterFullText(index, value = '') {
   const chapter = advancedDraftPromoteState?.chapters?.[index];
   if (!chapter) return;
-  chapter.body = String(value || '').replace(/\r\n?/g, '\n');
+  const fullText = String(value || '').replace(/\r\n?/g, '\n');
+  const separator = '\n\n\n';
+  const conclusionStart = chapter.conclusion ? fullText.lastIndexOf(separator) : -1;
+  chapter.body = conclusionStart >= 0 ? fullText.slice(0, conclusionStart) : fullText;
+  chapter.conclusion = conclusionStart >= 0 ? fullText.slice(conclusionStart + separator.length) : '';
+  chapter.usesPermanentConclusion = Boolean(chapter.conclusion) && chapter.conclusion === advancedDraftPromoteState.permanentConclusion;
   refreshAdvancedPromoteChapterMetrics(index);
-}
-
-function updateAdvancedPromoteChapterConclusion(index, value = '') {
-  const chapter = advancedDraftPromoteState?.chapters?.[index];
-  if (!chapter) return;
-  chapter.conclusion = String(value || '').replace(/\r\n?/g, '\n');
-  chapter.usesPermanentConclusion = chapter.conclusion === advancedDraftPromoteState.permanentConclusion;
-  refreshAdvancedPromoteChapterMetrics(index);
-}
-
-function usePermanentAdvancedPromoteConclusion(index) {
-  const chapter = advancedDraftPromoteState?.chapters?.[index];
-  if (!chapter) return;
-  chapter.conclusion = advancedDraftPromoteState.permanentConclusion;
-  chapter.usesPermanentConclusion = true;
-  renderAdvancedDraftPromotePanel();
 }
 
 function focusAdvancedPromoteChapterEditor(index) {
   const preview = document.querySelector(`[data-advanced-promote-chapter="${index}"]`);
-  preview?.querySelector('.advanced-promote-chapter-editor textarea')?.focus();
+  const reading = preview?.querySelector('[data-advanced-promote-full-reading]');
+  const editor = preview?.querySelector('.advanced-promote-full-editor');
+  if (!reading || !editor) return;
+  const opening = editor.hidden;
+  editor.hidden = !opening;
+  reading.hidden = opening;
+  if (opening) editor.focus();
+  else reading.textContent = advancedPromoteChapterFullText(advancedDraftPromoteState?.chapters?.[index]);
 }
 
 function advancedPromoteFallbackCopy(value = '') {
@@ -1057,13 +1020,6 @@ async function copyAdvancedPromoteChapter(index) {
     }
     console.warn('Advanced promote copy failed:', error);
   }
-}
-
-function clearAdvancedPromoteChapter(index) {
-  const chapter = advancedDraftPromoteState?.chapters?.[index];
-  if (!chapter) return;
-  chapter.body = '';
-  renderAdvancedDraftPromotePanel();
 }
 
 function deleteAdvancedPromoteChapter(index) {
@@ -1099,6 +1055,8 @@ function syncAdvancedPromoteControlsFromPanel() {
 
   const splitModeInput = document.getElementById('advancedImportSplitMode');
   if (splitModeInput) state.splitMode = splitModeInput.value === 'custom' ? 'custom' : 'auto';
+  const importTargetInput = document.getElementById('advancedImportTarget');
+  if (importTargetInput) state.importTarget = importTargetInput.value === 'chapters' ? 'chapters' : 'drafts';
   const customWordInput = document.getElementById('advancedImportCustomWordInp');
   if (customWordInput) state.customWord = customWordInput.value.trim();
 
@@ -1112,8 +1070,8 @@ function syncAdvancedPromoteControlsFromPanel() {
   const selectedChapter = state.chapters[state.selectedChapterIndex];
   if (preview && selectedChapter) {
     selectedChapter.title = preview.querySelector('.advanced-promote-chapter-preview-head input')?.value || selectedChapter.title;
-    selectedChapter.body = preview.querySelector('.advanced-promote-chapter-editor textarea')?.value?.replace(/\r\n?/g, '\n') || '';
-    selectedChapter.conclusion = preview.querySelector('.advanced-promote-chapter-conclusion textarea')?.value?.replace(/\r\n?/g, '\n') || '';
+    const fullEditor = preview.querySelector('.advanced-promote-full-editor');
+    if (fullEditor && !fullEditor.hidden) updateAdvancedPromoteChapterFullText(state.selectedChapterIndex, fullEditor.value);
   }
 
   const remainderInput = document.querySelector('.advanced-promote-source-remainder textarea');
@@ -1234,11 +1192,25 @@ async function applyAdvancedTextImportRaw() {
   const state = syncAdvancedPromoteControlsFromPanel();
   if (!state || state.mode !== 'import' || !state.sourceText.trim()) return;
   const sourceText = advancedPromoteNormalizedText(state.sourceText);
-  await applyAdvancedTextImportAsDrafts(state, [{
-    title: state.draftTitle || 'Imported Draft',
+  const singleItem = {
+    title: advancedImportDocumentTitle(state, 0),
     body: sourceText,
-    text: sourceText
-  }]);
+    text: [sourceText, state.permanentConclusion].filter(Boolean).join('\n\n\n'),
+    conclusion: state.permanentConclusion,
+    usesPermanentConclusion: true
+  };
+  if (state.importTarget === 'chapters') {
+    state.chapters = [singleItem];
+    state.allowShortImportChapter = true;
+    state.generatedSourceText = state.sourceText;
+    state.generatedWordLimit = state.wordLimit;
+    state.generatedChapterCount = state.chapterCount;
+    state.generatedSplitMode = state.splitMode;
+    state.generatedCustomWord = state.customWord;
+    await applyAdvancedDraftPromote();
+    return;
+  }
+  await applyAdvancedTextImportAsDrafts(state, [singleItem]);
 }
 
 async function applyAdvancedDraftPromote() {
@@ -1252,12 +1224,20 @@ async function applyAdvancedDraftPromote() {
     renderAdvancedDraftPromotePanel();
     return;
   }
-  if (advancedPromoteHasInvalidChapters(state)) {
+  if (advancedPromoteHasInvalidChapters(state) && !state.allowShortImportChapter) {
     showMiniReminder(text().advancedPromoteBelowParameterBody || 'Every non-empty chapter must meet the word parameter before promotion.');
     return;
   }
-  if (isTextImport && state.customSplitValid === false) {
+  if (isTextImport && state.customSplitValid === false && !state.allowShortImportChapter) {
     showMiniReminder(state.customSplitReason || 'Choose a valid custom split word.');
+    return;
+  }
+  const titleConflict = advancedPromoteChapterTitleConflict(state);
+  if (titleConflict) {
+    showMiniReminder(advancedPromoteApplyBlockReason(state));
+    state.selectedChapterIndex = titleConflict.index;
+    state.activeView = 'chapters';
+    renderAdvancedDraftPromotePanel();
     return;
   }
 
@@ -1280,12 +1260,12 @@ async function applyAdvancedDraftPromote() {
     return;
   }
 
-  if (isTextImport) {
+  if (isTextImport && state.importTarget !== 'chapters') {
     await applyAdvancedTextImportAsDrafts(state, proposedChapters);
     return;
   }
 
-  showAppLoader(text().advancedPromoteApply || text().saveDraftAsChapter);
+  showAppLoader(isTextImport ? 'Importing chapters…' : (text().advancedPromoteApply || text().saveDraftAsChapter));
 
   const manifest = normalizeProjectManifest(projectManifest || createProjectManifest());
   const hasParts = manifest.parts.length > 0;
@@ -1334,7 +1314,26 @@ async function applyAdvancedDraftPromote() {
     scanCurrentChapterForNamingUses(firstChapterIndex + offset, proposedChapters[offset].text, promotedAt);
   });
 
-  const remainderText = isTextImport ? '' : advancedPromoteNormalizedText(state.remainderText);
+  const remainderText = advancedPromoteNormalizedText(state.remainderText);
+  let importedRemainderDraft = null;
+  if (isTextImport && state.importTarget === 'chapters' && remainderText) {
+    const remainderDraftIndex = chapterDrafts.length;
+    importedRemainderDraft = {
+      index: remainderDraftIndex,
+      draft: normalizeDraft({
+        ...createDefaultDraft(remainderDraftIndex),
+        id: Date.now() + newChapters.length + 1,
+        title: `${state.draftTitle} Remainder Draft`,
+        content: textToEditorHTML(remainderText),
+        contentPath: nextDraftFilePath(),
+        createdAt: promotedAt,
+        updatedAt: promotedAt,
+        _wordCount: advancedPromoteWordCount(remainderText),
+        wordCount: advancedPromoteWordCount(remainderText)
+      }, remainderDraftIndex)
+    };
+    chapterDrafts.push(importedRemainderDraft.draft);
+  }
   if (!isTextImport) {
     if (remainderText) {
       const remainderDraft = normalizeDraft({
@@ -1371,8 +1370,7 @@ async function applyAdvancedDraftPromote() {
   setDraftBoxSaveIndicator('busy');
   loadEditor();
   renderChapters();
-  renderTags();
-  renderNotes();
+  renderActiveWorkspaceSidePanel();
   updateChapterStatus();
 
   try {
@@ -1389,6 +1387,7 @@ async function applyAdvancedDraftPromote() {
         if (remainderText) await writeDraftToLocalFile(state.draftIndex, remainderText);
         else await removeProjectFileIfExists(draftPath);
       }
+      if (importedRemainderDraft) await writeDraftToLocalFile(importedRemainderDraft.index, remainderText);
 
       await writeProjectManifest();
       await writeDraftsDataToProject();
@@ -1420,6 +1419,7 @@ window.closeAdvancedDraftPromotePanel = closeAdvancedDraftPromotePanel;
 window.generateAdvancedPromoteChaptersFromPanel = generateAdvancedPromoteChaptersFromPanel;
 window.reverseAdvancedPromoteCreation = reverseAdvancedPromoteCreation;
 window.applyAdvancedDraftPromote = applyAdvancedDraftPromote;
+window.handleAdvancedPromoteApplyClick = handleAdvancedPromoteApplyClick;
 window.setAdvancedPromoteView = setAdvancedPromoteView;
 window.selectAdvancedPromoteChapter = selectAdvancedPromoteChapter;
 window.updateAdvancedPromoteSetting = updateAdvancedPromoteSetting;
@@ -1427,12 +1427,9 @@ window.updateAdvancedPromoteSourceText = updateAdvancedPromoteSourceText;
 window.updateAdvancedPromoteRemainderText = updateAdvancedPromoteRemainderText;
 window.updateAdvancedPromotePermanentConclusion = updateAdvancedPromotePermanentConclusion;
 window.updateAdvancedPromoteChapterTitle = updateAdvancedPromoteChapterTitle;
-window.updateAdvancedPromoteChapterText = updateAdvancedPromoteChapterText;
-window.updateAdvancedPromoteChapterConclusion = updateAdvancedPromoteChapterConclusion;
-window.usePermanentAdvancedPromoteConclusion = usePermanentAdvancedPromoteConclusion;
+window.updateAdvancedPromoteChapterFullText = updateAdvancedPromoteChapterFullText;
 window.focusAdvancedPromoteChapterEditor = focusAdvancedPromoteChapterEditor;
 window.copyAdvancedPromoteChapter = copyAdvancedPromoteChapter;
-window.clearAdvancedPromoteChapter = clearAdvancedPromoteChapter;
 window.deleteAdvancedPromoteChapter = deleteAdvancedPromoteChapter;
 window.setAdvancedPromoteDestination = setAdvancedPromoteDestination;
 

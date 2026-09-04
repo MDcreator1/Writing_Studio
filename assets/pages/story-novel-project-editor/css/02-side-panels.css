@@ -205,6 +205,15 @@
   padding-right: 24px;
 }
 
+.naming-intro .naming-deep-scan-status {
+  color: var(--accent);
+  font-weight: 750;
+}
+
+.naming-intro .naming-deep-scan-status[hidden] {
+  display: none;
+}
+
 .naming-deep-scan-btn {
   position: absolute;
   right: 10px;
@@ -244,6 +253,12 @@
   }
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .naming-deep-scan-btn.is-scanning svg {
+    animation-duration: 1.8s;
   }
 }
 
@@ -312,6 +327,7 @@
 }
 
 .tag-item {
+  position: relative;
   width: 100%;
   display: flex;
   align-items: center;
@@ -332,6 +348,10 @@
   height: 30px;
   transition: background .16s ease, border-color .16s ease, color .16s ease, transform .16s ease, box-shadow .16s ease;
   cursor: pointer;
+}
+
+.naming-entry-item.is-draft-created .tname {
+  color: var(--lm-status-orphan-color) !important;
 }
 
 .tag-item:hover,
@@ -1895,6 +1915,66 @@ body.focus-mode .naming-entry-panel.is-focus-center-panel.is-panel-dragging .nam
   overflow-wrap: anywhere;
 }
 
+.naming-entry-description-popover .naming-entry-first-appearance {
+  display: block;
+  max-width: 100%;
+  margin: 0 0 6px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--font-size-xs);
+  font-weight: 750;
+  line-height: 1.35;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.naming-entry-description-popover .naming-entry-first-appearance.is-draft-origin {
+  color: var(--lm-status-orphan-color);
+}
+
+.name-detail-aliases-box {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  margin: -2px 0 10px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+}
+
+.name-detail-aliases-box[hidden] {
+  display: none;
+}
+
+.name-detail-alias-label {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.name-detail-alias-values {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.name-detail-alias-name {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.name-detail-alias-overflow {
+  color: var(--accent);
+  font-weight: 900;
+}
+
 .naming-entry-description-popover .naming-entry-description-copy.is-muted {
   color: var(--muted);
   font-weight: 750;
@@ -2331,6 +2411,10 @@ body.focus-mode .naming-entry-panel.is-focus-center-panel.is-panel-dragging .nam
   cursor: default !important;
   box-shadow: none !important;
   transform: none !important;
+}
+
+.naming-legend-list .tag-item.is-draft-created .tname {
+  color: var(--lm-status-orphan-color) !important;
 }
 
 .category-info-edit-panel {
@@ -2902,6 +2986,49 @@ body.focus-mode .naming-entry-panel.is-focus-center-panel.is-panel-dragging .nam
   display: none !important;
 }
 
+:is(.fact-detail-popover, .name-detail-popover, .category-info-popover, .part-details-panel, .chapter-details-panel, .draft-details-panel, .advanced-editor-setting-info-popover),
+.lm-side-info-custom-scroll {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none;
+}
+
+:is(.fact-detail-popover, .name-detail-popover, .category-info-popover, .part-details-panel, .chapter-details-panel, .draft-details-panel, .advanced-editor-setting-info-popover)::-webkit-scrollbar,
+.lm-side-info-custom-scroll::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+
+.side-info-scroll-thumb {
+  position: fixed;
+  z-index: 90;
+  width: 6px;
+  min-height: 30px;
+  border-radius: var(--radius-pill);
+  background: var(--lm-scroll-thumb);
+  box-shadow: var(--lm-scroll-thumb-shadow);
+  opacity: 0;
+  cursor: pointer;
+  pointer-events: none;
+  touch-action: none;
+  transition: opacity .18s ease, background .18s ease;
+}
+
+.side-info-scroll-thumb.is-visible {
+  opacity: .84;
+  pointer-events: auto;
+}
+
+.side-info-scroll-thumb.is-dragging,
+.side-info-scroll-thumb:hover {
+  opacity: 1;
+  background: var(--lm-scroll-thumb-hover);
+}
+
+.side-info-scroll-thumb[hidden] {
+  display: none !important;
+}
+
 .fact-detail-head {
   display: flex;
   align-items: flex-start;
@@ -2914,9 +3041,13 @@ body.focus-mode .naming-entry-panel.is-focus-center-panel.is-panel-dragging .nam
   display: block;
   margin-top: 4px;
   color: var(--ink);
-  font-size: var(--font-size-3xl);
+  font-size: var(--font-size-large);
   font-weight: 950;
-  line-height: 1.3;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
 }
 
 .fact-detail-meta {

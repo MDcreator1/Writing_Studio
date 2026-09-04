@@ -494,6 +494,7 @@ let pendingChapterTitleCommitPromise = null;
 let tags = { char: [], place: [], thing: [], other: [] };
 let namingData = { categories: [], entries: [] };
 let storyFacts = [];
+let isProjectDataLoading = false;
 let findMatches = [];
 let findIdx = 0;
 let editorScrollHideTimer = null;
@@ -897,6 +898,8 @@ function createDefaultChapter() {
     id: 1,
     title: translations.en.defaultChapterTitle,
     content: '',
+    _contentLoadState: 'loaded',
+    _contentPresented: false,
     notes: [],
     contentPath: 'Chapters/chapter_01.txt',
     partIndex: 0,
@@ -911,6 +914,8 @@ function createDefaultDraft(index = 0) {
     id: Date.now() + index,
     title: `${text().draftPrefix} ${index + 1}`,
     content: '',
+    _contentLoadState: 'loaded',
+    _contentPresented: false,
     notes: [],
     contentPath: draftFilePath(index),
     draftNo: index + 1,
@@ -1037,10 +1042,12 @@ function normalizeNamingData(data = {}) {
   );
   const categoryMap = new Map();
 
-  [...defaults.filter(category => !removedCategoryIds.has(category.id)), ...rawCategories].forEach((category, index) => {
+  [...defaults.filter(category => !removedCategoryIds.has(category.id)), ...rawCategories].forEach((sourceCategory, index) => {
+    const category = sourceCategory && typeof sourceCategory === 'object' ? sourceCategory : {};
     const title = category.title || category.label || defaults[index]?.title || `Category ${index + 1}`;
     const id = category.id || namingCategoryId(title);
     categoryMap.set(id, {
+      ...category,
       id,
       title,
       color: category.color || defaults[index % defaults.length]?.color || 'other',
@@ -1053,14 +1060,20 @@ function normalizeNamingData(data = {}) {
   });
 
   const entries = Array.isArray(data.entries) ? data.entries : [];
+  const invalidEntries = [
+    ...(Array.isArray(data.invalidEntries) ? data.invalidEntries : []),
+    ...entries.filter(entry => !entry || !String(entry.name || '').trim())
+  ];
   return {
+    ...data,
     categories: [...categoryMap.values()],
     removedCategoryIds: [...removedCategoryIds],
     hiddenByChapter,
     visibleByChapter,
     detectedByChapter,
+    invalidEntries,
     entries: entries
-      .filter(entry => entry && entry.name)
+      .filter(entry => entry && String(entry.name || '').trim())
       .map((entry, index) => {
         const createdAt = entry.createdAt || new Date().toISOString();
         const descriptionHistory = Array.isArray(entry.descriptionHistory)
@@ -1074,6 +1087,9 @@ function normalizeNamingData(data = {}) {
                 editedAt: item.editedAt || item.updatedAt || createdAt,
                 chapterMeta: item.chapterMeta || item.meta || null
               }))
+          : [];
+        const invalidDescriptionHistory = Array.isArray(entry.descriptionHistory)
+          ? entry.descriptionHistory.filter(item => !item || typeof item.description !== 'string')
           : [];
 
         const chapterStatus = normalizeNamingEntryStatus(entry);
@@ -1104,6 +1120,7 @@ function normalizeNamingData(data = {}) {
         ).values()];
 
         return {
+          ...entry,
           id: entry.id || `name-${Date.now()}-${index}`,
           categoryId: entry.categoryId || entry.category || defaults[0].id,
           chapterKey,
@@ -1134,7 +1151,11 @@ function normalizeNamingData(data = {}) {
           createdAt,
           updatedAt: entry.updatedAt || createdAt,
           descriptionMeta: entry.descriptionMeta || entry.meta || null,
-          descriptionHistory
+          descriptionHistory,
+          invalidDescriptionHistory: [
+            ...(Array.isArray(entry.invalidDescriptionHistory) ? entry.invalidDescriptionHistory : []),
+            ...invalidDescriptionHistory
+          ]
         };
       })
   };
@@ -1252,6 +1273,9 @@ function normalizeChapter(chapter, index = 0, partIndex = 0, chapterIndex = inde
     notes: Array.isArray(source.notes) ? source.notes : [],
     contentPath: source.contentPath || source.content_path || chapterFilePath(index),
     contentHandle: source.contentHandle || null,
+    _contentLoadState: ['loaded', 'failed', 'quarantined'].includes(source._contentLoadState)
+      ? source._contentLoadState : (source.content || source.contentHTML || source.content_html ? 'loaded' : 'unloaded'),
+    _contentPresented: source._contentPresented === true,
     partIndex: Number.isInteger(source.partIndex) ? source.partIndex : partIndex,
     chapterNo: source.chapterNo || source.no || chapterIndex + 1,
     createdAt: source.createdAt || source.created_at || source.created || new Date().toISOString(),
@@ -1285,6 +1309,9 @@ function normalizeDraft(draft, index = 0) {
     notes: Array.isArray(source.notes) ? source.notes : [],
     contentPath: source.contentPath || source.content_path || draftFilePath(index),
     contentHandle: source.contentHandle || null,
+    _contentLoadState: ['loaded', 'failed', 'quarantined'].includes(source._contentLoadState)
+      ? source._contentLoadState : (source.content || source.contentHTML || source.content_html ? 'loaded' : 'unloaded'),
+    _contentPresented: source._contentPresented === true,
     draftNo: source.draftNo || source.no || index + 1,
     createdAt: source.createdAt || source.created_at || source.created || new Date().toISOString(),
     ...editorGlobalTextFormattingDefaults(),
@@ -1407,4 +1434,3 @@ function chaptersFromManifest(manifest = projectManifest) {
 
   return flatChapters;
 }
-

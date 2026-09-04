@@ -543,6 +543,266 @@ body.is-advanced-editor-settings-open {
   padding: 0 30px 0 10px;
 }
 
+.advanced-workflow-switcher {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  margin: 0 0 12px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+}
+
+.advanced-workflow-switcher>button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.advanced-workflow-switcher>button.is-active {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+  background: var(--surface-raised);
+  color: var(--accent);
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.advanced-workflow-workspace {
+  min-width: 0;
+  padding: 4px 2px 0;
+}
+
+.advanced-workflow-view[hidden] {
+  display: none !important;
+}
+
+.advanced-workflow-view-head {
+  padding: 12px 2px 16px;
+}
+
+.advanced-workflow-view-head>span {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.advanced-workflow-view-head h4 {
+  margin: 5px 0;
+  color: var(--ink);
+  font-size: 17px;
+}
+
+.advanced-workflow-view-head p,
+.advanced-workflow-conclusion small {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.advanced-workflow-text {
+  width: min(240px, 32vw);
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.advanced-workflow-conclusion {
+  position: relative;
+  margin-top: 22px;
+  padding: 16px 18px ;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-raised) 72%, transparent);
+}
+
+.advanced-workflow-conclusion>header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.advanced-workflow-conclusion span,
+.advanced-workflow-conclusion strong,
+.advanced-workflow-conclusion small {
+  display: block;
+}
+
+.advanced-workflow-conclusion-edit {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  width: 32px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity .16s ease, transform .16s ease, border-color .16s ease;
+}
+
+.advanced-workflow-conclusion-edit-icon {
+  width: 14px;
+  height: 14px;
+  display: block;
+  fill: currentColor;
+}
+
+.advanced-workflow-conclusion-sync {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 11px;
+  border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface));
+  color: var(--accent);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.advanced-workflow-conclusion-sync[hidden] {
+  display: none !important;
+}
+
+.advanced-workflow-conclusion:hover .advanced-workflow-conclusion-edit,
+.advanced-workflow-conclusion:focus-within .advanced-workflow-conclusion-edit,
+.advanced-workflow-conclusion.is-editing .advanced-workflow-conclusion-edit {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.advanced-workflow-conclusion-reading {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.advanced-workflow-conclusion-reading.is-empty {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.advanced-workflow-conclusion textarea {
+  width: 100%;
+  min-height: 74px;
+  height: auto;
+  overflow: hidden;
+  resize: none;
+  padding: 12px 13px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.55;
+}
+
+.advanced-workflow-text:focus,
+.advanced-workflow-conclusion textarea:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.render-snapshot-number {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.render-snapshot-number input {
+  width: 96px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 750;
+}
+
+.render-snapshot-number em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.render-snapshot-actions {
+  margin-top: 22px;
+  border-top: 1px solid var(--border);
+}
+
+.render-snapshot-action {
+  min-width: 156px;
+  min-height: 36px;
+  padding: 7px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-raised));
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.render-snapshot-action:disabled {
+  cursor: wait;
+  opacity: .72;
+}
+
+.render-snapshot-action.is-scanning::after {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-left: 8px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: naming-spin .8s linear infinite;
+}
+
+.render-snapshot-status {
+  min-height: 18px;
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.render-snapshot-status[data-state="success"] { color: var(--success, #2d9d78); }
+.render-snapshot-status[data-state="error"] { color: var(--danger); }
+
 /* Restore overflow-visible for all advanced settings custom select menus */
 .advanced-editor-settings-card .lm-custom-select-menu {
   min-width: 100%;
@@ -551,9 +811,9 @@ body.is-advanced-editor-settings-open {
 }
 
 .advanced-editor-settings-card .lm-custom-select-menu::-webkit-scrollbar {
-  display: block !important;
-  width: 6px !important;
-  height: auto !important;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 .advanced-editor-settings-card .lm-custom-select-option {

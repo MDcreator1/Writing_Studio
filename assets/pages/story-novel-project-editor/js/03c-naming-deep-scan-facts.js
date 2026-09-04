@@ -1,42 +1,66 @@
-function deepScanAllNamingEntries(buttonElement = null) {
+async function deepScanAllNamingEntries(buttonElement = null, options = {}) {
   const btn = buttonElement || document.getElementById('namingDeepScanBtn');
-  const countDeepScanSavedNameUses = (name, documentText) => {
-    const cleanedName = normalizeScanText(name);
-    const cleanedText = normalizeScanText(documentText);
-    if (cleanedName.length < 2 || !cleanedText) return 0;
-
-    try {
-      const namePattern = cleanedName.split(/\s+/).map(escapeRegExp).join('\\s+');
-      const wordUnit = '\\p{L}\\p{N}\\p{M}_';
-      const pattern = `(^|[^${wordUnit}])${namePattern}(?=$|[^${wordUnit}])`;
-      return [...cleanedText.matchAll(new RegExp(pattern, 'giu'))].length;
-    } catch (_error) {
-      // Saved matching must fail closed when Unicode-boundary support is
-      // unavailable; a substring fallback would accept names inside words.
-      return 0;
-    }
+  const createDeepScanSavedNameMatcher = searchNames => {
+    const expressions = searchNames.map(searchName => {
+      const cleanedName = normalizeScanText(searchName);
+      if (cleanedName.length < 2) return null;
+      try {
+        const namePattern = cleanedName.split(/\s+/).map(escapeRegExp).join('\\s+');
+        const wordUnit = '\\p{L}\\p{N}\\p{M}_';
+        const pattern = `(^|[^${wordUnit}])${namePattern}(?=$|[^${wordUnit}])`;
+        return new RegExp(pattern, 'iu');
+      } catch (_error) {
+        return null;
+      }
+    }).filter(Boolean);
+    return documentText => expressions.some(expression => expression.test(documentText));
   };
   if (btn) {
     btn.classList.add('is-scanning');
     btn.disabled = true;
   }
+  const setProgress = (message, progress = null, done = false) => window.LmRenderingSnapshotTools?.setDeepScanStatus?.(message, progress, done);
+  setProgress('Preparing Naming Deep Scan…', 0);
 
-  setTimeout(() => {
+  setTimeout(async () => {
+    try {
+    const sourceIndex = await window.LmNamingDeepScanSource.buildTextIndex({
+      onProgress: ({ loaded, total }) => setProgress(`Reading source documents ${loaded}/${total}…`, total ? loaded / total * 12 : 12)
+    });
+    // Snapshot loading can replace the global namingData with a document-only
+    // projection while the source files are being read. Re-hydrate here, after
+    // the asynchronous read, and keep this authoritative object for the whole
+    // scan so a document switch cannot make us save an incomplete projection.
+    const authoritativeNamingData = normalizeNamingData(
+      await window.LmInitialRendering?.ensureFullNamingData?.({ forceSource: true }) || namingData
+    );
+    namingData = authoritativeNamingData;
+    const chapterScanTexts = sourceIndex.chapterTexts;
+    const draftScanTexts = sourceIndex.draftTexts;
     let updatedCount = 0;
     const entries = namingData && Array.isArray(namingData.entries) ? namingData.entries : [];
 
-    entries.forEach(entry => {
-      if (!entry || !entry.name) return;
-      const name = entry.name;
+    for (let entryIndex = 0; entryIndex < entries.length; entryIndex++) {
+      const entry = entries[entryIndex];
+      if (!entry || !entry.name) continue;
+      if (entryIndex % 8 === 0) {
+        setProgress(`Scanning names ${entryIndex + 1}/${entries.length}…`, entries.length ? entryIndex / entries.length * 78 : 78);
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+      const searchNames = typeof namingEntrySearchNames === 'function'
+        ? namingEntrySearchNames(entry)
+        : [entry.name, ...(Array.isArray(entry.similarNames) ? entry.similarNames : [])];
+      const hasDeepScanSavedNameUse = createDeepScanSavedNameMatcher(searchNames);
       let foundInChapter = false;
+      let foundInDraft = false;
 
       // 1. Search chapters from earliest (index 0) to latest
       if (Array.isArray(chapters)) {
         for (let i = 0; i < chapters.length; i++) {
           const chapter = chapters[i];
           if (!chapter) continue;
-          const text = htmlToPlainText(chapter.content);
-          if (countDeepScanSavedNameUses(name, text) > 0) {
+          const text = chapterScanTexts[i];
+          if (hasDeepScanSavedNameUse(text)) {
             foundInChapter = true;
             const newChapterKey = chapter.contentPath || (typeof chapterStorageKey === 'function' ? chapterStorageKey(i) : `chap-${i}`);
             const newChapterNo = chapter.chapterNo || (i + 1);
@@ -47,8 +71,16 @@ function deepScanAllNamingEntries(buttonElement = null) {
               entry.documentType !== 'chapter' ||
               entry.chapterIndex !== i ||
               entry.chapterKey !== newChapterKey ||
+              entry.chapterNo !== newChapterNo ||
+              entry.chapterTitle !== newChapterTitle ||
+              entry.contentPath !== newChapterKey ||
               entry.descriptionMeta?.chapterStatus !== 'chapter' ||
               entry.descriptionMeta?.documentType !== 'chapter' ||
+              entry.descriptionMeta?.chapterKey !== newChapterKey ||
+              entry.descriptionMeta?.chapterIndex !== i ||
+              entry.descriptionMeta?.chapterNo !== newChapterNo ||
+              entry.descriptionMeta?.chapterTitle !== newChapterTitle ||
+              entry.descriptionMeta?.contentPath !== newChapterKey ||
               entry.descriptionMeta?.draftKey != null ||
               entry.draftKey != null ||
               entry.orphanedAt != null ||
@@ -107,8 +139,9 @@ function deepScanAllNamingEntries(buttonElement = null) {
         for (let i = 0; i < chapterDrafts.length; i++) {
           const draft = chapterDrafts[i];
           if (!draft) continue;
-          const text = htmlToPlainText(draft.content);
-          if (countDeepScanSavedNameUses(name, text) > 0) {
+          const text = draftScanTexts[i];
+          if (hasDeepScanSavedNameUse(text)) {
+            foundInDraft = true;
             const newDraftKey = draft.contentPath || (typeof draftFilePath === 'function' ? draftFilePath(i) : `draft-${i}`);
             const newDraftNo = draft.draftNo || (i + 1);
             const newDraftTitle = draft.title || '';
@@ -118,12 +151,23 @@ function deepScanAllNamingEntries(buttonElement = null) {
               entry.documentType !== 'draft' ||
               entry.draftIndex !== i ||
               entry.draftKey !== newDraftKey ||
+              entry.chapterKey !== newDraftKey ||
+              entry.draftNo !== newDraftNo ||
+              entry.draftTitle !== newDraftTitle ||
+              entry.chapterTitle !== newDraftTitle ||
+              entry.contentPath !== newDraftKey ||
               entry.descriptionMeta?.chapterStatus !== 'draft' ||
               entry.descriptionMeta?.documentType !== 'draft' ||
+              entry.descriptionMeta?.draftKey !== newDraftKey ||
+              entry.descriptionMeta?.draftIndex !== i ||
+              entry.descriptionMeta?.draftNo !== newDraftNo ||
+              entry.descriptionMeta?.draftTitle !== newDraftTitle ||
+              entry.descriptionMeta?.contentPath !== newDraftKey ||
               entry.orphanedAt != null ||
               entry.missingDocumentAt != null ||
               entry.missingNameMentionAt != null ||
-              Boolean(entry.sourceState);
+              Boolean(entry.sourceState) ||
+              Boolean(entry.namingSourceState);
 
             if (needsDraftUpdate) {
               entry.chapterStatus = 'draft';
@@ -163,28 +207,89 @@ function deepScanAllNamingEntries(buttonElement = null) {
           }
         }
       }
-    });
 
+      if (!foundInChapter && !foundInDraft) {
+        const status = typeof normalizeNamingEntryStatus === 'function'
+          ? normalizeNamingEntryStatus(entry)
+          : String(entry.chapterStatus || entry.documentType || '').toLowerCase();
+        if (status === 'chapter' || status === 'draft') {
+          if (typeof setNamingEntryStoryMentionUndefined === 'function') {
+            setNamingEntryStoryMentionUndefined(entry);
+          } else {
+            entry.chapterStatus = 'undefined';
+            entry.documentType = 'undefined';
+            entry.chapterKey = '';
+            entry.chapterIndex = null;
+            entry.chapterNo = null;
+            entry.chapterTitle = '';
+            entry.draftKey = null;
+            entry.draftIndex = null;
+            entry.draftNo = null;
+            entry.draftTitle = '';
+            entry.contentPath = '';
+            entry.missingNameMentionAt = new Date().toISOString();
+            entry.sourceState = 'missing-name-mention';
+          }
+          updatedCount++;
+        }
+      }
+    }
+
+    let renderingRebuildFailed = false;
+    try {
+      setProgress('Saving Naming metadata and snapshots…', 80);
+      if (updatedCount > 0) {
+        await writeNamingDataToProject();
+        localStorage.setItem(NAMING_STORAGE_KEY, JSON.stringify(authoritativeNamingData));
+      }
+      await window.LmInitialRendering?.rebuildAllNamingDocumentStates?.({
+        scope: options.snapshotScope || { mode: 'all' },
+        sourceIndex,
+        onProgress: ({ written, total }) => setProgress(`Writing snapshots ${written}/${total}…`, 80 + (total ? written / total * 18 : 18))
+      });
+    } catch (error) {
+      renderingRebuildFailed = true;
+      console.warn('Naming render architecture rebuild failed:', error);
+    }
     if (btn) {
       btn.classList.remove('is-scanning');
       btn.disabled = false;
     }
+    renderTags();
+    if (renderingRebuildFailed) {
+      const message = 'Deep scan पूरा हुआ, लेकिन naming rendering cache दोबारा नहीं बन सका।';
+      showMiniReminder(message);
+      options.onComplete?.({ error: true, message });
+      return;
+    }
 
     if (updatedCount > 0) {
-      saveNamingData();
-      renderTags();
       const msg = `Deep scan complete: Updated first appearance for ${updatedCount} name(s)!`;
       if (typeof showSmartCopyToast === 'function') {
         showSmartCopyToast(msg);
       } else {
         alert(msg);
       }
+      options.onComplete?.({ error: false, message: msg, updatedCount });
     } else {
       const msg = `Deep scan complete: All names' first appearance metadata is up to date.`;
       if (typeof showSmartCopyToast === 'function') {
         showSmartCopyToast(msg);
       } else {
         alert(msg);
+      }
+      options.onComplete?.({ error: false, message: msg, updatedCount });
+    }
+    } catch (error) {
+      console.warn('Naming Deep Scan failed:', error);
+      const message = `Naming Deep Scan failed: ${error?.message || error}`;
+      showMiniReminder(message);
+      options.onComplete?.({ error: true, message });
+    } finally {
+      setProgress('', 100, true);
+      if (btn) {
+        btn.classList.remove('is-scanning');
+        btn.disabled = false;
       }
     }
   }, 300);
@@ -211,10 +316,14 @@ function namingEntryItemHtml(entry, extraClass = '', activeText = null) {
   const temporarySearchName = dominantAlias?.name || matchedName || entry.name;
   const mentionCount = isExistingEntry ? 0 : namingEntryMentionCount(entry, activeText);
   const deepFindingLabel = namingEntryDeepFindingLabel();
+  const draftCreatedClass = typeof isDraftNamingEntry === 'function' && isDraftNamingEntry(entry)
+    ? 'is-draft-created'
+    : '';
   return `
-    <button class="tag-item naming-entry-item ${extraClass}" type="button"
+    <button class="tag-item naming-entry-item ${extraClass} ${draftCreatedClass}" type="button"
       onpointerenter="handleNamingEntryItemPointerEnter(event, '${escapeJsString(entry.id)}')"
       onpointerleave="scheduleNamingEntryDescriptionInfoClose()"
+      ondblclick="copyNamingEntryOnDoubleClick(event, '${escapeJsString(entry.id)}', this)"
       onclick="showNameDetail('${escapeJsString(entry.id)}', this)">
       <span class="tname ${aliasTriggered || dominantAlias ? 'is-alias-title-substitution' : ''}"${displayTitle ? ` title="${escapeHtml(displayTitle)}"` : ''}>
         <span>${escapeHtml(displayName)}</span>
@@ -229,44 +338,6 @@ function namingEntryItemHtml(entry, extraClass = '', activeText = null) {
         </span>
         <span class="tag-find-btn" onclick="event.stopPropagation();findTag('${escapeJsString(temporarySearchName)}')" title="${escapeHtml(text().findTitle)}">${searchIconSvg()}</span>`}
     </button>`;
-}
-
-function getEntryTime(entry) {
-  if (!entry) return 0;
-  if (entry.updatedAt) {
-    const t = new Date(entry.updatedAt).getTime();
-    if (!isNaN(t) && t > 0) return t;
-  }
-  if (entry.createdAt) {
-    const t = new Date(entry.createdAt).getTime();
-    if (!isNaN(t) && t > 0) return t;
-  }
-  if (entry.id) {
-    const m = String(entry.id).match(/\d+/);
-    if (m) return parseInt(m[0], 10);
-  }
-  return 0;
-}
-
-function getCategoryFilteredSortedEntries(categoryId, entries) {
-  const query = String(window.categorySearchQuery || '').trim().toLocaleLowerCase();
-  const sortOption = window.categorySortOption || 'status';
-
-  let filtered = query
-    ? entries.filter(e => String(e.name || '').toLocaleLowerCase().includes(query))
-    : [...entries];
-
-  if (sortOption === 'count') {
-    filtered.sort((a, b) => {
-      const countA = typeof namingEntryMentionCount === 'function' ? namingEntryMentionCount(a) : 0;
-      const countB = typeof namingEntryMentionCount === 'function' ? namingEntryMentionCount(b) : 0;
-      return countB - countA;
-    });
-  } else if (sortOption === 'time') {
-    filtered.sort((a, b) => getEntryTime(b) - getEntryTime(a));
-  }
-  // 'status' is default order (as-is from the data)
-  return filtered;
 }
 
 function categorySortBarHtml(categoryId) {
@@ -296,8 +367,10 @@ function existingNamingEntriesHtml(categoryId, entries) {
     </div>`;
 }
 
-function showExistingNamesForCategory(categoryId, button = null) {
+async function showExistingNamesForCategory(categoryId, button = null) {
+  await window.LmInitialRendering?.ensureNamingCategoryData?.(categoryId);
   window.activeExpandedCategoryWithShowMore = categoryId;
+  window.activeExpandedCategoryWithShowMoreDocumentKey = currentNamingChapterKey();
   expandedNamingCategoryId = categoryId;
   window.categorySearchQuery = '';
   window.categorySortOption = 'status';
@@ -309,6 +382,7 @@ function showExistingNamesForCategory(categoryId, button = null) {
 
 function hideExistingNamesForCategory(categoryId, button = null) {
   window.activeExpandedCategoryWithShowMore = null;
+  window.activeExpandedCategoryWithShowMoreDocumentKey = '';
   expandedNamingCategoryId = categoryId;
   window.categorySearchQuery = '';
   window.categorySortOption = 'status';
@@ -317,6 +391,20 @@ function hideExistingNamesForCategory(categoryId, button = null) {
   if (globalRow) globalRow.hidden = false;
   closeCategorySortPanel();
   renderTags();
+}
+
+function resetFullNamingCategoryListAfterDocumentSwitch(chapterKey = currentNamingChapterKey()) {
+  if (!window.activeExpandedCategoryWithShowMore) return false;
+  const sourceKey = window.activeExpandedCategoryWithShowMoreDocumentKey || '';
+  if (!sourceKey || sourceKey === chapterKey) return false;
+  window.activeExpandedCategoryWithShowMore = null;
+  window.activeExpandedCategoryWithShowMoreDocumentKey = '';
+  window.categorySearchQuery = '';
+  window.categorySortOption = 'status';
+  const globalRow = document.querySelector('.naming-search-sort-row');
+  if (globalRow) globalRow.hidden = false;
+  closeCategorySortPanel();
+  return true;
 }
 
 function handleCategorySearch(event, categoryId) {
@@ -371,6 +459,10 @@ function openCategorySortPanel(anchor, categoryId) {
         onclick="setCategorySortOption('${escapeJsString(categoryId)}', 'count')">
         Most Mentioned (High to Low)
       </button>
+      <button class="naming-sort-option-btn ${sortOption === 'chapter' ? 'is-active' : ''}" type="button"
+        onclick="setCategorySortOption('${escapeJsString(categoryId)}', 'chapter')">
+        Creation Document (Drafts First, Newest First)
+      </button>
       <button class="naming-sort-option-btn ${sortOption === 'time' ? 'is-active' : ''}" type="button"
         onclick="setCategorySortOption('${escapeJsString(categoryId)}', 'time')">
         Created / Modified (Newest First)
@@ -411,25 +503,48 @@ function setCategorySortOption(categoryId, option) {
   renderTags();
 }
 
+function initialNamingCategoriesForActiveDocument(maximum = 6) {
+  const chapterKey = currentNamingChapterKey();
+  const activeText = activeNamingPanelText();
+  const hiddenIds = hiddenCategoriesForChapter(chapterKey);
+  const explicitIds = visibleCategoriesForChapter(chapterKey);
+  const focusCategoryId = isFocus ? activeFocusNamingCategoryId : '';
+  const getGlobalCount = category =>
+    window.LmInitialRendering?.namingCategoryCount?.(category.id) ??
+    namingData.entries.filter(entry => entry.categoryId === category.id).length;
+  const ranked = namingData.categories
+    .map((category, index) => ({
+      category,
+      index,
+      focus: category.id === focusCategoryId ? 1 : 0,
+      explicit: explicitIds.has(category.id) ? 1 : 0,
+      activeCount: activeText
+        ? namingData.entries.filter(entry => entry.categoryId === category.id && namingEntryNameInText(entry, activeText)).length
+        : 0,
+      globalCount: getGlobalCount(category)
+    }))
+    .filter(item => item.focus || !hiddenIds.has(item.category.id))
+    .sort((left, right) =>
+      right.focus - left.focus ||
+      right.activeCount - left.activeCount ||
+      right.explicit - left.explicit ||
+      right.globalCount - left.globalCount ||
+      left.index - right.index
+    );
+  return ranked.slice(0, Math.max(0, maximum)).map(item => item.category);
+}
+
 function renderTags() {
   const display = document.getElementById('tag-display');
   if (!display) return;
 
   namingData = normalizeNamingData(namingData);
   const chapterKey = currentNamingChapterKey();
-  const focusCategoryId = isFocus ? activeFocusNamingCategoryId : '';
-  let visibleCategories = namingData.categories.filter(category =>
-    isNamingCategoryVisible(category.id, chapterKey) || category.id === focusCategoryId
-  );
-
-  if (isNewDraftState()) {
-    const getCategoryCount = (category) => {
-      return namingData.entries.filter(entry => entry.categoryId === category.id).length;
-    };
-    visibleCategories = [...namingData.categories]
-      .sort((a, b) => getCategoryCount(b) - getCategoryCount(a))
-      .slice(0, 10);
-  }
+  resetFullNamingCategoryListAfterDocumentSwitch(chapterKey);
+  const isShowingAllCategories = window.activeNamingShowAllCategoriesKey === chapterKey;
+  let visibleCategories = isShowingAllCategories
+    ? namingData.categories.filter(category => !hiddenCategoriesForChapter(chapterKey).has(category.id))
+    : initialNamingCategoriesForActiveDocument(6);
 
   if (namingSearchMode === 'name' && namingSearchQuery) {
     const activeText = activeNamingPanelText();
@@ -502,7 +617,7 @@ function renderTags() {
     sortedCategories.sort((a, b) => getCategoryStatusScore(b) - getCategoryStatusScore(a));
   } else if (namingSortOption === 'count') {
     const getCategoryCount = (category) => {
-      return namingData.entries.filter(entry => entry.categoryId === category.id).length;
+      return window.LmInitialRendering?.namingCategoryCount?.(category.id) ?? namingData.entries.filter(entry => entry.categoryId === category.id).length;
     };
     sortedCategories.sort((a, b) => getCategoryCount(b) - getCategoryCount(a));
   } else if (namingSortOption === 'alphabetical') {
@@ -513,7 +628,7 @@ function renderTags() {
     const isExpanded = expandedNamingCategoryId === category.id;
     const activeText = activeNamingPanelText();
     const globalEntries = namingData.entries.filter(entry => entry.categoryId === category.id);
-    const globalEntryCount = globalEntries.length;
+    const globalEntryCount = window.LmInitialRendering?.namingCategoryCount?.(category.id) ?? globalEntries.length;
     const canDeleteCategory = globalEntryCount === 0;
     const {
       activeDocumentEntries: entries,
@@ -523,7 +638,7 @@ function renderTags() {
     const hasChapterEntries = entries.length > 0;
     const hasDetectedEntries = detectedEntries.length > 0;
     const visibleEntryCount = entries.length + detectedEntries.length;
-    const hasOtherEntries = existingEntries.length > 0;
+    const hasOtherEntries = existingEntries.length > 0 || globalEntryCount > visibleEntryCount;
     const hasExistingListEntries = !hasChapterEntries && !hasDetectedEntries && hasOtherEntries;
     const hasOrphanEntries = hasExistingListEntries && existingEntries.some(entry => namingEntryUsesOrphanStyle(entry));
     const hasExistingEntries = hasExistingListEntries && !hasOrphanEntries;
@@ -620,6 +735,7 @@ function showNameDetail(entryId, anchor = null) {
   const mentionCount = countNamingEntryUsesInText(entry, activeChapterTextForNameCount());
   const editedAtLabel = nameDetailTimeLabel(entry);
   setText('nameDetailTitle', entry.name);
+  renderNameDetailSimilarNames(entry);
   setText('nameDetailUsage', mentionCount);
   setTitle('nameDetailUsage', `${text().activeChapterMentions}: ${mentionCount} ${text().times}`);
   setText('nameDetailDescription', entry.description || 'No description added yet.');
@@ -655,8 +771,9 @@ function closeNameDeleteReminder() {
   if (reminder) reminder.hidden = true;
 }
 
-function deleteActiveNamingEntry() {
+async function deleteActiveNamingEntry() {
   if (!activeNamingEntryId) return;
+  await window.LmInitialRendering?.ensureFullNamingData?.();
   const entry = namingData.entries.find(item => item.id === activeNamingEntryId);
   if (!entry) {
     closeNameDetailPanel();
@@ -670,7 +787,7 @@ function deleteActiveNamingEntry() {
   expandedNamingCategoryId = entry.categoryId || expandedNamingCategoryId;
   closeNameDetailPanel();
   renderTags();
-  saveNamingData();
+  saveNamingData({ allowEntryRemoval: true });
   showSidePanelSaveLine(text().nameDeleted);
 }
 
@@ -685,11 +802,13 @@ function saveFacts() {
   localStorage.setItem(FACTS_STORAGE_KEY, JSON.stringify(storyFacts));
   projectManifest = normalizeProjectManifest({
     ...(projectManifest || createProjectManifest(projectDirectoryHandle?.name)),
-    facts: storyFacts
+    facts: projectDirectoryHandle ? [] : storyFacts
   });
   localStorage.setItem(PROJECT_MANIFEST_KEY, JSON.stringify(projectManifest));
   if (projectDirectoryHandle) {
-    writeProjectManifest().catch(error => console.warn('Facts save failed:', error));
+    Promise.resolve(window.LmFactsPanelData?.writeProjectData?.(storyFacts))
+      .then(() => writeProjectManifest())
+      .catch(error => console.warn('Facts save failed:', error));
   }
 }
 
@@ -1175,7 +1294,17 @@ function syncSidePanelAvailability() {
 
 function switchSidePanel(panel) {
   activeSidePanel = panel;
-  syncSidePanelAvailability();
+  const sectionLoader = window.LmWorkspaceSectionLoader;
+  if (!sectionLoader?.ensureRightPanel) {
+    syncSidePanelAvailability();
+    return;
+  }
+  sectionLoader.ensureRightPanel(panel, { render: false })
+    .then(syncSidePanelAvailability)
+    .catch(error => {
+      console.warn(`Side panel load failed (${panel}):`, error);
+      syncSidePanelAvailability();
+    });
 }
 
 function ensureNamingColorLegendPanel() {
@@ -1265,6 +1394,10 @@ function openNamingColorLegendPanel(anchor) {
           <span class="tag-item naming-entry-item naming-existing-entry naming-orphan-entry">नाम</span>
           <span class="naming-legend-text">अनाथ/असंबंधित नाम (Orphaned saved name)</span>
         </div>
+        <div class="naming-legend-item">
+          <span class="tag-item naming-entry-item is-draft-created"><span class="tname">नाम</span></span>
+          <span class="naming-legend-text">नाम का टेक्स्ट orphan color में: creation document अभी Draft है (Created in a draft, not a chapter)</span>
+        </div>
       </div>
     </div>
   `;
@@ -1330,6 +1463,15 @@ function toggleNamingSearchMode() {
 
 function handleNamingSearch(event) {
   namingSearchQuery = String(event.target.value || '').trim();
+  clearTimeout(handleNamingSearch.loadTimer);
+  if (namingSearchMode === 'name' && namingSearchQuery) {
+    handleNamingSearch.loadTimer = setTimeout(() => {
+      Promise.resolve(window.LmInitialRendering?.ensureFullNamingData?.())
+        .then(renderTags)
+        .catch(error => console.warn('Naming search data load failed:', error));
+    }, 120);
+    return;
+  }
   renderTags();
 }
 
@@ -1396,19 +1538,4 @@ function setNamingSortOption(option) {
   namingSortOption = option;
   closeNamingSortPanel();
   renderTags();
-}
-
-function isNewDraftState() {
-  if (typeof activeEditorMode === 'undefined' || activeEditorMode !== 'draft') return false;
-  if (typeof curDraft === 'undefined' || curDraft < 0 || typeof chapterDrafts === 'undefined' || curDraft >= chapterDrafts.length) return false;
-  const draft = chapterDrafts[curDraft];
-  if (!draft) return false;
-
-  const content = String(draft.content || '').trim();
-  if (content === '' || content === '<p></p>' || content === '<p><br></p>') {
-    return true;
-  }
-
-  const plainText = htmlToPlainText(content).trim();
-  return plainText.length === 0;
 }

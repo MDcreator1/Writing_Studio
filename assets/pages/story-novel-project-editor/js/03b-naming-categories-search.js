@@ -1,71 +1,50 @@
-function showAllNamingCategories(button = null) {
-  namingData = normalizeNamingData(namingData);
-  const chapterKey = currentNamingChapterKey();
-  const hiddenSet = hiddenCategoriesForChapter(chapterKey);
-  const categories = namingData.categories || [];
+async function showAllNamingCategories(button = null) {
+  if (button?.disabled) return;
+  if (button) button.disabled = true;
+  try {
+    namingData = normalizeNamingData(namingData);
+    const chapterKey = currentNamingChapterKey();
+    const hiddenSet = hiddenCategoriesForChapter(chapterKey);
+    const categories = namingData.categories || [];
+    const isShowingAll = window.activeNamingShowAllCategoriesKey === chapterKey;
+    let message = '';
 
-  const hasHiddenCategories = categories.some(cat => hiddenSet.has(cat.id));
-
-  if (hasHiddenCategories) {
-    if (namingData.hiddenByChapter) {
-      delete namingData.hiddenByChapter[chapterKey];
+    if (!isShowingAll) {
+      window.activeNamingShowAllCategoriesKey = chapterKey;
+      if (namingData.hiddenByChapter) delete namingData.hiddenByChapter[chapterKey];
+      namingData.visibleByChapter = { ...(namingData.visibleByChapter || {}), [chapterKey]: categories.map(category => category.id) };
+      message = 'All categories are now visible.';
+    } else {
+      window.activeNamingShowAllCategoriesKey = '';
+      const activeText = activeNamingPanelText();
+      const categoryStats = categories.map(category => {
+        const projectedEntries = (namingData.entries || []).filter(entry => entry.categoryId === category.id);
+        return {
+          id: category.id,
+          matchingCount: projectedEntries.filter(entry => namingEntryNameInText(entry, activeText)).length,
+          totalEntries: window.LmInitialRendering?.namingCategoryCount?.(category.id) ?? projectedEntries.length
+        };
+      });
+      const visibleIds = new Set(categoryStats.filter(category => category.matchingCount > 0).map(category => category.id));
+      categoryStats
+        .filter(category => !visibleIds.has(category.id))
+        .sort((left, right) => right.totalEntries - left.totalEntries)
+        .slice(0, Math.max(0, 6 - visibleIds.size))
+        .forEach(category => visibleIds.add(category.id));
+      const visibleList = [...visibleIds];
+      namingData.hiddenByChapter = { ...(namingData.hiddenByChapter || {}), [chapterKey]: categories.filter(category => !visibleIds.has(category.id)).map(category => category.id) };
+      namingData.visibleByChapter = { ...(namingData.visibleByChapter || {}), [chapterKey]: visibleList };
+      message = `Smart filter applied: ${visibleList.length} categories visible.`;
     }
-    const allCategoryIds = categories.map(cat => cat.id);
-    namingData.visibleByChapter = {
-      ...(namingData.visibleByChapter || {}),
-      [chapterKey]: allCategoryIds
-    };
-    renderTags();
-    saveNamingData();
-    const msg = 'All categories are now visible.';
-    if (typeof showSmartCopyToast === 'function') {
-      showSmartCopyToast(msg);
-    }
-  } else {
-    const activeText = activeNamingPanelText();
-
-    const catStats = categories.map(cat => {
-      const catEntries = (namingData.entries || []).filter(e => e.categoryId === cat.id);
-      const matchingCount = catEntries.filter(entry => namingEntryNameInText(entry, activeText)).length;
-      return {
-        id: cat.id,
-        matchingCount,
-        totalEntries: catEntries.length
-      };
-    });
-
-    const matchingCats = catStats.filter(c => c.matchingCount > 0);
-    const nonMatchingCats = catStats
-      .filter(c => c.matchingCount === 0)
-      .sort((a, b) => b.totalEntries - a.totalEntries);
-
-    const MIN_VISIBLE = 6;
-    const visibleIds = new Set(matchingCats.map(c => c.id));
-
-    if (visibleIds.size < MIN_VISIBLE) {
-      const needed = MIN_VISIBLE - visibleIds.size;
-      const extraCats = nonMatchingCats.slice(0, needed);
-      extraCats.forEach(c => visibleIds.add(c.id));
-    }
-
-    const newHiddenList = categories.filter(cat => !visibleIds.has(cat.id)).map(cat => cat.id);
-    const newVisibleList = [...visibleIds];
-
-    namingData.hiddenByChapter = {
-      ...(namingData.hiddenByChapter || {}),
-      [chapterKey]: newHiddenList
-    };
-    namingData.visibleByChapter = {
-      ...(namingData.visibleByChapter || {}),
-      [chapterKey]: newVisibleList
-    };
 
     renderTags();
-    saveNamingData();
-    const msg = `Smart filter applied: ${newVisibleList.length} categories visible.`;
-    if (typeof showSmartCopyToast === 'function') {
-      showSmartCopyToast(msg);
-    }
+    await window.LmInitialRendering?.syncActiveNamingVisibility?.();
+    if (typeof showSmartCopyToast === 'function') showSmartCopyToast(message);
+  } catch (error) {
+    console.warn('Category visibility update failed:', error);
+    showMiniReminder('Category visibility सुरक्षित रूप से update नहीं हो सकी।');
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 
@@ -184,6 +163,33 @@ function closeNamingEntryDescriptionPopover() {
   }
 }
 
+async function copyNamingEntryOnDoubleClick(event, entryId, anchor = null) {
+  event?.preventDefault?.();
+  event?.stopPropagation?.();
+  const entry = namingData?.entries?.find(item => item.id === entryId);
+  const visibleName = anchor?.querySelector?.('.tname > span')?.textContent?.trim();
+  const name = visibleName || String(entry?.name || '').trim();
+  if (!name) return false;
+  let copied = false;
+  try {
+    const input = document.createElement('textarea');
+    input.value = name;
+    input.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0';
+    input.setAttribute('readonly', '');
+    document.body.appendChild(input);
+    input.select();
+    copied = document.execCommand('copy');
+    input.remove();
+  } catch (_error) { copied = false; }
+  if (!copied && navigator.clipboard?.writeText) {
+    try { await navigator.clipboard.writeText(name); copied = true; } catch (_error) { copied = false; }
+  }
+  const message = copied ? `नाम कॉपी हो गया: ${name}` : 'नाम कॉपी नहीं हो सका।';
+  if (typeof showSmartCopyToast === 'function') showSmartCopyToast(message);
+  else if (typeof showMiniReminder === 'function') showMiniReminder(message);
+  return copied;
+}
+
 function isNameDetailPanelOpen() {
   const panel = document.getElementById('nameDetailPanel');
   return Boolean(panel && !panel.hidden);
@@ -224,6 +230,36 @@ function openNamingEntryDescriptionDetail() {
   showNameDetail(entryId, anchor);
 }
 
+function namingEntryFirstAppearanceLabel(entry = {}) {
+  const status = typeof normalizeNamingEntryStatus === 'function'
+    ? normalizeNamingEntryStatus(entry)
+    : String(entry.chapterStatus || entry.documentType || '').toLowerCase();
+  if (status !== 'chapter') return '';
+  const chapterNo = typeof namingEntryFirstAppearanceChapterNo === 'function'
+    ? namingEntryFirstAppearanceChapterNo(entry)
+    : Number(entry.chapterNo || entry.descriptionMeta?.chapterNo || 0);
+  if (!chapterNo) return '';
+  const chapterTitle = String(
+    entry.chapterTitle || entry.descriptionMeta?.chapterTitle ||
+    (Number.isInteger(entry.chapterIndex) ? chapters[entry.chapterIndex]?.title : '') || 'Untitled Chapter'
+  ).trim();
+  return `${chapterNo}. ${chapterTitle}`;
+}
+
+function namingEntryDraftAppearanceLabel(entry = {}) {
+  const status = typeof normalizeNamingEntryStatus === 'function'
+    ? normalizeNamingEntryStatus(entry)
+    : String(entry.chapterStatus || entry.documentType || '').toLowerCase();
+  if (status !== 'draft') return '';
+  const draftNo = Number(entry.draftNo || (Number.isInteger(entry.draftIndex) ? entry.draftIndex + 1 : 0));
+  const draftTitle = String(
+    entry.draftTitle || entry.chapterTitle ||
+    (Number.isInteger(entry.draftIndex) ? chapterDrafts[entry.draftIndex]?.title : '') ||
+    (draftNo ? `Draft ${draftNo}` : 'Draft')
+  ).trim();
+  return draftTitle;
+}
+
 function openNamingEntryDescriptionPanel(entryId, anchor = null) {
   if (isNameDetailPanelOpen() || !anchor) return;
   const panel = ensureNamingEntryDescriptionPopover();
@@ -242,7 +278,11 @@ function openNamingEntryDescriptionPanel(entryId, anchor = null) {
   panel.setAttribute('aria-label', `Open details for ${entry.name}`);
 
   const description = entry.description || 'No description added yet.';
+  const firstAppearance = namingEntryFirstAppearanceLabel(entry);
+  const draftAppearance = namingEntryDraftAppearanceLabel(entry);
   panel.innerHTML = `
+    ${firstAppearance ? `<div class="naming-entry-first-appearance" title="${escapeHtml(firstAppearance)}">${escapeHtml(firstAppearance)}</div>` : ''}
+    ${draftAppearance ? `<div class="naming-entry-first-appearance is-draft-origin" title="${escapeHtml(draftAppearance)}">${escapeHtml(draftAppearance)}</div>` : ''}
     <p class="category-info-copy naming-entry-description-copy ${entry.description ? '' : 'is-muted'}">${escapeHtml(description)}</p>`;
   panel.hidden = false;
   positionCategoryInfoPopover(panel, anchor, 'namingEntryDescriptionPopover');
@@ -1407,4 +1447,3 @@ function scanStoryForNamingEntry(entryId) {
   }
   return false;
 }
-

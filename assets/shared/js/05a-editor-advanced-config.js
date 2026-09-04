@@ -284,6 +284,7 @@ const LM_EDITOR_ADVANCED_TOP_SECTIONS = [
   { key: 'smart-copy', icon: 'C', label: 'Smart Copy', note: 'Copied paragraphs', description: 'Choose how paragraph breaks and spacing are written to the clipboard.' },
   { key: 'smart-paste', icon: 'P', label: 'Smart Paste', note: 'Pasted formatting', description: 'Choose how incoming text is cleaned and styled inside the editor.' },
   { key: 'global', icon: 'G', label: 'Global Text Formatting', note: 'All editor text', description: 'Set the default text format used everywhere: drafts, chapter reading, chapter editing, new documents, promoted chapters, and new paragraphs.' },
+  { key: 'import-promote', icon: 'IP', label: 'Import & Promote', note: 'Workflow defaults', description: 'Keep imported-text and draft-promotion defaults, destinations, and permanent conclusions independent.' },
   { key: 'find-replace', icon: 'FR', label: 'Find & Replace', note: 'Matching and scope', description: 'Choose how text is matched and which results Replace All is allowed to change.' },
   { key: 'advanced-word-editing', icon: 'WE', label: 'Advanced Word Editing', note: 'Rules and replacement flow', description: 'Prepare how grouped aliases, matching priorities, dictionaries, previews, and safe bulk word edits will behave.' },
   { key: 'developer', icon: 'Dev', label: 'Developer settings', note: '44 internal controls', description: 'Performance, saving, input, layout, feedback, and import engine controls.' }
@@ -330,6 +331,10 @@ function selectAdvancedEditorTopSection(key, options = {}) {
   document.querySelectorAll('[data-advanced-top-section]').forEach(section => {
     section.hidden = section.dataset.advancedTopSection !== safeKey;
   });
+  if (safeKey === 'advanced-word-editing') {
+    window.LmWorkspaceSectionLoader?.ensureWordEditingData?.()
+      .catch(error => console.warn('Word dictionary load failed:', error));
+  }
   if (options.keepScroll !== true) {
     const content = document.querySelector('.advanced-editor-settings-content');
     if (content) content.scrollTop = 0;
@@ -481,7 +486,7 @@ function renderAdvancedEditorSettings() {
   if (!modal) return;
   const stored = lmEditorAdvancedStored();
   const baseCategories = [...new Set(LM_EDITOR_ADVANCED_SCHEMA.map(item => item.category))];
-  const categories = [...baseCategories, 'Project Cache & Storage'];
+  const categories = [...baseCategories, 'Rendering Snapshots', 'Project Cache & Storage'];
   activeAdvancedEditorSettingsCategoryIndex = Math.min(activeAdvancedEditorSettingsCategoryIndex, categories.length - 1);
 
   const navigation = LM_EDITOR_ADVANCED_TOP_SECTIONS.map(section => {
@@ -491,14 +496,19 @@ function renderAdvancedEditorSettings() {
 
   const developerCategoryTabs = categories.map((category, categoryIndex) => {
     const active = categoryIndex === activeAdvancedEditorSettingsCategoryIndex;
-    const count = category === 'Project Cache & Storage'
-      ? 3
+    const count = category === 'Rendering Snapshots'
+      ? 4
+      : category === 'Project Cache & Storage'
+        ? 3
       : LM_EDITOR_ADVANCED_SCHEMA.filter(item => item.category === category).length;
     return `<button type="button" role="tab" data-advanced-developer-category="${categoryIndex}" class="${active ? 'is-active' : ''}" aria-selected="${active}" tabindex="${active ? '0' : '-1'}" onclick="selectAdvancedEditorSettingsCategory(${categoryIndex})"><strong>${category}</strong><small>${count}</small></button>`;
   }).join('');
 
   const developerSections = categories.map((category, categoryIndex) => {
     const isActive = categoryIndex === activeAdvancedEditorSettingsCategoryIndex;
+    if (category === 'Rendering Snapshots') {
+      return window.LmRenderingSnapshotTools?.developerSectionHtml?.(categoryIndex, isActive) || '';
+    }
     if (category === 'Project Cache & Storage') {
       return `<section class="advanced-developer-settings-section" data-advanced-developer-section="${categoryIndex}" ${isActive ? '' : 'hidden'}>
         <div class="advanced-developer-settings-copy">
@@ -612,6 +622,9 @@ function renderAdvancedEditorSettings() {
     : '<div class="advanced-word-editing-loading">Loading the word-editing workspace…</div>';
 
   const smartPasteSyncButton = `<button class="advanced-quick-pin-btn smart-paste-sync-btn" type="button" onclick="syncSmartPasteFromGlobalFormatting()" title="Sync values from Global Text Formatting" aria-label="Sync values from Global Text Formatting"><span class="smart-paste-sync-icon" data-lm-icon="refresh"></span><span>Sync Global Style</span></button>`;
+  const importPromoteMeta = LM_EDITOR_ADVANCED_TOP_SECTIONS.find(section => section.key === 'import-promote');
+  const importPromoteBody = window.LmAdvancedImportPromoteSettings?.renderSectionHtml?.()
+    || '<div class="advanced-word-editing-loading">Loading Advanced Import and Promote settings…</div>';
 
   const sections = [
     advancedFeatureSection('developer', developerMeta, developerBody, `${LM_EDITOR_ADVANCED_SCHEMA.length} settings`),
@@ -619,6 +632,7 @@ function renderAdvancedEditorSettings() {
     advancedFeatureSection('smart-copy', smartCopyMeta, smartCopyBody, '3 controls', [{ key: 'smartCopy', label: 'Smart Copy' }]),
     advancedFeatureSection('smart-paste', smartPasteMeta, smartPasteBody, '4 controls', [{ key: 'smartPaste', label: 'Smart Paste' }], smartPasteSyncButton),
     advancedFeatureSection('global', globalMeta, globalBody, '8 controls'),
+    advancedFeatureSection('import-promote', importPromoteMeta, importPromoteBody, '9 controls'),
     advancedFeatureSection('find-replace', findMeta, findBody, '2 controls'),
     advancedFeatureSection('advanced-word-editing', wordEditingMeta, wordEditingBody)
   ].join('');
@@ -634,6 +648,7 @@ function renderAdvancedEditorSettings() {
   syncAdvancedAutoScrollConditionalControls();
   decorateAdvancedEditorSettingsIcons();
   window.lmAdvancedWordEditing?.mount?.(modal);
+  window.LmAdvancedImportPromoteSettings?.syncImportCustomWordVisibility?.();
 }
 
 let advancedEditorSettingsBaseline = {};
@@ -703,6 +718,10 @@ function openAdvancedEditorSettings() {
   }
   renderAdvancedEditorSettings();
   modal.hidden = false;
+  if (activeAdvancedEditorSettingsTopSection === 'advanced-word-editing') {
+    window.LmWorkspaceSectionLoader?.ensureWordEditingData?.()
+      .catch(error => console.warn('Word dictionary load failed:', error));
+  }
   document.body.classList.add('is-advanced-editor-settings-open');
   requestAnimationFrame(() => {
     if (typeof syncCustomSelects === 'function') syncCustomSelects(modal);
@@ -744,6 +763,7 @@ function resetAllAdvancedEditorSettings() {
     input.dispatchEvent(new Event('change', { bubbles: true }));
   });
   syncAdvancedSmartCopyConditionalControls();
+  window.LmAdvancedImportPromoteSettings?.syncImportCustomWordVisibility?.();
   checkAdvancedEditorSettingsDirty();
 }
 
@@ -974,6 +994,7 @@ async function runAdvancedGlobalStyleApply() {
 
 
 function saveAdvancedEditorSettings() {
+  if (window.LmAdvancedImportPromoteSettings?.validateFromPanel?.() === false) return;
   const next = {};
   for (const item of LM_EDITOR_ADVANCED_SCHEMA) {
     const input = document.querySelector(`[data-advanced-editor-key="${item.key}"]`);
@@ -1054,6 +1075,7 @@ function saveAdvancedEditorSettings() {
     if (typeof persistProjectManifestSnapshot === 'function') persistProjectManifestSnapshot();
   }
 
+  if (window.LmAdvancedImportPromoteSettings?.saveFromPanel?.() === false) return;
   localStorage.setItem(LM_EDITOR_ADVANCED_SETTINGS_KEY, JSON.stringify(next));
 
   isEditorAutoScrollEnabled = Boolean(advancedRuntimeControlValue('autoScrollEnabled'));

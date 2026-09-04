@@ -53,6 +53,7 @@ function editorDocumentWordCountSignature(documentItem) {
 
 function verifiedEditorDocumentWordCount(documentItem) {
   if (!documentItem) return 0;
+  if (documentItem._contentLoadState === 'quarantined') return 0;
   const signature = editorDocumentWordCountSignature(documentItem);
   if (
     documentItem._wordCountVerifiedSignature === signature &&
@@ -790,6 +791,8 @@ function captureHiddenSwitchedDocumentSnapshot() {
     draftIndex: curDraft,
     chapterEditKey: activeChapterEditKey,
     documentItem: activeEditorDocument(),
+    projectHandle: projectDirectoryHandle,
+    canPersist: activeEditorDocument()?._contentLoadState === 'loaded' && activeEditorDocument()?._contentPresented === true,
     virtualDocumentKey: virtualState?.key || '',
     wasChapterEditUnlocked: isChapterEditUnlocked,
     plainTextMode: virtualHTML ? false : Boolean(editor && isEditorPlainTextMode(editor)),
@@ -820,6 +823,10 @@ function normalizeHiddenSwitchedSnapshotHTML(snapshot) {
 
 async function commitHiddenSwitchedSnapshotToMemory(snapshot) {
   if (!snapshot || !switchedDocumentSnapshots.has(snapshot.id)) return snapshot;
+  if (!snapshot.canPersist) {
+    snapshot.status = 'skipped-unhydrated';
+    return snapshot;
+  }
   snapshot.status = 'normalizing';
   let processed;
   try {
@@ -850,7 +857,7 @@ async function commitHiddenSwitchedSnapshotToMemory(snapshot) {
   snapshot.stats = processed.stats;
   snapshot.nameMatches = processed.nameMatches;
 
-  if (snapshot.mode === 'draft' && snapshot.documentItem) {
+  if (snapshot.canPersist && snapshot.mode === 'draft' && snapshot.documentItem) {
     snapshot.documentItem.content = snapshot.html;
     setDraftWordCache(snapshot.draftIndex, snapshot.stats?.words ?? countWordsFromText(snapshot.text));
   } else if (snapshot.mode === 'chapter-edit-draft' && snapshot.documentItem) {
@@ -1087,10 +1094,15 @@ function applyEditorWorkerAnalysis(result, { sequence = editorDocumentLoadSequen
   if (bufferVersion !== null && bufferVersion !== activeEditorHTMLBufferVersion) return false;
 
   setEditorStatValues(result.stats || {});
-  if (isDraftActive()) setDraftWordCache(curDraft, result.stats?.words || 0);
-  else setChapterWordCache(curChap, result.stats?.words || 0);
-
-  const namingChanged = scanActiveEditorForNamingUses(new Date().toISOString(), result.text || '');
+  const isQuarantined = activeEditorDocument()?._contentLoadState === 'quarantined';
+  if (!isQuarantined) {
+    if (isDraftActive()) setDraftWordCache(curDraft, result.stats?.words || 0);
+    else setChapterWordCache(curChap, result.stats?.words || 0);
+  }
+  const namingChanged = !isQuarantined && scanActiveEditorForNamingUses(new Date().toISOString(), result.text || '');
+  const shouldRefreshNamingProjection = !isQuarantined && Boolean(String(result.text || '').trim()) &&
+    (activeSidePanel === 'naming' || window.LmWorkspaceSectionLoader?.isReady?.('naming'));
+  if (shouldRefreshNamingProjection) window.LmInitialRendering?.queueActiveNamingSnapshotRefresh?.();
   renderChapters();
   if (activeSidePanel === 'naming' && namingChanged) renderTags();
   updateChapterStatus();
@@ -1123,8 +1135,17 @@ function scheduleEditorDocumentPostRender(sequence, documentItem, tasks = {}) {
       runSurfaceEditorWorkerAnalysis(documentItem.content || '', { sequence });
       loadEditor({ phase: 'analysis-layout', documentItem });
       renderChapters();
-      renderTags();
-      renderNotes();
+      const shouldRefreshNaming = activeSidePanel === 'naming' || window.LmWorkspaceSectionLoader?.isReady?.('naming');
+      Promise.resolve(shouldRefreshNaming ? window.LmInitialRendering?.loadNamingForActiveDocument?.() : null)
+        .then(() => {
+          if (sequence !== editorDocumentLoadSequence) return;
+          if (typeof renderActiveWorkspaceSidePanel === 'function') renderActiveWorkspaceSidePanel();
+          else {
+            renderTags();
+            renderNotes();
+          }
+        })
+        .catch(error => console.warn('Active naming render refresh failed:', error));
       updateChapterStatus();
       saveToStorage(false);
     }
@@ -1147,6 +1168,10 @@ function scheduleEditorDocumentPostRender(sequence, documentItem, tasks = {}) {
 async function switchChap(index) {
   ensureChapters();
   if (index < 0 || index >= chapters.length || (!isDraftActive() && index === curChap)) return;
+  if (!(await ensureChapterContentLoaded(index))) {
+    showMiniReminder('Chapter content load नहीं हुआ; सुरक्षित रूप से switch रोक दिया गया।');
+    return;
+  }
   if (isChapterEditDraftActive() && isEditingChapterTitle) {
     const titleCommitted = await commitChapterTitleEdit();
     if (!titleCommitted) return;
@@ -1184,13 +1209,15 @@ async function switchChap(index) {
   syncImmediateSidebarDocumentHighlight('chapter', curChap, sequence);
   updateChapterStatus();
   scheduleEditorDocumentPostRender(sequence, documentItem, {
-    commitPreviousSnapshot: () => {
-      commitHiddenSwitchedSnapshotToMemory(switchedSnapshot);
-    },
-    cleanupPreviousEditDraft: () => switchedSnapshot.mode === 'chapter-edit-draft'
+    commitPreviousSnapshot: () => commitHiddenSwitchedSnapshotToMemory(switchedSnapshot),
+    cleanupPreviousEditDraft: () => !switchedSnapshot.canPersist
+      ? false
+      : switchedSnapshot.mode === 'chapter-edit-draft'
       ? cleanupActiveChapterEditDraftIfUnchanged(previousIndex, switchedSnapshot.chapterEditKey || previousChapterEditKey)
       : false,
-    savePreviousDocument: previousEditDraftRemoved => wasDraftActive
+    savePreviousDocument: previousEditDraftRemoved => !switchedSnapshot.canPersist || switchedSnapshot.projectHandle !== projectDirectoryHandle
+      ? Promise.resolve()
+      : wasDraftActive
       ? writeDraftToLocalFile(previousDraftIndex, switchedSnapshot.text || '')
       : switchedSnapshot.mode === 'chapter-edit-draft' && !previousEditDraftRemoved
         ? writeChapterEditDraftToLocalFile(switchedSnapshot.chapterEditKey || previousChapterEditKey, switchedSnapshot.text || '')
@@ -1200,6 +1227,7 @@ async function switchChap(index) {
 }
 
 function loadEditor(options = {}) {
+  if (options.phase === 'paint') window.LmInitialRendering?.queueActiveDocumentSync?.();
   if (!hasActiveStory()) {
     const editor = document.getElementById('editor');
     if (editor) {
@@ -1252,6 +1280,7 @@ function loadEditor(options = {}) {
       clearVirtualEditorDocument();
       renderEditorDocumentContent(editor, documentItem);
     }
+    documentItem._contentPresented = true;
     const displayedParagraphMargin = isEditorReviewMode(editor) && typeof editorReviewModeMarginDefault === 'function'
       ? editorReviewModeMarginDefault()
       : null;
@@ -1287,6 +1316,7 @@ function loadEditor(options = {}) {
     documentItem.paragraphGap = detectedParagraphGap;
   }
   if (!String(options.phase || '').startsWith('analysis')) renderEditorDocumentContent(editor, documentItem);
+  if (!String(options.phase || '').startsWith('analysis')) documentItem._contentPresented = true;
   const displayedParagraphMargin = isEditorReviewMode(editor) && typeof editorReviewModeMarginDefault === 'function'
     ? editorReviewModeMarginDefault()
     : null;
@@ -1308,6 +1338,7 @@ function loadEditor(options = {}) {
 
 function validateNamingMentionsAfterEditorLoad(sourceHTML = '') {
   if (!hasActiveStory() || typeof validateNamingEntriesWithoutStoryMentions !== 'function') return;
+  if (activeEditorDocument()?._contentLoadState === 'quarantined') return;
   const activeText = editorHTMLToText(sourceHTML);
   const scanOptions = { activeText };
 
@@ -1417,4 +1448,3 @@ function openDraftPromoteDestinationPanel(draftIndex, anchor = null) {
   panel.hidden = false;
   positionFloatingPanel(panel, positionAnchor);
 }
-

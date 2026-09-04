@@ -608,8 +608,11 @@ function refreshProjectUI() {
 
   applyLanguage();
   renderChapters();
-  renderTags();
-  renderNotes();
+  if (typeof renderActiveWorkspaceSidePanel === 'function') renderActiveWorkspaceSidePanel();
+  else {
+    renderTags();
+    renderNotes();
+  }
   loadEditor();
   updateChapterStatus();
 }
@@ -709,6 +712,23 @@ function customSelectBoundaryElement(shell) {
   ].join(', ')) || shell?.parentElement || document.documentElement;
 }
 
+function centeredCustomSelectLeft(shellRect, menuWidth, viewportGap = 12, fixed = false) {
+  const centeredViewportLeft = shellRect.left + ((shellRect.width - menuWidth) / 2);
+  const maximumViewportLeft = Math.max(viewportGap, window.innerWidth - viewportGap - menuWidth);
+  const clampedViewportLeft = clampNumber(centeredViewportLeft, viewportGap, maximumViewportLeft);
+  return fixed ? clampedViewportLeft : clampedViewportLeft - shellRect.left;
+}
+
+function centerExpandedCustomSelectMenu(shell, menu, viewportGap = 12) {
+  const shellRect = shell.getBoundingClientRect();
+  const menuWidth = menu.getBoundingClientRect().width;
+  if (!menuWidth || menuWidth <= shellRect.width + 1) return;
+  const fixed = getComputedStyle(menu).position === 'fixed';
+  const left = centeredCustomSelectLeft(shellRect, menuWidth, viewportGap, fixed);
+  menu.style.setProperty('left', `${left}px`, 'important');
+  menu.style.setProperty('right', 'auto', 'important');
+}
+
 function updateCustomSelectMenuHeight(select, shell, trigger, menu) {
   if (!shell || !trigger || !menu) return;
 
@@ -743,7 +763,7 @@ function updateCustomSelectMenuHeight(select, shell, trigger, menu) {
     const desiredWidth = Math.max(shellRect.width, widestButton + 18);
     const maxWidth = Math.max(shellRect.width, window.innerWidth - (viewportGap * 2));
     const usedWidth = Math.min(desiredWidth, maxWidth);
-    const left = Math.max(viewportGap - shellRect.left, Math.min(0, window.innerWidth - viewportGap - shellRect.left - usedWidth));
+    const left = centeredCustomSelectLeft(shellRect, usedWidth, viewportGap);
     const needsScroll = visibleOptionCount > maxVisibleOptions || requestedHeight > (openUpwards ? availableAbove : availableBelow);
 
     menu.classList.toggle('opens-upward', openUpwards);
@@ -781,8 +801,7 @@ function updateCustomSelectMenuHeight(select, shell, trigger, menu) {
     const widestButton = optionButtons.reduce((width, button) => Math.max(width, Math.ceil(button.scrollWidth)), 0);
     const desiredWidth = Math.max(shellRect.width, widestButton + 18);
     const usedWidth = Math.min(desiredWidth, Math.max(shellRect.width, window.innerWidth - (viewportGap * 2)));
-    const unclampedLeft = shellRect.left;
-    const left = Math.max(viewportGap, Math.min(unclampedLeft, window.innerWidth - usedWidth - viewportGap));
+    const left = centeredCustomSelectLeft(shellRect, usedWidth, viewportGap, true);
     const top = openUpwards ? Math.max(viewportGap, shellRect.top - menuGap - usedHeight) : shellRect.bottom + menuGap;
 
     menu.classList.toggle('opens-upward', openUpwards);
@@ -838,6 +857,7 @@ function updateCustomSelectMenuHeight(select, shell, trigger, menu) {
     menu.style.setProperty('--lm-custom-select-menu-max-height', `${Math.floor(usableMaxHeight)}px`);
     menu.style.overflowY = 'auto';
   }
+  centerExpandedCustomSelectMenu(shell, menu);
 }
 
 function closeCustomSelects() {

@@ -68,6 +68,24 @@
       syncEditorQuickAction();
       syncEditorDockPanel();
       setStorageStatus(saved ? 'Loaded from project folder (Story_Word_Editing.json)' : 'New project dictionary ready', 'success'); } }
+  function resetProjectData(projectHandle = null) {
+    window.clearTimeout(state.persistTimer);
+    state.persistTimer = 0;
+    state.rules = [];
+    state.categories = ['General'];
+    state.search = '';
+    state.categoryFilter = 'all';
+    state.namingCategories.clear();
+    state.expandedCategories.clear();
+    state.selectedRuleIds.clear();
+    state.unmatchedObservations.clear();
+    state.temporaryCandidates = [];
+    state.projectHandle = projectHandle;
+    state.loaded = false;
+    state.restorePromise = null;
+    renderAll(true);
+    setStorageStatus(projectHandle ? 'Dictionary will load when this section opens' : 'Open a project to load its dictionary');
+  }
   async function restore() { if (state.loaded) return;
     if (state.restorePromise) return state.restorePromise;
     state.restorePromise = (async () => { const handle = typeof projectDirectoryHandle !== 'undefined' ? projectDirectoryHandle : null;
@@ -1413,7 +1431,16 @@
     bind(root);
     const importedBeforeRestore = ensureCategories();
     renderAll(false);
-    await restore();
+    const section = root.closest?.('[data-advanced-top-section]');
+    if (section?.hidden) {
+      setStorageStatus('Dictionary will load when this section opens');
+      return;
+    }
+    if (window.LmWorkspaceSectionLoader?.ensureWordEditingData) {
+      await window.LmWorkspaceSectionLoader.ensureWordEditingData();
+    } else {
+      await restore();
+    }
     if (state.root !== root || !root.isConnected) return;
     const importedAfterRestore = ensureCategories();
     renderAll(true);
@@ -1439,9 +1466,9 @@
     openImport, openCategories, applyDictionaryToAllDrafts, applyDictionaryToEditor, learnFromEditorReplacement, getTemporaryCandidates,
     syncEditorQuickAction, syncEditorDockPanel, editorDockPanelState,
     toggleKeepEditorReplacementsFromDock, openEditorControlsFromDock,
-    loadDictionaryPayload, flush: persist
+    loadDictionaryPayload, resetProjectData, flush: persist
   });
-  const initializeEditorIntegration = () => restore().then(() => {
+  const initializeEditorIntegration = () => Promise.resolve().then(() => {
     syncEditorQuickAction();
     syncEditorDockPanel();
   }).catch(() => {});

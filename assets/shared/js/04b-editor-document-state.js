@@ -374,8 +374,11 @@ function activateChapterEditDraft(index = curChap) {
   }
   loadEditor();
   renderChapters();
-  renderTags();
-  renderNotes();
+  if (typeof renderActiveWorkspaceSidePanel === 'function') renderActiveWorkspaceSidePanel();
+  else {
+    renderTags();
+    renderNotes();
+  }
   updateChapterStatus();
   syncActiveEditorEditState();
   const draftMatchesChapter = draft && isChapterEditDraftSameAsChapter(draft, curChap);
@@ -498,8 +501,11 @@ async function discardChapterEditRecovery() {
   saveToStorage(false);
   loadEditor();
   renderChapters();
-  renderTags();
-  renderNotes();
+  if (typeof renderActiveWorkspaceSidePanel === 'function') renderActiveWorkspaceSidePanel();
+  else {
+    renderTags();
+    renderNotes();
+  }
   syncActiveEditorEditState();
   updateChapterStatus();
   setSaveStatusDot('saved', text().chapterEditRecoveryDiscarded);
@@ -507,7 +513,8 @@ async function discardChapterEditRecovery() {
 }
 
 function canEditActiveDocument() {
-  return isDraftActive() || isChapterEditUnlocked;
+  return !isProjectDataLoading && activeEditorDocument()?._contentLoadState !== 'quarantined' &&
+    (isDraftActive() || isChapterEditUnlocked);
 }
 
 function syncActiveEditorDocumentFromEditor() {

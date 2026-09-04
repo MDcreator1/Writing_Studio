@@ -594,8 +594,8 @@ select.lm-native-select:not(.dock-native-select) {
   backdrop-filter: var(--lm-floating-panel-backdrop-filter);
   display: grid;
   gap: 4px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--lm-scroll-thumb) var(--lm-scroll-track);
+  scrollbar-width: none !important;
+  -ms-overflow-style: none;
 }
 
 .lm-custom-select-menu.opens-upward {
@@ -613,21 +613,9 @@ select.lm-native-select:not(.dock-native-select) {
 }
 
 .lm-custom-select-menu::-webkit-scrollbar {
-  width: 6px;
-}
-
-.lm-custom-select-menu::-webkit-scrollbar-track {
-  background: var(--lm-scroll-track);
-}
-
-.lm-custom-select-menu::-webkit-scrollbar-thumb {
-  border-radius: var(--radius-pill);
-  background: var(--lm-scroll-thumb);
-  box-shadow: var(--lm-scroll-thumb-shadow);
-}
-
-.lm-custom-select-menu::-webkit-scrollbar-thumb:hover {
-  background: var(--lm-scroll-thumb-hover);
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 .lm-custom-select-option {

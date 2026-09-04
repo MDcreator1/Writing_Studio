@@ -768,9 +768,31 @@ function renderChapters() {
     const isActivePart = partIndex === curPart;
     const partChapters = chaptersByPart.get(partIndex) || [];
     const canShowPartChapterToDraft = canConvertPartChaptersToDraft(partIndex);
-    const selectedInPartCount = canShowPartChapterToDraft && selectedChapterScope === chapterScopeKey('part', partIndex)
+    const selectedInPartCount = selectedChapterScope === chapterScopeKey('part', partIndex)
       ? partChapters.filter(({ index }) => selectedChapterIndexes.has(index)).length
       : 0;
+    const boundaryActions = partChapterBoundarySelection(partIndex);
+    const selectedBoundaryActions = selectedInPartCount ? `
+      ${boundaryActions.moveUp ? `<button class="part-menu-btn chapter-boundary-transfer-btn" type="button"
+        onclick="event.stopPropagation(); moveSelectedPartBoundaryChapters(${partIndex}, 'up')"
+        title="Move selected chapters to the previous part" aria-label="Move selected chapters to the previous part">
+        ${lmChevronSpan('up')}
+      </button>` : ''}
+      ${boundaryActions.moveDown ? `<button class="part-menu-btn chapter-boundary-transfer-btn" type="button"
+        onclick="event.stopPropagation(); moveSelectedPartBoundaryChapters(${partIndex}, 'down')"
+        title="Move selected chapters to the next part" aria-label="Move selected chapters to the next part">
+        ${lmChevronSpan('down')}
+      </button>` : ''}
+      ${boundaryActions.moveToTemporary ? `<button class="part-menu-btn chapter-boundary-transfer-btn" type="button"
+        onclick="event.stopPropagation(); moveSelectedPartBoundaryChapters(${partIndex}, 'temporary')"
+        title="Move selected chapters to Temporary Chapters" aria-label="Move selected chapters to Temporary Chapters">
+        ${lmChevronSpan('down')}
+      </button>` : ''}
+      ${boundaryActions.moveToDraft ? `<button class="part-menu-btn chapter-to-draft-btn chapter-boundary-transfer-btn" type="button"
+        onclick="event.stopPropagation(); openChapterRecentToDraftPanel('part', ${partIndex}, this)"
+        title="${escapeHtml(copy.moveChaptersToDraft)}" aria-label="${escapeHtml(copy.moveChaptersToDraft)}">
+        ${CHAPTER_TO_DRAFT_SVG}
+      </button>` : ''}` : '';
 
     const chapterItems = isExpanded && partChapters.length
       ? partChapters.map(({ chapter, index }, chapterIndex) => `
@@ -806,7 +828,8 @@ function renderChapters() {
               <div class="part-meta">${partChapters.length} ${escapeHtml(copy.chapters)}${part.synopsis ? ' Â· ' + escapeHtml(part.synopsis) : ''}</div>
             </button>
           </div>
-          ${partChapters.length && canShowPartChapterToDraft ? `<button class="part-menu-btn chapter-to-draft-btn" type="button"
+          ${selectedBoundaryActions}
+          ${partChapters.length && canShowPartChapterToDraft && !selectedInPartCount ? `<button class="part-menu-btn chapter-to-draft-btn" type="button"
             onclick="event.stopPropagation(); openChapterRecentToDraftPanel('part', ${partIndex}, this)"
             title="${escapeHtml(copy.moveChaptersToDraft)}" aria-label="${escapeHtml(copy.moveChaptersToDraft)}">
             ${CHAPTER_TO_DRAFT_SVG}
@@ -1423,4 +1446,3 @@ function flushVirtualEditorPatchBatch() {
     });
   return activeEditorHTMLBridgePromise;
 }
-

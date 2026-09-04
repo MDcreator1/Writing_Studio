@@ -1284,17 +1284,6 @@ function projectDetailsPersistNameDescription(entryId = '', description = '') {
   const nextDescription = String(description || '').trim();
   entry.description = nextDescription;
   entry.updatedAt = editedAt;
-  entry.chapterKey = descriptionMeta.chapterKey;
-  entry.chapterIndex = descriptionMeta.chapterIndex;
-  entry.chapterNo = descriptionMeta.chapterNo;
-  entry.chapterTitle = descriptionMeta.chapterTitle;
-  entry.chapterStatus = 'chapter';
-  entry.documentType = 'chapter';
-  entry.draftKey = null;
-  entry.draftIndex = null;
-  entry.draftNo = null;
-  entry.draftTitle = '';
-  entry.contentPath = descriptionMeta.contentPath;
   entry.descriptionMeta = descriptionMeta;
   entry.descriptionHistory = [
     ...(Array.isArray(entry.descriptionHistory) ? entry.descriptionHistory : []),
@@ -1442,4 +1431,3 @@ function projectDetailsRenderDocumentListItem(documentItem = {}, isActive = fals
     </button>
   `;
 }
-

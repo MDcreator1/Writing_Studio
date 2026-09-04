@@ -3,7 +3,6 @@ let customSelectCounter = 0;
 let customSelectGlobalsBound = false;
 let customSelectSyncRaf = null;
 const customSelectObservers = new WeakMap();
-
 function textToEditorHTML(value) {
   const normalizedText = String(value || '').replace(/\r\n?/g, '\n');
   if (!normalizedText.trim()) return '';
@@ -11,33 +10,27 @@ function textToEditorHTML(value) {
     .map(line => `<p>${line ? escapeHtml(line) : '<br>'}</p>`)
     .join('');
 }
-
 function storageWordCountFromText(value) {
   const normalizedValue = String(value || '').replace(/\u00a0/g, ' ').trim();
   return normalizedValue ? normalizedValue.split(/\s+/).length : 0;
 }
-
 function storageWordCountFromEditorHTML(value) {
   if (typeof htmlToCountableText === 'function' && typeof countWordsFromText === 'function') {
     return countWordsFromText(htmlToCountableText(value));
   }
-
   const root = document.createElement('div');
   root.innerHTML = String(value || '');
   return storageWordCountFromText(root.textContent || '');
 }
-
 function splitContinuousPasteText(value) {
   const cleanedText = String(value || '').replace(/\s+/g, ' ').trim();
   if (!cleanedText) return [];
   if (cleanedText.length <= 650) return [cleanedText];
-
   const sentences = cleanedText.match(/[^।.!?]+[।.!?]+["'”’]?|[^।.!?]+$/g)
     ?.map(sentence => sentence.trim())
     .filter(Boolean) || [cleanedText];
   const paragraphs = [];
   let currentParagraph = '';
-
   sentences.forEach(sentence => {
     const nextParagraph = currentParagraph ? `${currentParagraph} ${sentence}` : sentence;
     if (currentParagraph && nextParagraph.length > 560) {
@@ -47,11 +40,9 @@ function splitContinuousPasteText(value) {
       currentParagraph = nextParagraph;
     }
   });
-
   if (currentParagraph) paragraphs.push(currentParagraph);
   return paragraphs;
 }
-
 function pasteTextEntry(textValue) {
   return {
     type: 'text',
@@ -610,6 +601,7 @@ function createProjectManifest(folderName = 'Untitled Story') {
 }
 
 function chapterManifestEntry(chapter, index, chapterNo = index + 1) {
+  const includeContent = !projectDirectoryHandle;
   const words = Number.isFinite(chapter._wordCount)
     ? chapter._wordCount
     : (Number.isFinite(chapter.wordCount)
@@ -621,7 +613,7 @@ function chapterManifestEntry(chapter, index, chapterNo = index + 1) {
   return {
     no: chapterNo,
     title: chapter.title,
-    contentHTML: chapter.content || '',
+    contentHTML: includeContent ? chapter.content || '' : '',
     createdAt: chapter.createdAt || new Date().toISOString(),
     content_path: chapter.contentPath || chapterFilePath(index),
     alignment: normalizeEditorAlignment(chapter.alignment),
@@ -671,7 +663,7 @@ function chaptersToManifest() {
       bandBottom: typeof advancedStoredPercent === 'function' ? advancedStoredPercent(EDITOR_AUTO_SCROLL_BAND_BOTTOM_KEY, 78) : 78,
       bandMinGap: typeof lmEditorAdvancedNumber === 'function' ? lmEditorAdvancedNumber('autoScrollBandMinGap', 22) : 22
     },
-    facts: normalizeStoryFacts(storyFacts)
+    ...(projectDirectoryHandle ? {} : { facts: normalizeStoryFacts(storyFacts) })
   };
 
   if (!hasParts) {
@@ -720,21 +712,61 @@ async function readProjectManifest() {
   }
 }
 
+function projectManifestForStorage(manifest) {
+  const stripChapter = chapter => {
+    const metadata = { ...chapter };
+    delete metadata.content;
+    delete metadata.contentHTML;
+    delete metadata.content_html;
+    return metadata;
+  };
+  const metadata = {
+    ...manifest,
+    chapters: (manifest.chapters || []).map(stripChapter),
+    parts: (manifest.parts || []).map(part => ({
+      ...part,
+      chapters: (part.chapters || []).map(stripChapter)
+    }))
+  };
+  delete metadata.facts;
+  return metadata;
+}
+
+function cacheProjectManifest(manifest = projectManifest) {
+  try {
+    localStorage.setItem(PROJECT_MANIFEST_KEY, JSON.stringify(projectManifestForStorage(normalizeProjectManifest(manifest || {}))));
+    return true;
+  } catch (error) {
+    console.warn('Project manifest browser cache write skipped:', error); return false;
+  }
+}
+
 async function writeProjectManifest(manifest = chaptersToManifest(), options = {}) {
   if (!projectDirectoryHandle) return;
+  const includedFacts = Object.prototype.hasOwnProperty.call(manifest, 'facts')
+    ? normalizeStoryFacts(manifest.facts)
+    : null;
+  if (includedFacts?.length && window.LmFactsPanelData?.writeProjectData) {
+    storyFacts = includedFacts;
+    await window.LmFactsPanelData.writeProjectData(includedFacts);
+  } else if (window.LmFactsPanelData?.ensureLegacyMigration) {
+    // Do not replace the legacy manifest until its detached facts file exists.
+    await window.LmFactsPanelData.ensureLegacyMigration();
+  }
   const createdAt = manifest.createdAt || projectManifest?.createdAt || new Date().toISOString();
   const updatedAt = options.touchUpdated === false
     ? manifest.updatedAt || projectManifest?.updatedAt || createdAt
     : new Date().toISOString();
-  projectManifest = normalizeProjectManifest({
+  projectManifest = projectManifestForStorage(normalizeProjectManifest({
     ...manifest,
     createdAt,
     updatedAt
-  });
-  storyFacts = normalizeStoryFacts(projectManifest.facts);
+  }));
+  if (includedFacts?.length) storyFacts = includedFacts;
   const manifestHandle = await getProjectFileHandle(PROJECT_MANIFEST_FILE, { create: true });
   await writeFileText(manifestHandle, JSON.stringify(projectManifest, null, 2));
-  localStorage.setItem(PROJECT_MANIFEST_KEY, JSON.stringify(projectManifest));
+  cacheProjectManifest(projectManifest);
+  await window.LmInitialRendering?.syncLeftPanelData?.();
 }
 
 function isNewsProjectType(type) {
@@ -802,7 +834,7 @@ async function activateNewsProjectHandle(newsHandle, typeFolderName, manifest) {
   await saveProjectHandle(newsHandle);
   localStorage.setItem(PROJECT_MODE_KEY, 'local');
   localStorage.setItem(PROJECT_FOLDER_KEY, newsHandle.name || '');
-  localStorage.setItem(PROJECT_MANIFEST_KEY, JSON.stringify(projectManifest));
+  cacheProjectManifest(projectManifest);
 }
 
 async function createNewsProjectFromInfoForm(storyTitle, typeFolderName) {
@@ -839,6 +871,11 @@ async function readNamingDataFromProject() {
     const namingHandle = await getProjectFileHandle(PROJECT_NAMING_FILE);
     namingData = normalizeNamingData(JSON.parse(await readFileText(namingHandle)));
   } catch (error) {
+    if (error?.name !== 'NotFoundError') {
+      console.error('Story_Naming.json read failed; overwrite blocked:', error);
+      showMiniReminder('Story_Naming.json सुरक्षित रूप से पढ़ी नहीं जा सकी; overwrite रोक दिया गया है।');
+      throw error;
+    }
     namingData = normalizeNamingData(namingData);
     await writeNamingDataToProject();
   }
@@ -850,13 +887,10 @@ async function readNamingDataFromProject() {
   }
   localStorage.setItem(NAMING_STORAGE_KEY, JSON.stringify(namingData));
 }
-
-async function writeNamingDataToProject() {
-  if (!projectDirectoryHandle) return;
-  namingData = normalizeNamingData(namingData);
-  const namingHandle = await getProjectFileHandle(PROJECT_NAMING_FILE, { create: true });
-  await writeFileText(namingHandle, JSON.stringify(namingData, null, 2));
-  localStorage.setItem(NAMING_STORAGE_KEY, JSON.stringify(namingData));
+async function writeNamingDataToProject(options = {}) {
+  const targetHandle = projectDirectoryHandle;
+  if (!targetHandle) return false;
+  return window.LmNamingFileSafety.writeCurrentProject(targetHandle, options);
 }
 
 async function readWordEditingDataFromProject(targetDirectoryHandle = projectDirectoryHandle) {
@@ -872,7 +906,6 @@ async function readWordEditingDataFromProject(targetDirectoryHandle = projectDir
   }
   return null;
 }
-
 async function writeWordEditingDataToProject(payload, targetDirectoryHandle = projectDirectoryHandle) {
   if (!targetDirectoryHandle || !payload) return false;
   try {
@@ -884,7 +917,6 @@ async function writeWordEditingDataToProject(payload, targetDirectoryHandle = pr
     return false;
   }
 }
-
 function normalizeNamingDocumentPath(path = '') {
   return String(path || '').replace(/\\/g, '/').trim();
 }
@@ -1098,7 +1130,10 @@ function namingLiveStoryTextsForMentionValidation(options = {}) {
 }
 
 function namingEntryNameFoundInAnyStoryDocument(entry = {}, options = {}) {
-  return namingLiveStoryTextsForMentionValidation(options)
+  const textValues = Array.isArray(options.documentTexts)
+    ? options.documentTexts.map(namingMentionValidationText).filter(Boolean)
+    : namingLiveStoryTextsForMentionValidation(options);
+  return textValues
     .some(textValue => namingEntryNameFoundInText(entry, textValue));
 }
 
@@ -1210,6 +1245,9 @@ function validateNamingEntryMentionsForDraft(draftIndex = curDraft, options = {}
   if (!Number.isInteger(draftIndex) || draftIndex < 0 || draftIndex >= chapterDrafts.length) return false;
   const draft = chapterDrafts[draftIndex];
   if (!draft) return false;
+  const hasExplicitText = typeof options.text === 'string';
+  const sourceIsLoaded = draft._contentLoadState === 'loaded' || typeof draft.content === 'string' || typeof draft.contentHTML === 'string';
+  if (!hasExplicitText && !sourceIsLoaded) return false;
 
   namingData = normalizeNamingData(namingData);
   const draftText = namingDraftTextForMentionValidation(draft, options.text);
@@ -1228,6 +1266,11 @@ function validateNamingEntryMentionsForDraft(draftIndex = curDraft, options = {}
 }
 
 function validateNamingEntriesWithoutStoryMentions(options = {}) {
+  const searchableDocuments = [...chapters, ...chapterDrafts];
+  const allSourcesLoaded = searchableDocuments.every(item =>
+    item?._contentLoadState === 'loaded' || typeof item?.content === 'string' || typeof item?.contentHTML === 'string'
+  );
+  if (!options.documentTexts && !allSourcesLoaded) return false;
   namingData = normalizeNamingData(namingData);
   const checkedAt = options.checkedAt || new Date().toISOString();
   let didChange = false;
@@ -1289,6 +1332,7 @@ async function writeDraftsDataToProject() {
   const draftsHandle = await getProjectFileHandle(PROJECT_DRAFTS_FILE, { create: true });
   await writeFileText(draftsHandle, JSON.stringify({ drafts: draftsForStorage(false) }, null, 2));
   localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(draftsForStorage(false)));
+  await window.LmInitialRendering?.syncLeftPanelData?.();
 }
 
 async function readTrashDraftsDataFromProject() {
@@ -1314,6 +1358,7 @@ async function writeTrashDraftsDataToProject() {
   await getProjectDirectoryHandle(PROJECT_TRASH_DIR, { create: true });
   const trashHandle = await getProjectFileHandle(PROJECT_TRASH_DRAFTS_FILE, { create: true });
   await writeFileText(trashHandle, JSON.stringify({ drafts: trashDraftsForStorage(false) }, null, 2));
+  await window.LmInitialRendering?.syncLeftPanelData?.();
 }
 
 async function readChapterEditDraftsFromProject() {
@@ -1351,15 +1396,19 @@ function persistChapterEditDrafts() {
   }
 }
 
-function saveNamingData() {
+function saveNamingData(options = {}) {
   namingData = normalizeNamingData(namingData);
   localStorage.setItem(NAMING_STORAGE_KEY, JSON.stringify(namingData));
   if (projectDirectoryHandle) {
-    writeNamingDataToProject().catch(error => console.warn('Naming data save failed:', error));
+    writeNamingDataToProject(options).catch(error => console.warn('Naming data save failed:', error));
   }
 }
 
 async function loadLocalProject(handle, shouldStoreHandle = true, options = {}) {
+  isProjectDataLoading = true;
+  clearTimeout(autoSaveTimer);
+  if (typeof stopTimedAutoSave === 'function') stopTimedAutoSave();
+  if (typeof editorDocumentLoadSequence === 'number') editorDocumentLoadSequence += 1;
   const nextTypeFolderName = options.typeFolderName ?? currentProjectTypeFolderName();
   if (
     projectDirectoryHandle &&
@@ -1379,34 +1428,35 @@ async function loadLocalProject(handle, shouldStoreHandle = true, options = {}) 
     );
   projectDirectoryHandle = handle;
   setActiveProjectTypeFolderName(nextTypeFolderName);
+  window.LmWorkspaceSectionLoader?.reset?.();
   isDraftTrashMode = false;
   curTrashDraft = -1;
   trashReturnEditorState = null;
   selectedTrashDraftIndexes.clear();
   lastSelectedTrashDraftIndex = null;
-  projectManifest = await readProjectManifest();
-  if (!projectManifest) {
+  const chapterSidebarData = window.LmChapterSidebarData;
+  const sidebarDataLoaded = chapterSidebarData?.loadProjectData
+    ? await chapterSidebarData.loadProjectData()
+    : await (async () => {
+      projectManifest = await readProjectManifest();
+      if (!projectManifest) return false;
+      chapters = chaptersFromManifest(projectManifest);
+      storyFacts = normalizeStoryFacts(projectManifest.facts);
+      await Promise.all([
+        readDraftsDataFromProject(),
+        readTrashDraftsDataFromProject()
+      ]);
+      return true;
+    })();
+  if (!sidebarDataLoaded) {
     projectDirectoryHandle = null;
     setActiveProjectTypeFolderName('');
+    isProjectDataLoading = false;
     return false;
   }
+  window.LmFirstProjectOpenMismatchRepair?.begin?.(handle);
   loadPasteCopySettings();
   loadAutoScrollSettingsFromManifest();
-  chapters = chaptersFromManifest(projectManifest);
-  storyFacts = normalizeStoryFacts(projectManifest.facts);
-  await Promise.all([
-    readDraftsDataFromProject(),
-    readTrashDraftsDataFromProject(),
-    readChapterEditDraftsFromProject(),
-    readNamingDataFromProject()
-  ]);
-  if (window.lmAdvancedWordEditing && typeof window.lmAdvancedWordEditing.loadDictionaryPayload === 'function') {
-    const projectWordEditingData = await readWordEditingDataFromProject(projectDirectoryHandle);
-    window.lmAdvancedWordEditing.loadDictionaryPayload(projectWordEditingData, { projectHandle: projectDirectoryHandle });
-    if (!projectWordEditingData && typeof window.lmAdvancedWordEditing.flush === 'function') {
-      await window.lmAdvancedWordEditing.flush();
-    }
-  }
   if (savedEditorTarget) {
     restoreSavedActiveEditorTarget(savedEditorTarget);
   } else if (shouldRestoreSavedTarget) {
@@ -1420,14 +1470,31 @@ async function loadLocalProject(handle, shouldStoreHandle = true, options = {}) 
     syncSidebarWithRestoredEditorTarget();
   }
   ensureChapters();
-  await ensureActiveDocumentContentLoaded();
+  chapterSidebarData?.renderProjectData?.();
+
+  if (window.LmWorkspaceSectionLoader?.loadProjectOpenSections) {
+    await window.LmWorkspaceSectionLoader.loadProjectOpenSections({ activeRightPanel: activeSidePanel });
+  } else {
+    await Promise.all([
+      readChapterEditDraftsFromProject(),
+      readNamingDataFromProject()
+    ]);
+    if (window.lmAdvancedWordEditing && typeof window.lmAdvancedWordEditing.loadDictionaryPayload === 'function') {
+      const projectWordEditingData = await readWordEditingDataFromProject(projectDirectoryHandle);
+      window.lmAdvancedWordEditing.loadDictionaryPayload(projectWordEditingData, { projectHandle: projectDirectoryHandle });
+      if (!projectWordEditingData && typeof window.lmAdvancedWordEditing.flush === 'function') {
+        await window.lmAdvancedWordEditing.flush();
+      }
+    }
+    await ensureActiveDocumentContentLoaded();
+  }
 
   if (shouldStoreHandle) await saveProjectHandle(handle);
   localStorage.setItem(PROJECT_MODE_KEY, 'local');
   localStorage.setItem(PROJECT_FOLDER_KEY, handle.name || '');
   setActiveProjectTypeFolderName(nextTypeFolderName);
-  localStorage.setItem(PROJECT_MANIFEST_KEY, JSON.stringify(projectManifest));
+  cacheProjectManifest(projectManifest);
   hasStoredChapters = false;
+  isProjectDataLoading = false;
   return true;
 }
-

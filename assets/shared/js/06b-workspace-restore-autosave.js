@@ -66,6 +66,7 @@ async function restoreLocalProject() {
 }
 
 function clearActiveStoryState() {
+  isProjectDataLoading = false;
   projectDirectoryHandle = null;
   setActiveProjectTypeFolderName('');
   projectManifest = null;
@@ -141,7 +142,7 @@ function draftsForStorage(includeContent = true) {
     id: draft.id,
     title: draft.title,
     content: includeContent ? draft.content : '',
-    contentHTML: draft.content || '',
+    contentHTML: includeContent ? draft.content || '' : '',
     notes: draft.notes || [],
     contentPath: draft.contentPath || '',
     draftNo: draft.draftNo || 1,
@@ -165,7 +166,7 @@ function trashDraftsForStorage(includeContent = true) {
     id: draft.id,
     title: draft.title,
     content: includeContent ? draft.content : '',
-    contentHTML: draft.content || '',
+    contentHTML: includeContent ? draft.content || '' : '',
     notes: draft.notes || [],
     contentPath: draft.contentPath || '',
     draftNo: draft.draftNo || 1,
@@ -191,7 +192,7 @@ function chapterEditDraftsForStorage(includeContent = true) {
     chapterIndex: draft.chapterIndex,
     title: draft.title,
     content: includeContent ? draft.content : '',
-    contentHTML: draft.content || '',
+    contentHTML: includeContent ? draft.content || '' : '',
     contentPath: draft.contentPath || '',
     draftNo: draft.draftNo || 1,
     createdAt: draft.createdAt || new Date().toISOString(),
@@ -214,7 +215,7 @@ function persistProjectManifestSnapshot() {
   manifest.createdAt = manifest.createdAt || projectManifest?.createdAt || new Date().toISOString();
   manifest.updatedAt = new Date().toISOString();
   projectManifest = manifest;
-  localStorage.setItem(PROJECT_MANIFEST_KEY, JSON.stringify(manifest));
+  cacheProjectManifest(manifest);
   return manifest;
 }
 
@@ -703,7 +704,7 @@ function syncSavedStoryInfoSnapshot(values, manifest) {
   };
 
   projectManifest = savedManifest;
-  localStorage.setItem(PROJECT_MANIFEST_KEY, JSON.stringify(savedManifest));
+  cacheProjectManifest(savedManifest);
   updateStorySummary(savedManifest);
   setText('storyTitleValue', savedValues.title || text().untitledStory || 'Untitled Story');
   setText('storyAuthorValue', savedValues.author || text().unknownAuthor);
@@ -787,7 +788,7 @@ async function saveStoryInfo() {
       await writeProjectManifest(manifest);
     } else {
       manifest.updatedAt = new Date().toISOString();
-      localStorage.setItem(PROJECT_MANIFEST_KEY, JSON.stringify(manifest));
+      cacheProjectManifest(manifest);
     }
     syncSavedStoryInfoSnapshot(savedValues, projectManifest || manifest);
     closeStoryInfoModal();
@@ -863,6 +864,7 @@ async function writeChapterToLocalFile(chapterIndex, textValue) {
   if (!projectDirectoryHandle || !chapters[chapterIndex]) return;
 
   const chapter = chapters[chapterIndex];
+  if (!documentTextWriteIsSafe(chapter, textValue)) throw new Error(`Unsafe blank chapter write blocked: ${chapter.contentPath || chapterIndex}`);
   chapter.contentPath = chapter.contentPath || chapterFilePath(chapterIndex);
   const fileHandle = chapter.contentHandle || await getProjectFileHandle(chapter.contentPath, { create: true });
 
@@ -873,12 +875,14 @@ async function writeChapterToLocalFile(chapterIndex, textValue) {
 
 async function writeCurrentChapterToLocalFile() {
   await writeChapterToLocalFile(curChap, getCleanEditorText());
+  await window.LmInitialRendering?.syncActiveDocumentData?.();
 }
 
 async function writeDraftToLocalFile(draftIndex, textValue) {
   if (!projectDirectoryHandle || !chapterDrafts[draftIndex]) return;
 
   const draft = chapterDrafts[draftIndex];
+  if (!documentTextWriteIsSafe(draft, textValue)) throw new Error(`Unsafe blank draft write blocked: ${draft.contentPath || draftIndex}`);
   draft.contentPath = draft.contentPath || draftFilePath(draftIndex);
   const fileHandle = draft.contentHandle || await getProjectFileHandle(draft.contentPath, { create: true });
 
@@ -887,8 +891,16 @@ async function writeDraftToLocalFile(draftIndex, textValue) {
   await writeDraftsDataToProject();
 }
 
+function documentTextWriteIsSafe(documentItem, textValue) {
+  if (String(textValue || '').trim()) return true;
+  if (documentItem?._contentLoadState === 'loaded' && documentItem?._contentPresented === true) return true;
+  const knownWords = Number(documentItem?._wordCount ?? documentItem?.wordCount);
+  return !(knownWords > 0 || String(documentItem?._wordCountVerifiedSignature || '').length > 0);
+}
+
 async function writeCurrentDraftToLocalFile() {
   await writeDraftToLocalFile(curDraft, getCleanEditorText());
+  await window.LmInitialRendering?.syncActiveDocumentData?.();
 }
 
 async function writeChapterEditDraftToLocalFile(draftKey, textValue) {
@@ -916,6 +928,7 @@ async function writeActiveChapterEditDraftToLocalFile() {
   const draft = activeChapterEditDraft();
   if (!draft) return;
   await writeChapterEditDraftToLocalFile(draft.chapterKey, getCleanEditorText());
+  await window.LmInitialRendering?.syncActiveDocumentData?.();
 }
 
 async function readProjectTextFileIfExists(path) {
@@ -964,8 +977,9 @@ async function chapterEditDraftFileMatchesSavedChapter(index = curChap) {
 }
 
 async function saveCurrentProject() {
-  if (!hasActiveStory()) return;
+  if (!hasActiveStory() || isProjectDataLoading) return;
   if (isTrashDraftActive()) return;
+  await window.LmInitialRendering?.ensureFullNamingData?.();
   if (typeof flushEditorHTMLMemoryCommit === 'function') await flushEditorHTMLMemoryCommit();
   if (typeof flushEditorInputStatsUpdate === 'function') flushEditorInputStatsUpdate();
   if (typeof flushEditorHistorySnapshot === 'function') flushEditorHistorySnapshot('save');
@@ -1223,6 +1237,7 @@ function renderCommittedChapterSnapshotInEditor(chapter, editorHTML) {
 async function manualSave() {
   if (!hasActiveStory()) return;
   if (isTrashDraftActive()) return;
+  await window.LmInitialRendering?.ensureFullNamingData?.();
   if (typeof flushEditorHTMLMemoryCommit === 'function') await flushEditorHTMLMemoryCommit();
   if (typeof flushEditorInputStatsUpdate === 'function') flushEditorInputStatsUpdate();
   if (typeof flushEditorHistorySnapshot === 'function') flushEditorHistorySnapshot('manual-save');
@@ -1445,4 +1460,3 @@ async function createUniqueStoryDirectory(baseTitle, type = 'novel') {
 
   return parentDirectory.getDirectoryHandle(baseName, { create: true });
 }
-

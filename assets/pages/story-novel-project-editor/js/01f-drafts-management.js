@@ -1,5 +1,9 @@
-function switchTrashDraft(index) {
+async function switchTrashDraft(index) {
   if (!isDraftTrashMode || index < 0 || index >= chapterTrashDrafts.length) return;
+  if (!(await loadTrashDraftContent(chapterTrashDrafts[index]))) {
+    showMiniReminder('Trash draft content load नहीं हुआ; सुरक्षित रूप से switch रोक दिया गया।');
+    return;
+  }
   activeEditorMode = 'trash';
   curTrashDraft = index;
   isChapterEditUnlocked = false;
@@ -283,7 +287,7 @@ function openDraftBulkDeletePanel(anchor = null) {
   positionFloatingPanel(panel, anchor);
 }
 
-function openChapterRecentToDraftPanel(scopeType = 'all', scopeIndex = -1, anchor = null) {
+async function openChapterRecentToDraftPanel(scopeType = 'all', scopeIndex = -1, anchor = null) {
   ensureChapters();
   syncCurrentChapterContentFromEditor();
   normalizeChapterSelection();
@@ -299,6 +303,8 @@ function openChapterRecentToDraftPanel(scopeType = 'all', scopeIndex = -1, ancho
       .filter(index => Number.isInteger(index) && index >= 0 && index < chapters.length)
       .sort((left, right) => left - right)
     : [];
+  const selectedLoaded = await Promise.all(selectedIndexes.map(index => ensureChapterContentLoaded(index)));
+  if (selectedLoaded.some(loaded => !loaded)) return;
   const selectedWords = selectedIndexes.reduce((total, index) => total + chapterWordTotalForDeleteCheck(index), 0);
   const canDeleteSelectedEmptyChapters = selectedIndexes.length > 0 && selectedWords === 0;
   const defaultCount = selectedCount || 1;
@@ -370,10 +376,11 @@ function adjustChapterToDraftCount(delta) {
   input.focus();
 }
 
-function openChapterDetailsPanel(chapterIndex, anchor = null) {
+async function openChapterDetailsPanel(chapterIndex, anchor = null) {
   ensureChapters();
   if (isEditingChapterTitle) commitChapterTitleEdit();
   syncCurrentChapterContentFromEditor();
+  if (!(await ensureChapterContentLoaded(chapterIndex))) return;
   const panel = document.getElementById('chapterDetailsPanel');
   const chapter = chapters[chapterIndex];
   if (!panel || !chapter) return;
@@ -627,6 +634,10 @@ async function savePartDetailsPanel(partIndex) {
 async function deleteChapterIfEmpty(chapterIndex) {
   ensureChapters();
   syncCurrentChapterContentFromEditor();
+  if (!(await ensureChapterContentLoaded(chapterIndex))) {
+    showMiniReminder('Chapter content load नहीं हुआ; delete रोक दिया गया।');
+    return;
+  }
   const chapter = chapters[chapterIndex];
   if (!chapter || chapterWordTotalForDeleteCheck(chapterIndex) > 0) return;
 
@@ -650,8 +661,7 @@ async function deleteChapterIfEmpty(chapterIndex) {
   closeChapterDetailsPanel();
   loadEditor();
   renderChapters();
-  renderTags();
-  renderNotes();
+  renderActiveWorkspaceSidePanel();
   updateStorySummary();
   updateChapterStatus();
 
@@ -673,6 +683,8 @@ async function deleteEmptyChaptersByIndexes(chapterIndexes = []) {
     .filter(index => Number.isInteger(index) && index >= 0 && index < chapters.length)
     .sort((left, right) => left - right);
   if (!uniqueIndexes.length) return;
+  const loadedChapters = await Promise.all(uniqueIndexes.map(index => ensureChapterContentLoaded(index)));
+  if (loadedChapters.some(loaded => !loaded)) return;
 
   if (uniqueIndexes.includes(curChap) && isEditingChapterTitle) {
     const titleCommitted = await commitChapterTitleEdit();
@@ -740,8 +752,7 @@ async function deleteEmptyChaptersByIndexes(chapterIndexes = []) {
   closeDraftActionsPanel();
   loadEditor();
   renderChapters();
-  renderTags();
-  renderNotes();
+  renderActiveWorkspaceSidePanel();
   updateStorySummary();
   updateChapterStatus();
   focusSidebarItemAfterRender(wasDraftActive ? 'draft' : hasActivePart ? 'chapter' : 'raw');
@@ -771,6 +782,10 @@ async function moveChapterToDraft(chapterIndex) {
   }
 
   syncCurrentChapterContentFromEditor();
+  if (!(await ensureChapterContentLoaded(chapterIndex))) {
+    showMiniReminder('Chapter content load नहीं हुआ; move रोक दिया गया।');
+    return;
+  }
   const chapter = chapters[chapterIndex];
   if (!chapter) return;
 
@@ -842,8 +857,7 @@ async function moveChapterToDraft(chapterIndex) {
   setDraftBoxSaveIndicator('busy');
   loadEditor();
   renderChapters();
-  renderTags();
-  renderNotes();
+  renderActiveWorkspaceSidePanel();
   updateStorySummary();
   updateChapterStatus();
   focusSidebarItemAfterRender('draft');
@@ -927,6 +941,11 @@ async function moveChaptersToDraft(chapterIndexes = []) {
     .filter(index => Number.isInteger(index) && index >= 0 && index < chapters.length)
     .sort((left, right) => left - right);
   if (!uniqueIndexes.length) return;
+  const loadedChapters = await Promise.all(uniqueIndexes.map(index => ensureChapterContentLoaded(index)));
+  if (loadedChapters.some(loaded => !loaded)) {
+    showMiniReminder('कुछ chapters load नहीं हुए; move रोक दिया गया।');
+    return;
+  }
 
   if (uniqueIndexes.includes(curChap) && isEditingChapterTitle) {
     const titleCommitted = await commitChapterTitleEdit();
@@ -1016,26 +1035,29 @@ async function moveChaptersToDraft(chapterIndexes = []) {
   setDraftBoxSaveIndicator('busy');
   loadEditor();
   renderChapters();
-  renderTags();
-  renderNotes();
+  renderActiveWorkspaceSidePanel();
   updateStorySummary();
   updateChapterStatus();
   focusSidebarItemAfterRender(activeChapterConverted || wasDraftActive ? 'draft' : 'chapter');
 
   try {
     if (projectDirectoryHandle) {
+      // Make every converted draft durable before changing the manifest, and
+      // retain the original chapter files until all replacement metadata has
+      // been saved. A partial failure can therefore leave duplicates, never
+      // missing chapter text.
       await Promise.all(payloads.map(async payload => {
         const draftHandle = await getProjectFileHandle(payload.draft.contentPath, { create: true });
         payload.draft.contentHandle = draftHandle;
         await writeFileText(draftHandle, payload.draftText);
       }));
+      await writeDraftsDataToProject();
+      await writeChapterEditDraftsToProject();
+      await writeProjectManifest();
       await Promise.all(payloads.flatMap(payload => [
         payload.oldChapterPath,
         payload.editDraftPath
       ].filter(Boolean).map(removeProjectFileIfExists)));
-      await writeProjectManifest();
-      await writeDraftsDataToProject();
-      await writeChapterEditDraftsToProject();
     }
     setDraftBoxSaveIndicator('saved');
   } catch (error) {
@@ -1149,8 +1171,7 @@ async function deletePartIfEmpty(partIndex) {
   closePartDetailsPanel();
   loadEditor();
   renderChapters();
-  renderTags();
-  renderNotes();
+  renderActiveWorkspaceSidePanel();
   updateStorySummary();
   updateChapterStatus();
 
@@ -1215,8 +1236,7 @@ async function deletePartKeepingChapters(partIndex) {
   closePartDetailsPanel();
   loadEditor();
   renderChapters();
-  renderTags();
-  renderNotes();
+  renderActiveWorkspaceSidePanel();
   updateStorySummary();
   updateChapterStatus();
   focusSidebarItemAfterRender(sidebarFocusTarget);
@@ -1322,7 +1342,7 @@ function restoreEditorAfterTrashMode() {
   trashReturnEditorState = null;
 }
 
-function setDraftTrashMode(enabled = true) {
+async function setDraftTrashMode(enabled = true) {
   if (enabled && !chapterTrashDrafts.length) {
     isDraftTrashMode = false;
     showMiniReminder(text().trashEmpty);
@@ -1333,8 +1353,14 @@ function setDraftTrashMode(enabled = true) {
     trashReturnEditorState = activeEditorMode === 'trash'
       ? trashReturnEditorState
       : { mode: activeEditorMode, curChap, curDraft };
+    const targetTrashDraft = chapterTrashDrafts.length - 1;
+    if (!(await loadTrashDraftContent(chapterTrashDrafts[targetTrashDraft]))) {
+      isDraftTrashMode = false;
+      showMiniReminder('Trash draft content load नहीं हुआ; trash mode नहीं खोला गया।');
+      return;
+    }
     activeEditorMode = 'trash';
-    curTrashDraft = chapterTrashDrafts.length - 1;
+    curTrashDraft = targetTrashDraft;
     isChapterEditUnlocked = false;
     activeChapterEditKey = null;
     isEditingChapterTitle = false;
@@ -1423,4 +1449,3 @@ function renderDrafts() {
   applyDraftBoxSaveIndicatorState();
   syncSidebarScrollThumbs();
 }
-

@@ -10,6 +10,8 @@ async function init() {
     console.warn('Saved story folder restore failed:', error);
   }
 
+  if (wantsLocalProject && !loadedLocalProject) clearActiveStoryState();
+
   const projectGateMessage = !supportsLocalProjectFolders()
     ? text().projectUnsupported
     : wantsLocalProject && !workspaceDirectoryHandle
@@ -24,8 +26,11 @@ async function init() {
   }
   applyLanguage();
   renderChapters();
-  renderTags();
-  renderNotes();
+  if (typeof renderActiveWorkspaceSidePanel === 'function') renderActiveWorkspaceSidePanel();
+  else {
+    renderTags();
+    renderNotes();
+  }
   loadEditor();
   if (!supportsLocalProjectFolders()) showProjectGate(projectGateMessage);
   else hideProjectGate();
@@ -870,7 +875,7 @@ function applyLanguage() {
 
   renderTagOptions();
   renderAIPrompts();
-  if (typeof renderAIDesk === 'function') renderAIDesk();
+  if (activeSidePanel === 'ai' && typeof renderAIDesk === 'function') renderAIDesk();
   renderStoryTypeOptions();
   queueCustomSelectSync();
   updateStorySummary();
@@ -1447,4 +1452,3 @@ function partStatusLabel(partIndex, chapterCount) {
 function syncCurrentChapterContentFromEditor() {
   syncActiveEditorDocumentFromEditor();
 }
-

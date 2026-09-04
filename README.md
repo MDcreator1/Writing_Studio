@@ -1,150 +1,147 @@
 # लेखक मंच (Lekhak Manch)
 
-लेखक मंच एक **local-first browser writing studio** है। यह कहानी, उपन्यास और समाचार लेख लिखने के लिए workspace-based interface देता है। Project की वास्तविक सामग्री user द्वारा चुने गए local folder में JSON और TXT files के रूप में सुरक्षित होती है।
+लेखक मंच एक local-first browser writing studio है। यह Story, Novel और News Article projects को user के चुने हुए local workspace में रखता है। मुख्य application plain HTML, CSS और classic JavaScript पर बनी है; कोई framework, bundler, backend या package installation आवश्यक नहीं है।
 
-यह project plain HTML, CSS और JavaScript पर बना है। इसमें build tool, JavaScript framework या backend server आवश्यक नहीं है।
+## मुख्य क्षमताएँ
 
-## मुख्य सुविधाएँ
+- Parts, chapters, temporary/raw chapters, drafts और trash management
+- Autosave, manual save और chapter-edit recovery
+- बड़े documents के लिए Worker-आधारित virtual editor pipeline
+- Hindi/Devanagari-aware typing, caret और deletion behavior
+- Find/replace, advanced word dictionary और bulk replacement
+- Smart paste और full-document smart copy
+- Basic तथा advanced text import
+- Draft-to-chapter advanced promotion, remainder handling और title-conflict validation
+- Naming database, aliases, first-appearance metadata और authoritative deep scan
+- Story facts, notes, project details और relationship/usage views
+- Focus mode, configurable auto-scroll और multiple themes
+- अलग News Desk और local AI-agent UI prototype
 
-- Story और Novel project creation
-- Parts, chapters और drafts management
-- Autosave और manual save
-- Chapter edit recovery
-- Draft trash, restore और permanent deletion
-- Raw तथा advanced draft-to-chapter promotion
-- Naming/character/entity database
-- Story facts और continuity records
-- Notes और project analytics
-- Hindi/Devanagari-aware editor input
-- Find, replace और multiple matching modes
-- Focus writing mode और configurable auto-scroll
-- Smart paste और smart copy settings
-- Light, dark, grey, purple, sunset और forest themes
-- अलग News Article editor
-- Project Details dashboard
-- AI Agents monitoring UI prototype
+## Repository entry points
 
-## मुख्य पेज
-
-| पेज | उपयोग |
+| File | भूमिका |
 |---|---|
-| `home.html` | Workspace चुनना, नया project बनाना और recent projects खोलना |
-| `story-novel-project-editor.html` | Story/Novel का मुख्य writing editor |
-| `story-novel-focus-editor.html` | Distraction-free focus editor shell |
-| `news-article-editor.html` | News article writing workspace |
-| `project-details.html` | Documents, names, facts, notes, changes और graphs |
-| `ai-agents.html` | Local project data पर आधारित AI-agent monitor prototype |
+| `home.html` | Workspace selection, project creation और recent-project library |
+| `story-novel-project-editor.html` | Story/Novel का मुख्य editor |
+| `story-novel-focus-editor.html` | मुख्य editor का distraction-free focus shell |
+| `project-details.html` | Documents, names, facts, notes और graphs dashboard |
+| `news-article-editor.html` | News Article workspace |
+| `ai-agents.html` | Local AI-agent monitor/prototype |
+| `temp.html` | Development experiment; canonical application flow का भाग नहीं |
 
-## प्रोजेक्ट चलाना
+## चलाना
 
-File System Access API के reliable उपयोग के लिए project को `localhost` पर चलाएँ। Chrome या Microsoft Edge recommended हैं।
+File System Access API के कारण application को `localhost` या secure context पर चलाएँ। Chrome या Microsoft Edge recommended हैं।
 
-Python उपलब्ध हो तो project root में:
+Python के साथ:
 
 ```powershell
 python -m http.server 8000
 ```
 
-इसके बाद browser में खोलें:
+फिर खोलें:
 
 ```text
 http://localhost:8000/home.html
 ```
 
-Node.js उपलब्ध हो तो किसी static HTTP server का भी उपयोग किया जा सकता है। उदाहरण:
+Node.js static server भी उपयोग किया जा सकता है:
 
 ```powershell
 npx serve .
 ```
 
-> पहली बार workspace चुनते समय browser local folder की read/write permission माँगेगा।
+पहली बार **Choose Folder** दबाने पर browser workspace की read/write permission माँगेगा।
 
-## सामान्य उपयोग
-
-1. `home.html` खोलें।
-2. **Choose Folder** से workspace directory चुनें।
-3. **New Project** खोलें।
-4. Title, author, project type, language और notes भरें।
-5. Project create करें।
-6. Story/Novel project मुख्य editor में और News project News Desk में खुलेगा।
-7. अगली बार **Recent Project** से project दोबारा खोला जा सकता है।
-
-## Local workspace structure
-
-Application workspace में project type के अनुसार folders बनाती है:
+## Workspace layout
 
 ```text
 Workspace/
 ├── Novels/
+│   └── <Project>/
 ├── Stories/
+│   └── <Project>/
 └── News Articles/
+    └── <Project>/
 ```
 
-एक Story/Novel project का सामान्य layout:
+Story/Novel project की मुख्य durable files:
 
 ```text
-Project Folder/
+<Project>/
 ├── Chapters_info.json
-├── Story_Naming.json
 ├── Story_Drafts.json
+├── Story_Naming.json
+├── Story_Facts.json
+├── Story_Word_Editing.json
 ├── Temp_Chapter_Draft.json
 ├── Chapters/
 ├── Drafts/
 ├── Edited_Chapter/
 ├── Trash/
-└── .lekhak-manch/
+├── Initial_Rendering/
+└── project-details/
 ```
 
-News project में article state मुख्यतः `NewsDesk_Articles.json` में रहती है।
+`Chapters_info.json` structure metadata रखती है; chapter और draft bodies अलग TXT files में रहते हैं। `Initial_Rendering/` और `project-details/` derived caches हैं, canonical content नहीं।
 
-## Data storage
+## Persistence model
 
-Application तीन persistence layers इस्तेमाल करती है:
+1. Project folder की JSON/TXT files durable source of truth हैं।
+2. IndexedDB workspace और active-project `FileSystemDirectoryHandle` याद रखता है।
+3. `localStorage` preferences, active UI state और fallback/projection caches रखता है।
+4. Editor DOM/Worker state केवल active editing buffer है; save flow इसे document object और project file में commit करता है।
 
-- **Project files:** Chapters, drafts, naming data और अन्य durable content।
-- **IndexedDB:** चुने हुए workspace और active project के directory handles।
-- **localStorage:** Theme, editor preferences, active UI state, recovery/cache और fallback data।
+Project text को remote backend पर भेजने वाला production integration इस repository में नहीं है। AI screens local prompt/monitor prototypes हैं।
 
-Project content को किसी remote server पर भेजने वाला backend वर्तमान codebase में नहीं है। AI-related screens अभी local UI/prompt prototypes हैं; वे किसी LLM API को call नहीं करतीं।
-
-## Source structure
+## Source layout
 
 ```text
 assets/
 ├── shared/
-│   ├── css/                 # Common components और theme overrides
-│   └── js/                  # Icons, theme, normalization और persistence
+│   ├── css/        # Base components, shared modals और theme overrides
+│   └── js/         # Icons, theme, normalization, settings और persistence
 └── pages/
     ├── home/
     ├── story-novel-project-editor/
-    ├── news-article-editor/
     ├── project-details/
+    ├── news-article-editor/
     └── ai-agents/
+tests/              # Node-based source contracts और focused behavior tests
 ```
 
-JavaScript ES modules में bundled नहीं है। Scripts HTML में numeric order के अनुसार load होती हैं और shared global functions/state इस्तेमाल करती हैं। Script order बदलने से पहले dependencies की जाँच करें।
+Scripts ES modules नहीं हैं। HTML में उनका numeric load order dependency contract है; script tags या prefixes बदलने से पहले architecture document देखें।
 
-## विस्तृत तकनीकी दस्तावेज़
+## Tests
 
-पूरे architecture, data models, storage behavior, end-to-end flows, function families, limitations और developer change guide के लिए देखें:
+कोई `package.json` test runner नहीं है। Tests सीधे Node से चलती हैं:
 
-[PROJECT_ARCHITECTURE_AND_WORKING_HI.md](./PROJECT_ARCHITECTURE_AND_WORKING_HI.md)
+```powershell
+node tests/editor-history-policy.test.js
+node tests/workspace-section-loading.test.js
+node tests/naming-file-safety.test.js
+node tests/advanced-import-promote-settings.test.js
+```
 
-## Browser compatibility
+सभी JavaScript files का syntax check PowerShell से:
 
-- Recommended: नवीन Chrome या Microsoft Edge
-- Local folder access के लिए File System Access API आवश्यक है
-- Unsupported browser में workspace selection और direct file saving काम नहीं कर सकते
-- `localhost` या secure context का उपयोग करें
+```powershell
+Get-ChildItem assets -Recurse -Filter *.js | ForEach-Object { node --check $_.FullName }
+```
 
-## Development notes
+## Documentation
 
-- Source बदलने के बाद Story, Novel और News तीनों project types manually verify करें।
-- Persistence changes को पुराने project files के साथ test करें।
-- User-controlled text को HTML template में डालने से पहले escape करें।
-- Chapter, draft या project delete operations के paths को विशेष सावधानी से बदलें।
-- बड़े editor controllers global state पर निर्भर हैं; function/file load order को सुरक्षित रखें।
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — modules, state, storage, data flow और subsystem boundaries
+- [WORKING.md](./WORKING.md) — user workflows, development workflow, safety invariants, testing और debugging
 
-## वर्तमान स्थिति
+## Browser support और सीमाएँ
 
-यह repository एक frontend/local-file application है। इसमें automated test suite, build pipeline, package manifest और production deployment configuration मौजूद नहीं हैं। विस्तृत technical-debt notes architecture document में उपलब्ध हैं।
+- Chrome/Edge का current desktop version recommended है।
+- File System Access API के बिना direct workspace workflow उपलब्ध नहीं होगा।
+- Classic global scripts load-order sensitive हैं।
+- एक ही project को कई tabs में बदलने पर locking नहीं है; last successful write प्रभावी हो सकती है।
+- Production build/deploy pipeline और automated browser E2E suite अभी नहीं हैं।
+
+## सबसे महत्वपूर्ण development rule
+
+Chapter या draft content हटाने से पहले replacement content और उसकी metadata को durable storage में लिखना आवश्यक है। Rendering snapshots, localStorage और in-memory projections को canonical project files का विकल्प न समझें।

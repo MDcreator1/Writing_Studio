@@ -129,10 +129,21 @@
   padding-top: 5px;
 }
 
+#rawChapterSection.is-expanded {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: 100%;
+  grid-template-rows: minmax(34px, auto) minmax(0, 1fr);
+  align-items: center;
+  overflow: hidden;
+}
+
 #rawChapterSection::before {
   content: "";
   grid-column: 1;
   grid-row: 1;
+  align-self: center;
+  justify-self: start;
   width: 9px;
   height: 9px;
   flex: 0 0 9px;
@@ -207,6 +218,13 @@
 #rawChapterSection>.raw-chapter-list {
   grid-column: 1 / -1;
   grid-row: 2;
+  align-self: stretch;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   font-size: var(--font-size-base);
   font-weight: initial;
   letter-spacing: 0;
@@ -1484,6 +1502,7 @@
 }
 
 .part-header:hover .part-menu-btn,
+.part-section.has-chapter-selection .chapter-boundary-transfer-btn,
 .part-section.has-chapter-selection .chapter-to-draft-btn,
 #rawChapterSection:hover .chapter-to-draft-btn,
 #rawChapterSection.has-chapter-selection .chapter-to-draft-btn,
@@ -1512,6 +1531,14 @@
   background: var(--lm-bg-info-soft);
   border-color: var(--lm-border-info-color);
   color: var(--info);
+}
+
+.chapter-boundary-transfer-btn {
+  color: var(--accent);
+}
+
+.chapter-boundary-transfer-btn .part-chevron {
+  font-size: var(--font-size-20);
 }
 
 .chapter-menu-btn {
@@ -1647,9 +1674,11 @@
 .raw-chapter-list {
   flex: 1 1 auto;
   min-height: 0;
-  max-height: none;
+  max-height: 100%;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
+  touch-action: pan-y;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }

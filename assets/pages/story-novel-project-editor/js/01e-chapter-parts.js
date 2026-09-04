@@ -373,7 +373,7 @@ function chapterSelectionAnchorIndexForScope(scope) {
 
 function shouldKeepSidebarSelectionForTarget(target) {
   if (!target) return false;
-  if (target.closest('#draftDetailsPanel, .chapter-to-draft-btn, .draft-title-delete-btn, .trash-title-action-btn')) return true;
+  if (target.closest('#draftDetailsPanel, .chapter-to-draft-btn, .chapter-boundary-transfer-btn, .draft-title-delete-btn, .trash-title-action-btn')) return true;
   return Boolean(target.closest('.chap-item') && !target.closest('.chapter-menu-btn'));
 }
 
@@ -397,6 +397,95 @@ function canConvertPartChaptersToDraft(partIndex) {
   );
 }
 
+function partChapterBoundarySelection(partIndex) {
+  const manifest = normalizeProjectManifest(projectManifest || createProjectManifest());
+  const scopeKey = chapterScopeKey('part', partIndex);
+  const scopeIndexes = chapterIndexesForScope('part', partIndex);
+  const selectedIndexes = selectedChapterScope === scopeKey
+    ? scopeIndexes.filter(index => selectedChapterIndexes.has(index))
+    : [];
+  const firstSelected = Boolean(selectedIndexes.length && selectedChapterIndexes.has(scopeIndexes[0]));
+  const lastSelected = Boolean(selectedIndexes.length && selectedChapterIndexes.has(scopeIndexes[scopeIndexes.length - 1]));
+  const isFirstPart = partIndex === 0;
+  const isLastPart = partIndex === manifest.parts.length - 1;
+  // On the first part a full-boundary selection intentionally exposes no
+  // transfer action: there is no upper destination and moving the whole first
+  // part downward would make the boundary control too destructive.
+  const suppressFirstPartFullBoundary = isFirstPart && firstSelected && lastSelected;
+  const hasTemporaryChapters = chapterIndexesForScope('raw').length > 0;
+
+  return {
+    selectedIndexes,
+    firstSelected,
+    lastSelected,
+    moveUp: firstSelected && partIndex > 0,
+    moveDown: lastSelected && !isLastPart && !suppressFirstPartFullBoundary,
+    moveToTemporary: lastSelected && isLastPart && partIndex > 0 && hasTemporaryChapters,
+    moveToDraft: lastSelected && isLastPart && partIndex > 0 && !hasTemporaryChapters
+  };
+}
+
+async function moveSelectedPartBoundaryChapters(partIndex, direction = 'up') {
+  ensureChapters();
+  normalizeChapterSelection();
+  const manifest = normalizeProjectManifest(projectManifest || createProjectManifest());
+  const boundary = partChapterBoundarySelection(partIndex);
+  const allowed = direction === 'up' ? boundary.moveUp : direction === 'down' ? boundary.moveDown : boundary.moveToTemporary;
+  if (!allowed || !boundary.selectedIndexes.length) return;
+
+  if (!isDraftActive() && boundary.selectedIndexes.includes(curChap) && isEditingChapterTitle) {
+    const committed = await commitChapterTitleEdit();
+    if (!committed) return;
+  }
+  syncCurrentChapterContentFromEditor();
+
+  const targetPartIndex = direction === 'up' ? partIndex - 1 : direction === 'down' ? partIndex + 1 : -1;
+  const previousManifest = projectManifest;
+  const previousChapterMeta = chapters.map(chapter => ({
+    partIndex: chapter.partIndex,
+    chapterNo: chapter.chapterNo
+  }));
+  const selectedSet = new Set(boundary.selectedIndexes);
+  showAppLoader(`Moving ${selectedSet.size} chapter${selectedSet.size === 1 ? '' : 's'}…`);
+  setSidebarSaveIndicator('parts', 'busy');
+
+  try {
+    chapters.forEach((chapter, index) => {
+      if (selectedSet.has(index)) chapter.partIndex = targetPartIndex;
+    });
+    reindexProjectStructure(manifest);
+
+    // This operation changes structure metadata only. Chapter source files are
+    // never moved or deleted, so a failed manifest write cannot lose content.
+    if (projectDirectoryHandle) await writeProjectManifest();
+    persistProjectManifestSnapshot();
+    saveToStorage(false);
+
+    selectedChapterIndexes.clear();
+    selectedChapterScope = null;
+    curPart = chapters[curChap]?.partIndex ?? -1;
+    expandedPartIndex = targetPartIndex;
+    isRawChapterSectionExpanded = targetPartIndex < 0;
+    isPartsListCollapsedByRaw = targetPartIndex < 0;
+    isPartsListForceExpanded = targetPartIndex >= 0;
+    closeDraftActionsPanel();
+    renderChapters();
+    updateStorySummary();
+    updateChapterStatus();
+    setSidebarSaveIndicator('parts', 'saved');
+  } catch (error) {
+    chapters.forEach((chapter, index) => Object.assign(chapter, previousChapterMeta[index]));
+    projectManifest = previousManifest;
+    reindexProjectStructure(previousManifest);
+    renderChapters();
+    setSidebarSaveIndicator('parts', 'idle');
+    showMiniReminder(`Chapters move नहीं हुए: ${error?.message || error}`);
+    console.warn('Part boundary chapter move failed:', error);
+  } finally {
+    hideAppLoader();
+  }
+}
+
 function handleChapterItemClick(event, chapterIndex) {
   if (chapterIndex < 0 || chapterIndex >= chapters.length) return;
   normalizeChapterSelection();
@@ -410,10 +499,11 @@ function handleChapterItemClick(event, chapterIndex) {
     const anchorIndex = chapterSelectionAnchorIndexForScope(scope);
     const anchorPosition = Number.isInteger(anchorIndex) ? scopeIndexes.indexOf(anchorIndex) : -1;
     const selectionStart = anchorPosition >= 0 ? Math.min(anchorPosition, scopePosition) : scopePosition;
+    const selectionEnd = anchorPosition >= 0 ? Math.max(anchorPosition, scopePosition) : scopePosition;
     selectedDraftIndexes.clear();
     lastSelectedDraftIndex = null;
     selectedChapterIndexes.clear();
-    scopeIndexes.slice(selectionStart).forEach(index => selectedChapterIndexes.add(index));
+    scopeIndexes.slice(selectionStart, selectionEnd + 1).forEach(index => selectedChapterIndexes.add(index));
     selectedChapterScope = scope.key;
     closeDraftActionsPanel();
     renderChapters();
@@ -1446,4 +1536,3 @@ function handleTrashDraftItemClick(event, index) {
   lastSelectedTrashDraftIndex = index;
   switchTrashDraft(index);
 }
-
