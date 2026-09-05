@@ -62,6 +62,7 @@ function setStoryLibraryPanel(open) {
     window.prepareFloatingPanelFocusReturn(panel);
   }
   panel.hidden = !open;
+  document.getElementById('top-bar')?.classList.toggle('is-story-library-open', open);
   button.classList.toggle('is-open', open);
   button.setAttribute('aria-expanded', String(open));
   if (open) positionStoryLibraryPanel();
@@ -186,11 +187,11 @@ async function listWorkspaceRecentProjects() {
   );
 }
 
-function recentProjectButtonHtml(project, dataAttribute = 'data-story-folder') {
+function recentProjectButtonHtml(project, dataAttribute = 'data-story-folder', includeMeta = true) {
   return `
     <button class="story-library-story-btn" type="button" ${dataAttribute}="${escapeHtml(project.projectPath || project.folderName)}">
       <span>${escapeHtml(project.title)}</span>
-      <small>${escapeHtml(recentProjectMetaText(project))}</small>
+      ${includeMeta ? `<small>${escapeHtml(recentProjectMetaText(project))}</small>` : ''}
     </button>`;
 }
 
@@ -211,7 +212,7 @@ async function renderRecentProjectsList() {
   } else {
     list.innerHTML = `
       <div class="story-library-kicker">${escapeHtml(libraryCopy.existingStoriesTitle)}</div>
-      ${stories.map(story => recentProjectButtonHtml(story, 'data-story-folder')).join('')}`;
+      ${stories.map(story => recentProjectButtonHtml(story, 'data-story-folder', false)).join('')}`;
   }
   positionStoryLibraryPanel();
 }
@@ -561,18 +562,38 @@ async function createStoryFromInfoForm() {
   setSaveStatusDot('saved', text().storyCreated);
 }
 
+const editorDocumentContentLoadPromises = new WeakMap();
+
+function loadEditorDocumentContentCached(documentItem, kind, expectedProjectHandle = projectDirectoryHandle) {
+  if (!documentItem) return Promise.resolve(false);
+  if (documentItem._contentLoadState === 'loaded' || documentItem._contentLoadState === 'quarantined' || documentItem.content) {
+    return Promise.resolve(true);
+  }
+  const pending = editorDocumentContentLoadPromises.get(documentItem);
+  if (pending) return pending;
+  if (expectedProjectHandle !== projectDirectoryHandle) return Promise.resolve(false);
+  const loader = kind === 'draft' ? loadDraftContent : loadChapterContent;
+  const task = Promise.resolve(loader(documentItem)).finally(() => {
+    if (editorDocumentContentLoadPromises.get(documentItem) === task) {
+      editorDocumentContentLoadPromises.delete(documentItem);
+    }
+  });
+  editorDocumentContentLoadPromises.set(documentItem, task);
+  return task;
+}
+
 async function ensureChapterContentLoaded(chapterIndex = curChap) {
   if (typeof chapterIndex !== 'number' || chapterIndex < 0 || !Array.isArray(chapters) || chapterIndex >= chapters.length) return false;
   const chapter = chapters[chapterIndex];
   if (!chapter) return false;
-  return loadChapterContent(chapter);
+  return loadEditorDocumentContentCached(chapter, 'chapter');
 }
 
 async function ensureDraftContentLoaded(draftIndex = curDraft) {
   if (typeof draftIndex !== 'number' || draftIndex < 0 || !Array.isArray(chapterDrafts) || draftIndex >= chapterDrafts.length) return false;
   const draft = chapterDrafts[draftIndex];
   if (!draft) return false;
-  return loadDraftContent(draft);
+  return loadEditorDocumentContentCached(draft, 'draft');
 }
 
 async function ensureActiveDocumentContentLoaded() {

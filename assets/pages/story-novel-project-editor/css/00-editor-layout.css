@@ -1048,9 +1048,9 @@
 }
 
 .draft-delete-confirm-copy {
-  margin: 0 0 12px;
+  margin: 0 0 6px;
   color: var(--muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-2xs);
   line-height: 1.45;
 }
 
@@ -1382,7 +1382,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 4px;
   transition: transform .16s ease, background .16s ease, border-color .16s ease, box-shadow .16s ease;
 }
 
@@ -1441,6 +1441,7 @@
   color: var(--accent);
 }
 
+.Ch_Move_icon,
 .part-chevron {
   width: 1em;
   height: 1em;
@@ -1449,6 +1450,12 @@
   justify-content: center;
   font-size: var(--font-size-30);
   line-height: 1;
+}
+
+.Ch_Move_icon {
+  width: 24px;
+  height: 24px;
+  padding-right: auto;
 }
 
 .part-chevron-svg {
@@ -1482,7 +1489,7 @@
 
 .part-menu-btn {
   width: 25px;
-  height: 25px;
+  height: 34px;
   border: 1px solid transparent;
   border-radius: var(--radius-8);
   background: transparent;
@@ -1543,8 +1550,8 @@
 
 .chapter-boundary-transfer-btn .chapter-boundary-transfer-icon {
   display: block;
-  width: 23px;
-  height: 23px;
+  width: 24px;
+  height: 24px;
   transform-origin: 50% 50%;
 }
 
@@ -1556,8 +1563,8 @@
   position: absolute;
   top: 50%;
   right: 8px;
-  width: 28px;
-  height: 28px;
+  width: 18px;
+  height: 30px;
   flex: none;
   border: 1px solid transparent;
   border-radius: var(--radius-8);
@@ -1605,6 +1612,9 @@
 }
 
 .part-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   color: var(--muted);
   font-size: var(--font-size-2xs);
   font-weight: 750;
@@ -1615,6 +1625,47 @@
 }
 
 
+
+.part-meta-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.part-edit-draft-count {
+  margin-left: auto;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.part-edit-draft-count::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.part-edit-draft-count[hidden] {
+  display: none;
+}
+
+.part-edit-draft-count.has-edit-drafts {
+  color: var(--accent);
+}
+
+.chapter-edit-draft-dot {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
 
 .part-header:hover .part-title {
   color: var(--accent);
@@ -1722,7 +1773,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 4px;
 }
 
 .part-details-head strong {

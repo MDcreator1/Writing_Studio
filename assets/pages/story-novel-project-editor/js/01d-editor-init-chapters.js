@@ -590,6 +590,17 @@ async function init() {
   scheduleStandaloneFocusModeLaunch();
 }
 
+function saveEditorNavigationToStorage() {
+  // Folder-backed document data has its own save/recovery paths. Navigation
+  // need only persist the selected document; memory-only projects need a copy.
+  if (!projectDirectoryHandle) return saveToStorage(false);
+  localStorage.setItem('lm_curChap', curChap);
+  localStorage.setItem('lm_curPart', curPart);
+  localStorage.setItem('lm_curDraft', curDraft);
+  localStorage.setItem('lm_activeEditorMode', isDraftActive() ? 'draft' : 'chapter');
+  saveActiveEditorStateForStory(projectDirectoryHandle.name || '', currentProjectTypeFolderName());
+}
+
 function saveToStorage(updateCurrentContent = true) {
   const currentThemeMode = window.getCurrentThemeMode?.() || (isDark ? 'dark' : 'light');
   localStorage.setItem('lm_theme', currentThemeMode);
@@ -973,6 +984,7 @@ function syncDraftPromoteButton() {
 }
 
 function syncChapterEditButton() {
+  if (typeof syncSidebarChapterEditIndicators === 'function') syncSidebarChapterEditIndicators();
   const chapterEditButton = document.getElementById('chapterEditBtn');
   if (!chapterEditButton) return;
 

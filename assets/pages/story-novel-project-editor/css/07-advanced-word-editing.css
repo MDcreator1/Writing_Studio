@@ -29,10 +29,8 @@
   flex: 0 0 auto;
 }
 
-.awe-workspace button,
 .awe-workspace input,
-.awe-workspace textarea,
-.awe-workspace select {
+.awe-workspace textarea {
   font: inherit;
 }
 

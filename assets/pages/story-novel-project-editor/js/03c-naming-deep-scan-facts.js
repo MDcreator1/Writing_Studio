@@ -24,6 +24,7 @@ async function deepScanAllNamingEntries(buttonElement = null, options = {}) {
 
   setTimeout(async () => {
     try {
+    const scanProject = projectDirectoryHandle;
     const sourceIndex = await window.LmNamingDeepScanSource.buildTextIndex({
       onProgress: ({ loaded, total }) => setProgress(`Reading source documents ${loaded}/${total}…`, total ? loaded / total * 12 : 12)
     });
@@ -35,8 +36,13 @@ async function deepScanAllNamingEntries(buttonElement = null, options = {}) {
       await window.LmInitialRendering?.ensureFullNamingData?.({ forceSource: true }) || namingData
     );
     namingData = authoritativeNamingData;
+    if (scanProject !== projectDirectoryHandle) throw new Error('Project changed during Naming scan.');
     const chapterScanTexts = sourceIndex.chapterTexts;
     const draftScanTexts = sourceIndex.draftTexts;
+    const checkedAt = new Date().toISOString();
+    const documents = namingDocumentRegistry(checkedAt).map(item => ({ ...item,
+      text: item.documentType === 'draft' ? draftScanTexts[item.index] : chapterScanTexts[item.index]
+    }));
     let updatedCount = 0;
     const entries = namingData && Array.isArray(namingData.entries) ? namingData.entries : [];
 
@@ -47,200 +53,23 @@ async function deepScanAllNamingEntries(buttonElement = null, options = {}) {
         setProgress(`Scanning names ${entryIndex + 1}/${entries.length}…`, entries.length ? entryIndex / entries.length * 78 : 78);
         await new Promise(resolve => setTimeout(resolve, 0));
       }
-      const searchNames = typeof namingEntrySearchNames === 'function'
-        ? namingEntrySearchNames(entry)
-        : [entry.name, ...(Array.isArray(entry.similarNames) ? entry.similarNames : [])];
-      const hasDeepScanSavedNameUse = createDeepScanSavedNameMatcher(searchNames);
-      let foundInChapter = false;
-      let foundInDraft = false;
-
-      // 1. Search chapters from earliest (index 0) to latest
-      if (Array.isArray(chapters)) {
-        for (let i = 0; i < chapters.length; i++) {
-          const chapter = chapters[i];
-          if (!chapter) continue;
-          const text = chapterScanTexts[i];
-          if (hasDeepScanSavedNameUse(text)) {
-            foundInChapter = true;
-            const newChapterKey = chapter.contentPath || (typeof chapterStorageKey === 'function' ? chapterStorageKey(i) : `chap-${i}`);
-            const newChapterNo = chapter.chapterNo || (i + 1);
-            const newChapterTitle = chapter.title || '';
-
-            const needsUpdate =
-              entry.chapterStatus !== 'chapter' ||
-              entry.documentType !== 'chapter' ||
-              entry.chapterIndex !== i ||
-              entry.chapterKey !== newChapterKey ||
-              entry.chapterNo !== newChapterNo ||
-              entry.chapterTitle !== newChapterTitle ||
-              entry.contentPath !== newChapterKey ||
-              entry.descriptionMeta?.chapterStatus !== 'chapter' ||
-              entry.descriptionMeta?.documentType !== 'chapter' ||
-              entry.descriptionMeta?.chapterKey !== newChapterKey ||
-              entry.descriptionMeta?.chapterIndex !== i ||
-              entry.descriptionMeta?.chapterNo !== newChapterNo ||
-              entry.descriptionMeta?.chapterTitle !== newChapterTitle ||
-              entry.descriptionMeta?.contentPath !== newChapterKey ||
-              entry.descriptionMeta?.draftKey != null ||
-              entry.draftKey != null ||
-              entry.orphanedAt != null ||
-              entry.orphanedFromDraft != null ||
-              entry.missingDocumentAt != null ||
-              entry.missingDocumentMeta != null ||
-              entry.missingNameMentionAt != null ||
-              entry.missingNameMentionMeta != null ||
-              Boolean(entry.sourceState) ||
-              Boolean(entry.namingSourceState);
-
-            if (needsUpdate) {
-              entry.chapterStatus = 'chapter';
-              entry.documentType = 'chapter';
-              entry.chapterIndex = i;
-              entry.chapterKey = newChapterKey;
-              entry.chapterTitle = newChapterTitle;
-              entry.chapterNo = newChapterNo;
-              entry.contentPath = newChapterKey;
-              entry.draftKey = null;
-              entry.draftIndex = null;
-              entry.draftNo = null;
-              entry.draftTitle = '';
-              entry.resolvedAt = null;
-              entry.resolvedFromDraft = null;
-
-              entry.descriptionMeta = {
-                chapterStatus: 'chapter',
-                documentType: 'chapter',
-                chapterKey: newChapterKey,
-                chapterIndex: i,
-                chapterNo: newChapterNo,
-                chapterTitle: newChapterTitle,
-                contentPath: newChapterKey,
-                savedAt: entry.createdAt || new Date().toISOString(),
-                attachedAt: entry.createdAt || new Date().toISOString()
-              };
-
-              entry.orphanedAt = null;
-              entry.orphanedFromDraft = null;
-              entry.missingDocumentAt = null;
-              entry.missingDocumentMeta = null;
-              entry.missingNameMentionAt = null;
-              entry.missingNameMentionMeta = null;
-              entry.sourceState = null;
-              entry.namingSourceState = null;
-              updatedCount++;
-            }
-            break;
-          }
-        }
-      }
-
-      // 2. If not found in any chapter, search drafts from earliest (index 0) to latest
-      if (!foundInChapter && Array.isArray(chapterDrafts)) {
-        for (let i = 0; i < chapterDrafts.length; i++) {
-          const draft = chapterDrafts[i];
-          if (!draft) continue;
-          const text = draftScanTexts[i];
-          if (hasDeepScanSavedNameUse(text)) {
-            foundInDraft = true;
-            const newDraftKey = draft.contentPath || (typeof draftFilePath === 'function' ? draftFilePath(i) : `draft-${i}`);
-            const newDraftNo = draft.draftNo || (i + 1);
-            const newDraftTitle = draft.title || '';
-
-            const needsDraftUpdate =
-              entry.chapterStatus !== 'draft' ||
-              entry.documentType !== 'draft' ||
-              entry.draftIndex !== i ||
-              entry.draftKey !== newDraftKey ||
-              entry.chapterKey !== newDraftKey ||
-              entry.draftNo !== newDraftNo ||
-              entry.draftTitle !== newDraftTitle ||
-              entry.chapterTitle !== newDraftTitle ||
-              entry.contentPath !== newDraftKey ||
-              entry.descriptionMeta?.chapterStatus !== 'draft' ||
-              entry.descriptionMeta?.documentType !== 'draft' ||
-              entry.descriptionMeta?.draftKey !== newDraftKey ||
-              entry.descriptionMeta?.draftIndex !== i ||
-              entry.descriptionMeta?.draftNo !== newDraftNo ||
-              entry.descriptionMeta?.draftTitle !== newDraftTitle ||
-              entry.descriptionMeta?.contentPath !== newDraftKey ||
-              entry.orphanedAt != null ||
-              entry.missingDocumentAt != null ||
-              entry.missingNameMentionAt != null ||
-              Boolean(entry.sourceState) ||
-              Boolean(entry.namingSourceState);
-
-            if (needsDraftUpdate) {
-              entry.chapterStatus = 'draft';
-              entry.documentType = 'draft';
-              entry.draftIndex = i;
-              entry.draftKey = newDraftKey;
-              entry.chapterKey = newDraftKey;
-              entry.draftTitle = newDraftTitle;
-              entry.chapterTitle = newDraftTitle;
-              entry.draftNo = newDraftNo;
-              entry.chapterIndex = null;
-              entry.chapterNo = null;
-              entry.contentPath = newDraftKey;
-              entry.descriptionMeta = {
-                chapterStatus: 'draft',
-                documentType: 'draft',
-                draftKey: newDraftKey,
-                draftIndex: i,
-                draftNo: newDraftNo,
-                draftTitle: newDraftTitle,
-                contentPath: newDraftKey,
-                savedAt: entry.createdAt || new Date().toISOString(),
-                attachedAt: entry.createdAt || new Date().toISOString()
-              };
-
-              entry.orphanedAt = null;
-              entry.orphanedFromDraft = null;
-              entry.missingDocumentAt = null;
-              entry.missingDocumentMeta = null;
-              entry.missingNameMentionAt = null;
-              entry.missingNameMentionMeta = null;
-              entry.sourceState = null;
-              entry.namingSourceState = null;
-              updatedCount++;
-            }
-            break;
-          }
-        }
-      }
-
-      if (!foundInChapter && !foundInDraft) {
-        const status = typeof normalizeNamingEntryStatus === 'function'
-          ? normalizeNamingEntryStatus(entry)
-          : String(entry.chapterStatus || entry.documentType || '').toLowerCase();
-        if (status === 'chapter' || status === 'draft') {
-          if (typeof setNamingEntryStoryMentionUndefined === 'function') {
-            setNamingEntryStoryMentionUndefined(entry);
-          } else {
-            entry.chapterStatus = 'undefined';
-            entry.documentType = 'undefined';
-            entry.chapterKey = '';
-            entry.chapterIndex = null;
-            entry.chapterNo = null;
-            entry.chapterTitle = '';
-            entry.draftKey = null;
-            entry.draftIndex = null;
-            entry.draftNo = null;
-            entry.draftTitle = '';
-            entry.contentPath = '';
-            entry.missingNameMentionAt = new Date().toISOString();
-            entry.sourceState = 'missing-name-mention';
-          }
-          updatedCount++;
-        }
-      }
+      const previousSource = JSON.stringify(entry.source);
+      const matcher = createDeepScanSavedNameMatcher(namingEntrySearchNames(entry));
+      refreshNamingEntrySource(entry, documents, checkedAt, matcher);
+      if (JSON.stringify(entry.source) !== previousSource) updatedCount++;
     }
 
     let renderingRebuildFailed = false;
     try {
       setProgress('Saving Naming metadata and snapshots…', 80);
-      if (updatedCount > 0) {
-        await writeNamingDataToProject();
-        localStorage.setItem(NAMING_STORAGE_KEY, JSON.stringify(authoritativeNamingData));
+      {
+        if (scanProject !== projectDirectoryHandle) throw new Error('Project changed during Naming scan.');
+        // Run cleanup on the latest durable history inside the serialized writer,
+        // even when every source is already null or unchanged.
+        await writeNamingDataToProject({
+          sourcePatches: Object.fromEntries(entries.map(entry => [entry.id, entry.source])),
+          deduplicateDescriptionHistory: true
+        });
       }
       await window.LmInitialRendering?.rebuildAllNamingDocumentStates?.({
         scope: options.snapshotScope || { mode: 'all' },
@@ -264,7 +93,7 @@ async function deepScanAllNamingEntries(buttonElement = null, options = {}) {
     }
 
     if (updatedCount > 0) {
-      const msg = `Deep scan complete: Updated first appearance for ${updatedCount} name(s)!`;
+      const msg = `Deep scan complete: Updated ${updatedCount} name attachment(s) and cleaned duplicate description history.`;
       if (typeof showSmartCopyToast === 'function') {
         showSmartCopyToast(msg);
       } else {
@@ -272,7 +101,7 @@ async function deepScanAllNamingEntries(buttonElement = null, options = {}) {
       }
       options.onComplete?.({ error: false, message: msg, updatedCount });
     } else {
-      const msg = `Deep scan complete: All names' first appearance metadata is up to date.`;
+      const msg = `Deep scan complete: Sources verified and duplicate description history cleaned.`;
       if (typeof showSmartCopyToast === 'function') {
         showSmartCopyToast(msg);
       } else {
@@ -534,6 +363,17 @@ function initialNamingCategoriesForActiveDocument(maximum = 6) {
   return ranked.slice(0, Math.max(0, maximum)).map(item => item.category);
 }
 
+let namingExpansionDocument = null;
+
+function initializeNamingExpansionForDocument(chapterKey, sortedCategories) {
+  if (namingExpansionDocument?.project === projectDirectoryHandle &&
+      namingExpansionDocument?.key === chapterKey) return;
+  expandedNamingCategoryId = sortedCategories[0]?.id || '';
+  // Wait for an actual category list before remembering the document: lazy
+  // loading or an empty search result may temporarily leave it empty.
+  if (sortedCategories.length) namingExpansionDocument = { project: projectDirectoryHandle, key: chapterKey };
+}
+
 function renderTags() {
   const display = document.getElementById('tag-display');
   if (!display) return;
@@ -615,6 +455,7 @@ function renderTags() {
   );
 
   if (!filteredCategories.length) {
+    initializeNamingExpansionForDocument(chapterKey, []);
     display.innerHTML = `<div class="naming-flat-search-empty">No categories found matching "${escapeHtml(namingSearchQuery)}"</div>`;
     return;
   }
@@ -634,8 +475,11 @@ function renderTags() {
 
       const hasChapterEntries = entries.length > 0;
       const hasDetectedEntries = detectedEntries.length > 0;
-      const hasOtherEntries = existingEntries.length > 0;
-      const hasOrphanEntries = !hasChapterEntries && !hasDetectedEntries && hasOtherEntries && existingEntries.some(entry => namingEntryUsesOrphanStyle(entry));
+      const globalEntryCount = namingCategoryGlobalCount(category.id);
+      const visibleEntryCount = entries.length + detectedEntries.length;
+      const hasOtherEntries = existingEntries.length > 0 || globalEntryCount > visibleEntryCount;
+      const hasOrphanEntries = !hasChapterEntries && !hasDetectedEntries && hasOtherEntries &&
+        namingCategoryAllEntriesUseOrphanStyle(category.id, globalEntryCount);
       const hasExistingEntries = !hasChapterEntries && !hasDetectedEntries && hasOtherEntries && !hasOrphanEntries;
 
       if (hasChapterEntries) return 4;
@@ -653,6 +497,7 @@ function renderTags() {
     sortedCategories.sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' }));
   }
 
+  initializeNamingExpansionForDocument(chapterKey, sortedCategories);
   display.innerHTML = sortedCategories.map(category => {
     const isExpanded = expandedNamingCategoryId === category.id;
     const activeText = activeNamingPanelText();
@@ -669,8 +514,9 @@ function renderTags() {
     const visibleEntryCount = entries.length + detectedEntries.length;
     const hasOtherEntries = existingEntries.length > 0 || globalEntryCount > visibleEntryCount;
     const hasExistingListEntries = !hasChapterEntries && !hasDetectedEntries && hasOtherEntries;
-    const hasOrphanEntries = hasExistingListEntries && existingEntries.some(entry => namingEntryUsesOrphanStyle(entry));
+    const hasOrphanEntries = hasExistingListEntries && namingCategoryAllEntriesUseOrphanStyle(category.id, globalEntryCount);
     const hasExistingEntries = hasExistingListEntries && !hasOrphanEntries;
+    const mixedOrphanClass = namingCategoryHasMixedOrphanEntries(category.id, globalEntryCount) ? ' has-orphan-members' : '';
     const shortcutLabel = namingCategoryShortcutLabel(category.id);
     const addNameTitle = shortcutLabel
       ? `${text().addNameTitle} (${shortcutLabel})`
@@ -721,10 +567,10 @@ function renderTags() {
     return `
       <div class="cat-section naming-category-card ${isExpanded ? 'is-expanded' : ''}" data-category-id="${escapeHtml(category.id)}">
         <div class="cat-title cat-${escapeHtml(category.color)}">
-          ${hasChapterEntries ? `<button class="category-name-entry-node category-action-trigger" type="button" onclick="handleCategoryActionTriggerClick(event, '${escapeJsString(category.id)}')" ondblclick="handleCategoryActionTriggerDoubleClick(event, '${escapeJsString(category.id)}')" onpointerenter="scheduleCategoryActionTriggerInfo(event, '${escapeJsString(category.id)}')" onpointerleave="clearCategoryActionTriggerInfo()" title="${escapeHtml(text().editCategoryTitle)}" aria-label="${escapeHtml(text().editCategoryTitle)}"></button>` : ''}
-          ${!hasChapterEntries && hasDetectedEntries ? `<button class="category-detected-node category-action-trigger" type="button" onclick="handleCategoryActionTriggerClick(event, '${escapeJsString(category.id)}')" ondblclick="handleCategoryActionTriggerDoubleClick(event, '${escapeJsString(category.id)}')" onpointerenter="scheduleCategoryActionTriggerInfo(event, '${escapeJsString(category.id)}')" onpointerleave="clearCategoryActionTriggerInfo()" title="${escapeHtml(text().editCategoryTitle)}" aria-label="${escapeHtml(text().editCategoryTitle)}"></button>` : ''}
+          ${hasChapterEntries ? `<button class="category-name-entry-node category-action-trigger${mixedOrphanClass}" type="button" onclick="handleCategoryActionTriggerClick(event, '${escapeJsString(category.id)}')" ondblclick="handleCategoryActionTriggerDoubleClick(event, '${escapeJsString(category.id)}')" onpointerenter="scheduleCategoryActionTriggerInfo(event, '${escapeJsString(category.id)}')" onpointerleave="clearCategoryActionTriggerInfo()" title="${escapeHtml(text().editCategoryTitle)}" aria-label="${escapeHtml(text().editCategoryTitle)}"></button>` : ''}
+          ${!hasChapterEntries && hasDetectedEntries ? `<button class="category-detected-node category-action-trigger${mixedOrphanClass}" type="button" onclick="handleCategoryActionTriggerClick(event, '${escapeJsString(category.id)}')" ondblclick="handleCategoryActionTriggerDoubleClick(event, '${escapeJsString(category.id)}')" onpointerenter="scheduleCategoryActionTriggerInfo(event, '${escapeJsString(category.id)}')" onpointerleave="clearCategoryActionTriggerInfo()" title="${escapeHtml(text().editCategoryTitle)}" aria-label="${escapeHtml(text().editCategoryTitle)}"></button>` : ''}
           ${hasOrphanEntries ? `<button class="category-orphan-node category-action-trigger" type="button" onclick="handleCategoryActionTriggerClick(event, '${escapeJsString(category.id)}')" ondblclick="handleCategoryActionTriggerDoubleClick(event, '${escapeJsString(category.id)}')" onpointerenter="scheduleCategoryActionTriggerInfo(event, '${escapeJsString(category.id)}')" onpointerleave="clearCategoryActionTriggerInfo()" title="${escapeHtml(text().editCategoryTitle)}" aria-label="${escapeHtml(text().editCategoryTitle)}"></button>` : ''}
-          ${hasExistingEntries ? `<button class="category-existing-node category-action-trigger" type="button" onclick="handleCategoryActionTriggerClick(event, '${escapeJsString(category.id)}')" ondblclick="handleCategoryActionTriggerDoubleClick(event, '${escapeJsString(category.id)}')" onpointerenter="scheduleCategoryActionTriggerInfo(event, '${escapeJsString(category.id)}')" onpointerleave="clearCategoryActionTriggerInfo()" title="${escapeHtml(text().editCategoryTitle)}" aria-label="${escapeHtml(text().editCategoryTitle)}"></button>` : ''}
+          ${hasExistingEntries ? `<button class="category-existing-node category-action-trigger${mixedOrphanClass}" type="button" onclick="handleCategoryActionTriggerClick(event, '${escapeJsString(category.id)}')" ondblclick="handleCategoryActionTriggerDoubleClick(event, '${escapeJsString(category.id)}')" onpointerenter="scheduleCategoryActionTriggerInfo(event, '${escapeJsString(category.id)}')" onpointerleave="clearCategoryActionTriggerInfo()" title="${escapeHtml(text().editCategoryTitle)}" aria-label="${escapeHtml(text().editCategoryTitle)}"></button>` : ''}
           ${!entries.length && canDeleteCategory ? `<button class="category-empty-node category-action-trigger" type="button" onclick="handleCategoryActionTriggerClick(event, '${escapeJsString(category.id)}')" ondblclick="handleCategoryActionTriggerDoubleClick(event, '${escapeJsString(category.id)}')" onpointerenter="scheduleCategoryActionTriggerInfo(event, '${escapeJsString(category.id)}')" onpointerleave="clearCategoryActionTriggerInfo()" title="${escapeHtml(text().editCategoryTitle)}" aria-label="${escapeHtml(text().editCategoryTitle)}"></button>` : ''}
           <div class="category-toggle" role="button" tabindex="0" onclick="toggleNamingCategory('${escapeJsString(category.id)}')" onkeydown="handleNamingCategoryToggleKey(event, '${escapeJsString(category.id)}')">
             ${lmChevronSpan(isExpanded ? 'down' : 'right')}
@@ -1401,6 +1247,10 @@ function openNamingColorLegendPanel(anchor) {
           <span class="category-action-trigger category-empty-node"></span>
           <span class="naming-legend-text">खाली श्रेणी या अनाथ नाम (खाली श्रेणी के लिए भी यही नोड दिखेगा) / Empty category or contains orphan names</span>
         </div>
+        <div class="naming-legend-item">
+          <span class="category-action-trigger category-existing-node has-orphan-members"></span>
+          <span class="naming-legend-text">मुख्य status के साथ नीचे orphan-color dot: इस श्रेणी में attached names के साथ orphan names भी हैं (Mixed category containing orphan names)</span>
+        </div>
       </div>
     </div>
 
@@ -1444,6 +1294,17 @@ function toggleNamingColorLegendPanel(anchor) {
     openNamingColorLegendPanel(anchor);
   }
 }
+
+function closeNamingColorLegendPanelOnOutsidePointer(event) {
+  const panel = document.getElementById('namingColorLegendPanel');
+  if (!panel || panel.hidden) return;
+  const trigger = document.getElementById('namingLegendTriggerBtn');
+  const target = event.target;
+  if (panel.contains(target) || trigger?.contains(target)) return;
+  closeNamingColorLegendPanel();
+}
+
+document.addEventListener('pointerdown', closeNamingColorLegendPanelOnOutsidePointer, true);
 
 function exportTxt() {
   if (!hasActiveStory()) return;

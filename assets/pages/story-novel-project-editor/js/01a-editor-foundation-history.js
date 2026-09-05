@@ -13,7 +13,7 @@ function lmChevronSpan(direction = 'right', extraClass = '') {
 
 function lmChapterBoundaryTransferSpan(direction = 'down') {
   const directionClass = direction === 'up' ? 'is-up' : '';
-  return `<span class="part-chevron">${lmIcon('chapterBoundaryTransfer', directionClass)}</span>`;
+  return `<span class="Ch_Move_icon">${lmIcon('chapterBoundaryTransfer', directionClass)}</span>`;
 }
 
 const FOCUS_WIDTH_ACTIVE_IDLE_MS = lmEditorAdvancedNumber('focusIdleDelay', 5000);

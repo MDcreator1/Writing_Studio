@@ -10,7 +10,7 @@
   const LEGACY_NAMING_INDEX_FILE = `${CACHE_DIR}/Naming_Panel.json`;
   const LEGACY_NAMING_ACTIVE_FILE = `${CACHE_DIR}/Naming_Active_Document.json`;
   const SCHEMA_VERSION = 1;
-  const NAMING_SCHEMA_VERSION = 3;
+  const NAMING_SCHEMA_VERSION = 4;
   let namingMode = 'empty';
   let namingIndex = null;
   let fullNamingData = null;
@@ -271,11 +271,10 @@
 
   function namingEntryProjection(entry = {}) {
     const projected = { ...entry };
-    delete projected.descriptionHistory;
     delete projected.notes;
     delete projected.missingDocumentMeta;
     delete projected.missingNameMentionMeta;
-    return projected;
+    return Object.prototype.hasOwnProperty.call(projected, 'source') ? namingSourceReadView(projected) : projected;
   }
 
   function namingSearchNames(entry = {}) {
@@ -311,7 +310,7 @@
   }
 
   function entryMatchesDocument(entry, key) {
-    return [entry.chapterKey, entry.draftKey, entry.contentPath, entry.descriptionMeta?.contentPath]
+    return [entry.source?.documentKey, entry.chapterKey, entry.draftKey, entry.contentPath, entry.descriptionMeta?.contentPath]
       .some(value => value && value === key);
   }
 
@@ -342,6 +341,15 @@
   function categoryCounts(entries = []) {
     return entries.reduce((counts, entry) => {
       counts[entry.categoryId] = (counts[entry.categoryId] || 0) + 1;
+      return counts;
+    }, {});
+  }
+
+  function categoryOrphanCounts(entries = []) {
+    return entries.reduce((counts, entry) => {
+      if (typeof isOrphanStyleNamingEntry === 'function' && isOrphanStyleNamingEntry(entry)) {
+        counts[entry.categoryId] = (counts[entry.categoryId] || 0) + 1;
+      }
       return counts;
     }, {});
   }
@@ -393,6 +401,7 @@
       visibleByChapter: normalized.visibleByChapter || {},
       detectedByChapter: normalized.detectedByChapter || {},
       categoryCounts: options.categoryCounts || categoryCounts(normalized.entries),
+      categoryOrphanCounts: options.categoryOrphanCounts || categoryOrphanCounts(normalized.entries),
       storyMentionCounts: options.storyMentionCounts || {},
       entries: normalized.entries.map(namingEntryProjection)
     };
@@ -414,6 +423,7 @@
     const visibleByChapter = activeDocumentMap(options.visibleByChapter || namingIndex?.visibleByChapter, identity.key);
     const detectedByChapter = detectedIds.length ? { [identity.key]: detectedIds } : {};
     const projected = normalizeNamingData({
+      schemaVersion: 2,
       categories: options.categories || namingIndex?.categories || [],
       entries: entries.map(namingEntryProjection),
       removedCategoryIds: options.removedCategoryIds || namingIndex?.removedCategoryIds || [],
@@ -441,6 +451,7 @@
         : options.documentSource,
       namingSource: options.namingSource === undefined ? await fingerprint(PROJECT_NAMING_FILE, { contentHash: true }) : options.namingSource,
       categoryCounts: counts,
+      categoryOrphanCounts: options.categoryOrphanCounts || namingIndex?.categoryOrphanCounts || categoryOrphanCounts(entries),
       storyMentionCounts: options.storyMentionCounts || namingIndex?.storyMentionCounts || {},
       initialVisibleCategoryIds,
       categoryStates,
@@ -458,7 +469,7 @@
     const projectedData = await writeNamingSnapshot(identity, textValue, entries);
     namingData = projectedData;
     if (fullNamingData) {
-      ['hiddenByChapter', 'visibleByChapter', 'detectedByChapter'].forEach(field => {
+      ['detectedByChapter'].forEach(field => {
         fullNamingData[field] = { ...(fullNamingData[field] || {}) };
         if (namingData[field]?.[identity.key]?.length) fullNamingData[field][identity.key] = [...namingData[field][identity.key]];
         else delete fullNamingData[field][identity.key];
@@ -480,7 +491,7 @@
 
   async function loadNamingSnapshot(identity = namingDocumentIdentity()) {
     const snapshot = await readJson(namingSnapshotPath(identity));
-    if (!snapshot || snapshot.schemaVersion !== NAMING_SCHEMA_VERSION || snapshot.document?.key !== identity.key) return false;
+    if (!snapshot || snapshot.namingData?.schemaVersion !== 2 || snapshot.schemaVersion !== NAMING_SCHEMA_VERSION || snapshot.document?.key !== identity.key) return false;
     const currentSource = identity.contentPath ? await fingerprint(identity.contentPath, { contentHash: true }) : null;
     if (!sameFingerprint(snapshot.documentSource, currentSource)) return false;
     const currentNamingSource = await fingerprint(PROJECT_NAMING_FILE, { contentHash: true });
@@ -488,6 +499,7 @@
     namingData = normalizeNamingData(snapshot.namingData);
     namingIndex = createNamingIndex(namingData, {
       categoryCounts: snapshot.categoryCounts,
+      categoryOrphanCounts: snapshot.categoryOrphanCounts,
       storyMentionCounts: snapshot.storyMentionCounts
     });
     namingProjectionBaseline = new Map(namingData.entries.map(entry => [entry.id, JSON.stringify(entry)]));
@@ -499,10 +511,11 @@
 
   async function migrateLegacyActiveNamingSnapshot(identity) {
     const legacy = await readJson(LEGACY_NAMING_ACTIVE_FILE);
-    if (!legacy?.namingData || legacy.documentKey !== identity.key) return false;
+    if (!legacy?.namingData || legacy.namingData.schemaVersion !== 2 || legacy.documentKey !== identity.key) return false;
     namingData = normalizeNamingData(legacy.namingData);
     namingIndex = createNamingIndex(namingData, {
       categoryCounts: legacy.categoryCounts,
+      categoryOrphanCounts: legacy.categoryOrphanCounts,
       storyMentionCounts: legacy.storyMentionCounts
     });
     const textValue = typeof activeNamingPanelText === 'function' ? activeNamingPanelText() : '';
@@ -632,7 +645,7 @@
     let sourceData = fullNamingData;
     if (!sourceData) {
       const handle = await getProjectFileHandle(PROJECT_NAMING_FILE);
-      sourceData = normalizeNamingData(JSON.parse(await readFileText(handle)));
+      sourceData = normalizeNamingData(await window.LmNamingFileSafety.migrateAuthoritative(projectDirectoryHandle));
     }
     const categoryEntries = sourceData.entries.filter(entry => entry.categoryId === categoryId);
     const otherEntries = namingData.entries.filter(entry => entry.categoryId !== categoryId);
@@ -640,6 +653,7 @@
     categoryEntries.forEach(entry => namingProjectionBaseline.set(entry.id, JSON.stringify(entry)));
     namingIndex = createNamingIndex(namingData, {
       categoryCounts: namingIndex.categoryCounts,
+      categoryOrphanCounts: namingIndex.categoryOrphanCounts,
       storyMentionCounts: namingIndex.storyMentionCounts
     });
     loadedNamingCategoryIds.add(categoryId);
@@ -678,15 +692,17 @@
         const handle = targetHandle
           ? await targetHandle.getFileHandle(PROJECT_NAMING_FILE)
           : await getProjectFileHandle(PROJECT_NAMING_FILE);
-        fullData = normalizeNamingData(JSON.parse(await readFileText(handle)));
+        fullData = normalizeNamingData(await window.LmNamingFileSafety.migrateAuthoritative(targetHandle));
       } catch (error) {
         if (error?.name !== 'NotFoundError') throw error;
-        fullData = normalizeNamingData({ categories: namingData?.categories, entries: [] });
+        if (namingMode === 'projection') throw new Error('Complete Naming source is unavailable; projection cannot be migrated.');
+        fullData = normalizeNamingData(await window.LmNamingFileSafety.migrateAuthoritative(targetHandle, projectManifest?.namingData || namingData));
       }
     }
     if (targetHandle && targetHandle !== projectDirectoryHandle) throw new Error('Stale project Naming read was cancelled.');
     if (namingMode !== 'projection') {
       namingData = fullData;
+      namingMode = 'full';
       fullNamingData = namingData;
       namingIndex = createNamingIndex(namingData, { isFull: true });
       namingProjectionBaseline = new Map();
@@ -702,10 +718,7 @@
       byId.set(entry.id, original ? {
         ...original,
         ...entry,
-        descriptionHistory: [
-          ...(Array.isArray(original.descriptionHistory) ? original.descriptionHistory : []),
-          ...(Array.isArray(entry.descriptionHistory) ? entry.descriptionHistory : [])
-        ]
+        descriptionHistory: (entry.descriptionHistory || original.descriptionHistory || []).slice(-50)
       } : entry);
     });
     namingData = normalizeNamingData({
@@ -728,6 +741,12 @@
   function namingCategoryCount(categoryId) {
     return namingIndex?.categoryCounts?.[categoryId] ??
       (namingData?.entries || []).filter(entry => entry.categoryId === categoryId).length;
+  }
+
+  function namingCategoryOrphanCount(categoryId) {
+    return namingIndex?.categoryOrphanCounts?.[categoryId] ??
+      (namingData?.entries || []).filter(entry => entry.categoryId === categoryId &&
+        typeof isOrphanStyleNamingEntry === 'function' && isOrphanStyleNamingEntry(entry)).length;
   }
 
   function minimumVisibleCategoryIds(categoryIds = [], hiddenIds = [], minimum = 6) {
@@ -798,6 +817,7 @@
     rebuildAllNamingDocumentStates,
     queueActiveNamingSnapshotRefresh,
     namingCategoryCount,
+    namingCategoryOrphanCount,
     minimumVisibleCategoryIds,
     namingStoryMentionCount,
     sourceContentHash,

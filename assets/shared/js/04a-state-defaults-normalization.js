@@ -64,7 +64,7 @@ const translations = {
     partInfoSave: 'Save Info',
     partInfoCancel: 'Cancel',
     partInfoSaved: 'Part info saved',
-    partDeleteKeepChapters: 'Delete Part Without Deleting Chapters',
+    partDeleteKeepChapters: 'Delete Part Only',
     duplicatePartTitle: 'A part with this title already exists.',
     noChaptersInPart: 'No chapters in this part',
     noSavedChapters: 'No chapters saved yet',
@@ -494,7 +494,7 @@ let pendingChapterEditRecoveryIndex = null;
 let isChapterEditToggleBusy = false;
 let pendingChapterTitleCommitPromise = null;
 let tags = { char: [], place: [], thing: [], other: [] };
-let namingData = { categories: [], entries: [] };
+let namingData = { schemaVersion: 2, categories: defaultNamingCategories(), entries: [] };
 let storyFacts = [];
 let isProjectDataLoading = false;
 let findMatches = [];
@@ -999,6 +999,7 @@ function isDraftContentKey(key) {
 }
 
 function normalizeNamingEntryStatus(entry = {}) {
+  if (Object.prototype.hasOwnProperty.call(entry, 'source')) return entry.source?.documentType || 'undefined';
   const rawStatus = String(entry.chapterStatus || entry.documentType || entry.status || '').toLowerCase();
   if (rawStatus === 'draft' || rawStatus === 'chapter' || rawStatus === 'orphan') return rawStatus;
   if (rawStatus === 'undefined' || rawStatus === 'pending' || rawStatus === 'unattached') return 'undefined';
@@ -1027,7 +1028,8 @@ function isMissingDocumentNamingEntry(entry = {}) {
 }
 
 function isOrphanStyleNamingEntry(entry = {}) {
-  return normalizeNamingEntryStatus(entry) === 'orphan' || isMissingDocumentNamingEntry(entry);
+  const hasNullSource = Object.prototype.hasOwnProperty.call(entry, 'source') && entry.source === null;
+  return hasNullSource || normalizeNamingEntryStatus(entry) === 'orphan' || isMissingDocumentNamingEntry(entry);
 }
 
 function nextDraftFilePath() {
@@ -1062,7 +1064,8 @@ function namingCategoryId(title) {
     .replace(/^-+|-+$/g, '') || `category-${Date.now()}`;
 }
 
-function normalizeNamingData(data = {}) {
+function normalizeNamingData(data = { schemaVersion: 2 }) {
+  if (data.schemaVersion >= 2) return normalizeNamingV2Data(data);
   const defaults = defaultNamingCategories();
   const rawCategories = Array.isArray(data.categories) ? data.categories : [];
   const removedCategoryIds = new Set(Array.isArray(data.removedCategoryIds) ? data.removedCategoryIds : []);
@@ -1214,6 +1217,201 @@ function normalizeNamingData(data = {}) {
   };
 }
 
+// Compatibility properties are derived, non-enumerable views, never persisted.
+function namingSourceReadView(entry) {
+  const fields = {
+    chapterStatus: () => entry.source?.documentType || 'undefined',
+    documentType: () => entry.source?.documentType || 'undefined',
+    chapterKey: () => entry.source?.documentKey || '',
+    contentPath: () => entry.source?.documentKey || '',
+    chapterIndex: () => entry.source?.documentType === 'chapter' ? entry.source.documentIndex : null,
+    chapterNo: () => entry.source?.documentType === 'chapter' ? entry.source.documentNo : null,
+    chapterTitle: () => entry.source?.documentTitle || '',
+    draftKey: () => entry.source?.documentType === 'draft' ? entry.source.documentKey : null,
+    draftIndex: () => entry.source?.documentType === 'draft' ? entry.source.documentIndex : null,
+    draftNo: () => entry.source?.documentType === 'draft' ? entry.source.documentNo : null,
+    draftTitle: () => entry.source?.documentType === 'draft' ? entry.source.documentTitle : ''
+  };
+  Object.entries(fields).forEach(([key, get]) => {
+    if (!Object.prototype.hasOwnProperty.call(entry, key)) Object.defineProperty(entry, key, { get, configurable: true });
+  });
+  return entry;
+}
+
+function normalizeNamingV2Data(data) {
+  return {
+    ...data,
+    categories: data.categories || defaultNamingCategories(),
+    removedCategoryIds: data.removedCategoryIds || [],
+    hiddenByChapter: data.hiddenByChapter || {},
+    visibleByChapter: data.visibleByChapter || {},
+    detectedByChapter: data.detectedByChapter || {},
+    invalidEntries: data.invalidEntries || [],
+    invalidDescriptionHistory: data.invalidDescriptionHistory || [],
+    entries: (data.entries || []).map(entry => namingSourceReadView({ ...entry }))
+  };
+}
+
+function normalizeDocumentKey(key) {
+  return String(key || '').replace(/\\/g, '/').replace(/^\.\//, '').trim();
+}
+
+function createNamingSource(document, documentType, index, timestamp = new Date().toISOString()) {
+  return {
+    documentType,
+    ...(document.id != null ? { documentId: String(document.id) } : {}),
+    documentKey: normalizeDocumentKey(document.contentPath || (documentType === 'draft' ? draftFilePath(index) : chapterFilePath(index))),
+    documentIndex: index,
+    documentNo: (documentType === 'draft' ? document.draftNo : document.chapterNo) || index + 1,
+    documentTitle: document.title || '',
+    attachedAt: timestamp,
+    checkedAt: timestamp
+  };
+}
+
+function sourcesIdentifySameDocument(left, right) {
+  if (!left || !right) return false;
+  if (left.documentType && right.documentType && left.documentType !== right.documentType) return false;
+  if (String(left.documentId ?? '').trim() && String(right.documentId ?? '').trim()) return String(left.documentId) === String(right.documentId);
+  const key = normalizeDocumentKey(left.documentKey);
+  return Boolean(key && key === normalizeDocumentKey(right.documentKey));
+}
+
+function namingDocumentRegistry(timestamp = new Date().toISOString()) {
+  return [
+    ...chapters.map((document, index) => ({ document, index, documentType: 'chapter', source: createNamingSource(document, 'chapter', index, timestamp) })),
+    ...chapterDrafts.map((document, index) => ({ document, index, documentType: 'draft', source: createNamingSource(document, 'draft', index, timestamp) }))
+  ];
+}
+
+function sourceFromNamingMeta(meta, timestamp = new Date().toISOString()) {
+  if (!meta) return null;
+  const identity = { documentType: meta.documentType || meta.chapterStatus, documentId: meta.documentId, documentKey: meta.documentKey || meta.draftKey || meta.chapterKey || meta.contentPath };
+  const match = namingDocumentRegistry(timestamp).find(item => sourcesIdentifySameDocument(item.source, identity));
+  return match ? match.source : null;
+}
+
+function normalizeDescriptionForComparison(value) {
+  return String(value ?? '').replace(/\r\n?/g, '\n').trim();
+}
+
+function normalizeNamingAliases(values, name) {
+  const primary = String(name || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+  return [...new Map((Array.isArray(values) ? values : []).map(value => String(value || '').trim().replace(/\s+/g, ' '))
+    .filter(value => value && value.toLocaleLowerCase() !== primary).map(value => [value.toLocaleLowerCase(), value])).values()];
+}
+
+function applyNamingEntryEdit(entry, next, editedBy = null) {
+  const aliases = normalizeNamingAliases(next.similarNames, next.name);
+  const descriptionChanged = normalizeDescriptionForComparison(entry.description) !== normalizeDescriptionForComparison(next.description);
+  const aliasKeys = values => normalizeNamingAliases(values, next.name).map(value => value.toLocaleLowerCase()).sort();
+  const changed = descriptionChanged || entry.name !== next.name || entry.categoryId !== next.categoryId ||
+    JSON.stringify(aliasKeys(entry.similarNames)) !== JSON.stringify(aliasKeys(aliases));
+  if (!changed) return false;
+  const editedAt = new Date().toISOString();
+  if (descriptionChanged) entry.descriptionHistory = [...(entry.descriptionHistory || []), {
+    description: String(entry.description ?? ''), editedAt, ...(editedBy ? { editedBy } : {})
+  }].slice(-50);
+  entry.name = next.name;
+  entry.categoryId = next.categoryId;
+  entry.similarNames = aliases;
+  if (descriptionChanged) entry.description = String(next.description ?? '').trim();
+  entry.updatedAt = editedAt;
+  return true;
+}
+
+function migrateNamingDataset(raw, registry = namingDocumentRegistry()) {
+  if (raw.schemaVersion >= 2) return raw;
+  const data = JSON.parse(JSON.stringify(raw));
+  data.invalidEntries ||= [];
+  data.invalidDescriptionHistory ||= [];
+  const obsolete = ('chapterStatus documentType chapterKey chapterIndex chapterNo chapterTitle draftKey draftIndex draftNo draftTitle contentPath descriptionMeta resolvedAt resolvedFromDraft orphanedAt orphanedFromDraft missingDocumentAt missingDocumentMeta missingNameMentionAt missingNameMentionMeta sourceState namingSourceState originSource sourceHistory chapterSavedAt draftPromotedAt attachedAt chapter_saved_at draft_promoted_at promotedAt promoted_at orphaned_at orphaned_from_draft detachedAt detachedFromDraft missing_document_at missing_document_meta missing_name_mention_at missing_name_mention_meta').split(' ');
+  data.entries = (data.entries || []).flatMap((entry, index) => {
+    if (!entry || !String(entry.name || '').trim()) { data.invalidEntries.push(entry); return []; }
+    const createdAt = entry.createdAt || new Date().toISOString();
+    const status = normalizeNamingEntryStatus({
+      chapterStatus: entry.chapterStatus || entry.documentType || entry.descriptionMeta?.chapterStatus || entry.descriptionMeta?.documentType,
+      chapterKey: entry.chapterKey || entry.draftKey || entry.contentPath || entry.descriptionMeta?.contentPath
+    });
+    const legacy = { documentType: status, documentKey: (status === 'draft' ? entry.draftKey || entry.chapterKey : entry.chapterKey) || entry.contentPath || entry.descriptionMeta?.contentPath };
+    const existing = entry.source && ['chapter', 'draft'].includes(entry.source.documentType) && entry.source.documentKey && registry.find(item => sourcesIdentifySameDocument(item.source, entry.source));
+    const match = existing || ((status === 'draft' || status === 'chapter') && registry.find(item => sourcesIdentifySameDocument(item.source, legacy)));
+    const source = match ? { ...match.source, attachedAt: existing ? entry.source.attachedAt || createdAt : createdAt } : null;
+    if (existing && entry.source.checkedAt) source.checkedAt = entry.source.checkedAt;
+    const history = [];
+    const rawHistory = Array.isArray(entry.descriptionHistory) ? entry.descriptionHistory : [];
+    if (entry.descriptionHistory != null && !Array.isArray(entry.descriptionHistory)) data.invalidDescriptionHistory.push(entry.descriptionHistory);
+    for (const item of rawHistory) {
+      if (!item || typeof item.description !== 'string') { data.invalidDescriptionHistory.push(item); continue; }
+      history.push({ description: item.description, editedAt: item.editedAt || item.updatedAt || createdAt, ...(item.editedBy ? { editedBy: item.editedBy } : {}) });
+    }
+    if (Array.isArray(entry.invalidDescriptionHistory)) data.invalidDescriptionHistory.push(...entry.invalidDescriptionHistory);
+    const migrated = { ...entry, id: entry.id || `name-${Date.now()}-${index}`, categoryId: entry.categoryId || entry.category || 'characters',
+      similarNames: normalizeNamingAliases(entry.similarNames || entry.aliases, entry.name), description: String(entry.description ?? entry.details ?? ''),
+      descriptionHistory: history.slice(-50), source, createdAt, updatedAt: entry.updatedAt || createdAt };
+    obsolete.forEach(key => delete migrated[key]);
+    delete migrated.invalidDescriptionHistory;
+    return [migrated];
+  });
+  data.schemaVersion = 2;
+  data.migrationReport = { migrated: data.entries.length, unattached: data.entries.filter(entry => !entry.source).length,
+    quarantinedEntries: data.invalidEntries.length, quarantinedHistory: data.invalidDescriptionHistory.length };
+  for (const key of ['categories', 'hiddenByChapter', 'visibleByChapter', 'detectedByChapter', 'removedCategoryIds']) {
+    if (JSON.stringify(raw[key]) !== JSON.stringify(data[key])) throw new Error(`Naming migration changed ${key}`);
+  }
+  const valid = (raw.entries || []).filter(entry => entry && String(entry.name || '').trim());
+  valid.forEach((entry, index) => {
+    for (const key of ['id', 'categoryId', 'name', 'description', 'createdAt', 'updatedAt']) {
+      if (entry[key] != null && entry[key] !== data.entries[index][key]) throw new Error(`Naming migration changed ${key}`);
+    }
+  });
+  return data;
+}
+
+function namingEntryBelongsToDraft(entry, identity) {
+  return entry.source?.documentType === 'draft' && sourcesIdentifySameDocument(entry.source, identity);
+}
+
+function remapNamesForAdvancedPromotion({ draftIdentity, createdChapters, remainderDraft, promotedAt }) {
+  let changed = false;
+  for (const entry of namingData.entries) {
+    if (!namingEntryBelongsToDraft(entry, draftIdentity)) continue;
+    const match = createdChapters.find(item => isNamingEntryUsedInText(entry, item.text));
+    entry.source = match ? createNamingSource(match.chapter, 'chapter', match.index, promotedAt)
+      : remainderDraft && isNamingEntryUsedInText(entry, remainderDraft.text)
+        ? createNamingSource(remainderDraft.draft, 'draft', remainderDraft.index, promotedAt) : null;
+    changed = true;
+  }
+  return changed;
+}
+
+function deduplicateNamingDescriptionHistory(entry) {
+  if (!Array.isArray(entry.descriptionHistory)) return 0;
+  const retained = [];
+  let removed = 0;
+  for (const item of entry.descriptionHistory) {
+    const previous = retained[retained.length - 1];
+    // Preserve the first snapshot (including its original dates/metadata).
+    // A -> B -> A is a real edit sequence, not a duplicate run.
+    if (typeof item?.description === 'string' && previous?.description === item.description) {
+      removed++;
+    } else {
+      retained.push(item);
+    }
+  }
+  if (removed) entry.descriptionHistory = retained;
+  return removed;
+}
+
+function refreshNamingEntrySource(entry, documents, checkedAt = new Date().toISOString(), matcher = null) {
+  const used = item => matcher ? matcher(item.text || '') : isNamingEntryUsedInText(entry, item.text || '');
+  const current = documents.find(item => sourcesIdentifySameDocument(entry.source, item.source));
+  const match = current && used(current) ? current : documents.find(used);
+  const previous = entry.source;
+  entry.source = match ? { ...match.source, checkedAt,
+    attachedAt: sourcesIdentifySameDocument(previous, match.source) ? previous.attachedAt || checkedAt : checkedAt } : null;
+}
+
 function chapterStorageKey(index = curChap) {
   return chapters[index]?.contentPath || chapterFilePath(index);
 }
@@ -1295,7 +1493,7 @@ function migrateLegacyTagsToNaming() {
   });
 
   if (entries.length) {
-    namingData = normalizeNamingData({ ...namingData, entries });
+    namingData = normalizeNamingData(migrateNamingDataset({ ...namingData, schemaVersion: 1, entries }));
     localStorage.setItem(NAMING_STORAGE_KEY, JSON.stringify(namingData));
   }
 }

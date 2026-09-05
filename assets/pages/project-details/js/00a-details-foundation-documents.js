@@ -1278,17 +1278,8 @@ function projectDetailsPersistNameDescription(entryId = '', description = '') {
     .find(item => item.id === projectDetailsSelectedDocumentId);
   if (!entry || !documentItem || documentItem.type !== 'chapter') return false;
 
-  const editedAt = new Date().toISOString();
-  const descriptionMeta = projectDetailsChapterDescriptionMeta(documentItem, editedAt);
-  const previousDescription = String(entry.description || '').trim();
-  const nextDescription = String(description || '').trim();
-  entry.description = nextDescription;
-  entry.updatedAt = editedAt;
-  entry.descriptionMeta = descriptionMeta;
-  entry.descriptionHistory = [
-    ...(Array.isArray(entry.descriptionHistory) ? entry.descriptionHistory : []),
-    { previousDescription, description: nextDescription, editedAt, chapterMeta: descriptionMeta }
-  ];
+  if (!applyNamingEntryEdit(entry, { name: entry.name, categoryId: entry.categoryId,
+    similarNames: entry.similarNames, description })) return false;
 
   projectDetailsSaveNamingData();
   return true;

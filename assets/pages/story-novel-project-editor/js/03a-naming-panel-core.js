@@ -1192,6 +1192,12 @@ function namingEntryPromotionMinuteMatchesChapter(entry = {}, chapter = {}) {
 
 function namingEntryMatchesActiveDocument(entry = {}, activeText = activeNamingPanelText()) {
   if (!namingEntryNameInText(entry, activeText)) return false;
+  if (Object.prototype.hasOwnProperty.call(entry, 'source')) {
+    const type = isDraftActive() ? 'draft' : 'chapter';
+    const index = isDraftActive() ? curDraft : curChap;
+    const item = isDraftActive() ? chapterDrafts[index] : chapters[index];
+    return Boolean(item && sourcesIdentifySameDocument(entry.source, createNamingSource(item, type, index)));
+  }
 
   const entryStatus = normalizeNamingEntryStatus(entry);
   if (isDraftActive()) {
@@ -1248,7 +1254,8 @@ function namingEntriesByActiveTextPriority(entries = [], activeText = activeNami
 function namingEntryUsesOrphanStyle(entry = {}) {
   return typeof isOrphanStyleNamingEntry === 'function'
     ? isOrphanStyleNamingEntry(entry)
-    : normalizeNamingEntryStatus(entry) === 'orphan';
+    : (Object.prototype.hasOwnProperty.call(entry, 'source') && entry.source === null) ||
+      normalizeNamingEntryStatus(entry) === 'orphan';
 }
 
 function namingCategoryUndefinedCount(categoryId) {
@@ -1337,6 +1344,23 @@ function categoryVisibilityToggleButton(categoryId, isVisible, extraClass = '', 
 
 function namingCategoryGlobalCount(categoryId) {
   return window.LmInitialRendering?.namingCategoryCount?.(categoryId) ?? namingData.entries.filter(entry => entry.categoryId === categoryId).length;
+}
+
+function namingCategoryGlobalOrphanCount(categoryId) {
+  const indexedOrphanCount = window.LmInitialRendering?.namingCategoryOrphanCount?.(categoryId);
+  if (Number.isFinite(indexedOrphanCount)) return indexedOrphanCount;
+  return namingData.entries.filter(entry => entry.categoryId === categoryId && namingEntryUsesOrphanStyle(entry)).length;
+}
+
+function namingCategoryAllEntriesUseOrphanStyle(categoryId, totalCount = namingCategoryGlobalCount(categoryId)) {
+  if (totalCount <= 0) return false;
+  return namingCategoryGlobalOrphanCount(categoryId) === totalCount;
+}
+
+function namingCategoryHasMixedOrphanEntries(categoryId, totalCount = namingCategoryGlobalCount(categoryId)) {
+  if (totalCount <= 1) return false;
+  const orphanCount = namingCategoryGlobalOrphanCount(categoryId);
+  return orphanCount > 0 && orphanCount < totalCount;
 }
 
 function canDeleteNamingCategory(categoryId) {

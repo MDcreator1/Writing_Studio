@@ -1,5 +1,4 @@
 'use strict';
-
 (function initializeWorkspaceSectionLoader() {
   let projectGeneration = 0;
   const pending = new Map();

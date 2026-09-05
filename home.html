@@ -9,7 +9,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lekhak Manch — Home</title>
   <link rel="stylesheet" href="assets/shared/css/00-base.css?v=20260610-project-library">
-  <link rel="stylesheet" href="assets/shared/css/01-find-modals.css?v=20260904-hidden-custom-select-scrollbar">
+  <link rel="stylesheet" href="assets/shared/css/01-find-modals.css?v=20260905-custom-select-option-borders">
   <link rel="stylesheet" href="assets/pages/home/css/00-home-page.css?v=20260610-scenario-overview">
   <link rel="stylesheet" href="assets/shared/css/99-theme-overrides.css?v=20260608-theme-option-previews">
 </head>
@@ -45,14 +45,6 @@
         <span data-lm-icon="storyLibraryDefault"></span>
         <span data-lm-icon="storyLibraryHover"></span>
       </button>
-      <div class="story-library-panel lm-id-storyLibraryPanel" id="storyLibraryPanel" hidden>
-        <div class="story-library-kicker lm-id-storyLibraryTitle" id="storyLibraryTitle">Stories</div>
-        <button class="story-library-action lm-id-newStoryBtn" id="newStoryBtn" type="button"
-          onclick="openNewStoryPanel('storyLibraryBtn')">New Project</button>
-        <button class="story-library-action lm-id-openExistingStoriesBtn" id="openExistingStoriesBtn" type="button"
-          onclick="renderHomeRecentProjectsList()">Recent Project</button>
-        <div class="story-library-list lm-id-homeStoryList" id="homeStoryList" hidden></div>
-      </div>
       <button class="tb-icon theme-menu-btn lm-id-darkBtn" id="darkBtn" type="button"
         onclick="toggleThemePanel(event)" title="Theme" aria-label="Choose theme" aria-expanded="false"
         aria-controls="themeModePanel">
@@ -80,6 +72,15 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <div class="story-library-panel lm-id-storyLibraryPanel" id="storyLibraryPanel" hidden>
+    <div class="story-library-kicker lm-id-storyLibraryTitle" id="storyLibraryTitle">Stories</div>
+    <button class="story-library-action lm-id-newStoryBtn" id="newStoryBtn" type="button"
+      onclick="openNewStoryPanel('storyLibraryBtn')">New Project</button>
+    <button class="story-library-action lm-id-openExistingStoriesBtn" id="openExistingStoriesBtn" type="button"
+      onclick="renderHomeRecentProjectsList()">Recent Project</button>
+    <div class="story-library-list lm-id-homeStoryList" id="homeStoryList" hidden></div>
   </div>
 
   <main id="home-main" class="home-page lm-id-home-main" aria-label="Lekhak Manch home">
@@ -222,14 +223,14 @@
   <script src="assets/shared/js/01-shortcut-tooltips.js?v=20260608-file-renames"></script>
   <script src="assets/shared/js/02-floating-panel-focus-return.js?v=20260608-file-renames"></script>
   <script src="assets/shared/js/03-theme-controller.js?v=20260608-file-renames"></script>
-  <script src="assets/shared/js/04a-state-defaults-normalization.js?v=20260904-naming-data-safety"></script>
+  <script src="assets/shared/js/04a-state-defaults-normalization.js?v=20260905-null-source-orphan"></script>
   <script src="assets/shared/js/04b-editor-document-state.js?v=20260903-js-module-split"></script>
   <script src="assets/shared/js/05-floating-panel-positions.js?v=20260610-ai-connection-floating"></script>
   <script src="assets/shared/js/06a-project-storage-foundation.js?v=20260904-naming-data-safety"></script>
-  <script src="assets/shared/js/06aa-naming-file-safety.js?v=20260904-naming-data-safety"></script>
+  <script src="assets/shared/js/06aa-naming-file-safety.js?v=20260905-authoritative-import"></script>
   <script src="assets/shared/js/06b-workspace-restore-autosave.js?v=20260903-js-module-split"></script>
   <script src="assets/shared/js/06c-workspace-library-settings.js?v=20260903-js-module-split"></script>
-  <script src="assets/shared/js/06d-editor-paste-settings.js?v=20260904-centered-custom-select-menu"></script>
+  <script src="assets/shared/js/06d-editor-paste-settings.js?v=20260905-portable-naming-selects"></script>
   <script src="assets/pages/home/js/overview/00-home-overview-utils.js?v=20260610-scenario-overview"></script>
   <script src="assets/pages/home/js/overview/01-story-writing-overview.js?v=20260610-scenario-overview"></script>
   <script src="assets/pages/home/js/overview/02-novel-writing-overview.js?v=20260610-scenario-overview"></script>

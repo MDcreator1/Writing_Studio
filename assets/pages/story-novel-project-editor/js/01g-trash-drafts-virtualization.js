@@ -429,7 +429,41 @@ function syncChapterPanelLayoutMetrics() {
   panel.style.setProperty('--draft-compact-height', `${compactHeight}px`);
 }
 
+function syncSidebarChapterEditIndicators() {
+  const panel = document.getElementById('chapter-panel');
+  if (!panel) return;
+  const editedIndexes = new Set();
+  const counts = new Map();
+  chapters.forEach((chapter, index) => {
+    if (!hasChapterEditDraftInMemory(index)) return;
+    editedIndexes.add(index);
+    counts.set(chapter.partIndex, (counts.get(chapter.partIndex) || 0) + 1);
+  });
+  panel.querySelectorAll('[data-editor-document="chapter"]').forEach(row => {
+    const hasDraft = editedIndexes.has(Number(row.dataset.editorDocumentIndex));
+    let dot = row.querySelector('.chapter-edit-draft-dot');
+    if (hasDraft && !dot) {
+      dot = document.createElement('span');
+      dot.className = 'chapter-edit-draft-dot';
+      dot.title = 'Edit draft available';
+      dot.setAttribute('role', 'img');
+      dot.setAttribute('aria-label', dot.title);
+      row.appendChild(dot);
+    } else if (!hasDraft && dot) dot.remove();
+  });
+  panel.querySelectorAll('[data-part-edit-draft-count]').forEach(badge => {
+    const count = counts.get(Number(badge.dataset.partEditDraftCount)) || 0;
+    badge.hidden = count === 0;
+    const label = `${count} ${count === 1 ? 'chapter has an edit draft' : 'chapters have edit drafts'}`;
+    if (badge.textContent !== String(count)) badge.textContent = String(count);
+    badge.title = label;
+    badge.setAttribute('aria-label', label);
+    badge.classList.toggle('has-edit-drafts', count > 0);
+  });
+}
+
 function applyChapterPanelOverflowClasses() {
+  syncSidebarChapterEditIndicators();
   const panel = document.getElementById('chapter-panel');
   const chapterList = document.getElementById('chapter-list');
   if (!panel || !chapterList) return;
@@ -643,6 +677,44 @@ function sidebarSaveTargetForChapter(chapterIndex) {
     : 'chapters';
 }
 
+function syncSidebarForDraftNavigation() {
+  const panel = document.getElementById('chapter-panel');
+  const target = panel?.querySelector(`[data-editor-document="draft"][data-editor-document-index="${curDraft}"]`);
+  // Structural changes and selection action menus still use the full renderer.
+  if (!target || isDraftTrashMode || panel.querySelector('.is-selected, .has-chapter-selection')) {
+    renderChapters();
+    return;
+  }
+  panel.querySelectorAll('.part-section').forEach(section => {
+    section.classList.remove('is-expanded', 'is-active-part');
+    section.classList.add('is-collapsed');
+    const toggle = section.querySelector('.part-toggle-btn');
+    if (toggle && toggle.getAttribute('aria-expanded') !== 'false') {
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.innerHTML = lmChevronSpan('right');
+    }
+  });
+  const raw = document.getElementById('rawChapterSection');
+  if (raw) {
+    raw.classList.remove('is-expanded');
+    raw.classList.add('is-collapsed');
+    const toggle = raw.querySelector('.raw-chapters-toggle-btn');
+    if (toggle) {
+      toggle.setAttribute('aria-expanded', 'false');
+      const chevron = toggle.querySelector('.part-chevron');
+      if (chevron) chevron.outerHTML = lmChevronSpan('right');
+    }
+  }
+  const hasParts = Boolean(projectManifest?.parts?.length);
+  renderChapterPanelHeading(document.getElementById('partsHeading'), hasParts ? text().parts : text().chapters);
+  syncWorkspaceTopbarState();
+  updateChapterPanelBottomActions();
+  updateStorySummary();
+  applyChapterPanelOverflowClasses();
+  scheduleChapterPanelOverflowCheck();
+  syncSidebarScrollThumbs();
+}
+
 function renderChapters() {
   syncWorkspaceTopbarState();
   const chapterList = document.getElementById('chapter-list');
@@ -825,7 +897,7 @@ function renderChapters() {
             </button>
             <button class="part-copy part-copy-btn" type="button" onclick="togglePartExpansion(${partIndex})" title="Expand / Collapse">
               <div class="part-title">${escapeHtml(part.title || defaultPartTitle(partIndex))}</div>
-              <div class="part-meta">${partChapters.length} ${escapeHtml(copy.chapters)}${part.synopsis ? ' Â· ' + escapeHtml(part.synopsis) : ''}</div>
+              <div class="part-meta"><span class="part-meta-summary">${partChapters.length} ${escapeHtml(copy.chapters)}${part.synopsis ? ' Â· ' + escapeHtml(part.synopsis) : ''}</span><span class="part-edit-draft-count" data-part-edit-draft-count="${partIndex}">0</span></div>
             </button>
           </div>
           ${selectedBoundaryActions}

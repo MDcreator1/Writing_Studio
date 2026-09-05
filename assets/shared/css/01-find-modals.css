@@ -511,7 +511,7 @@ select.lm-native-select:not(.dock-native-select) {
   justify-content: space-between;
   gap: 10px;
   text-align: left;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-lg);
   font-weight: 850;
   outline: none;
   transition: transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease, color .16s ease;
@@ -528,7 +528,7 @@ select.lm-native-select:not(.dock-native-select) {
   color: var(--accent3);
   border-color: var(--accent3);
   box-shadow: var(--lm-shadow-info-soft);
-  font-size: var(--font-size-md);
+  font-size: var(--font-size-lg);
 }
 
 .lm-custom-select-trigger:hover .lm-custom-select-caret{
@@ -621,23 +621,25 @@ select.lm-native-select:not(.dock-native-select) {
 .lm-custom-select-option {
   width: 100%;
   min-height: 34px;
-  border: 1px solid transparent;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   border-radius: var(--radius-md);
   padding: 8px 10px;
   background: transparent;
   color: var(--ink);
   cursor: pointer;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-base);
   font-weight: 820;
   text-align: left;
   transition: background .14s ease, border-color .14s ease, color .14s ease, transform .14s ease;
 }
 
-.lm-custom-select-option:hover {
+.lm-custom-select-option:not(:disabled):hover,
+.lm-custom-select-option:not(:disabled):focus-visible {
   transform: translateX(1px);
-  background: var(--lm-bg-info-soft);
+  background: color-mix(in srgb, var(--lm-bg-info-soft) 78%, transparent);
   color: var(--accent);
   border-color: var(--lm-border-info-color);
+  outline: none;
 }
 
 .lm-custom-select-option.is-selected {

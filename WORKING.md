@@ -122,7 +122,7 @@ Advanced Promote source draft से proposed chapters बनाता है।
 
 - Words-per-chapter और chapter-count controls shared persisted defaults उपयोग करते हैं।
 - Permanent conclusion Advanced Settings से आती है और generated chapter preview में जुड़ती है।
-- Remainder source draft में रहता है और left index के source-draft entry से देखा जा सकता है।
+- Remainder अलग live draft ID/path पर सुरक्षित लिखा जाता है और draft list में उपलब्ध रहता है।
 - Apply से पहले every non-empty chapter body, minimum word policy, current generation और title uniqueness validate होती है।
 - Existing chapter title या generated duplicate title मिलने पर Promote inactive रहता है और click reason popup दिखाता है।
 - Commit failure में created artifacts rollback और source draft preservation प्राथमिकता है।
@@ -132,14 +132,16 @@ Advanced Promote source draft से proposed chapters बनाता है।
 ### Normal use
 
 - Names categories में save होते हैं।
-- Entry primary name, aliases/similar names, description और first-appearance metadata रख सकती है।
+- Schema v2 entry primary name, aliases, current description, अधिकतम 50 पुराने description snapshots और एक current `source` (या `null`) रखती है।
+- Description history केवल वास्तविक text edit पर पुरानी raw value रखती है; नाम, aliases, category, whitespace या source maintenance से history नहीं बढ़ती।
+- Source maintenance `updatedAt` नहीं बदलती। पुराने source/error fields केवल legacy read compatibility के लिए हैं; नए JSON में persist नहीं होते।
 - किसी rendered name पर double-click उसका displayed name clipboard में copy करता है।
 - Active document snapshot added और detected states दिखाती है।
 - Category “show more” full category data demand पर hydrate करती है।
 
 ### Deep scan
 
-Deep Scan actual chapter/draft TXT files पढ़ती है, केवल currently loaded editor bodies नहीं। हर entry के primary और alias names earliest-to-latest search होते हैं। Found document chapter/draft status, key, title, number, path और description metadata repair करता है।
+Deep Scan actual chapter/draft TXT files पढ़ती है। पहले current source में primary/alias name verify होता है; वह invalid हो तभी chapters, फिर drafts का क्रमवार fallback scan होता है। Save नवीनतम authoritative dataset पर केवल `source` patch करता है; naming content, history, timestamps और visibility maps सुरक्षित रहते हैं।
 
 Safe flow:
 
@@ -153,6 +155,8 @@ Safe flow:
 
 ### Naming write safety
 
+Deep Scan लगातार बिल्कुल समान description-history snapshots को एक करता है। हर ऐसे समूह का पहला snapshot और उसकी original edit date सुरक्षित रहते हैं। `A → B → A` जैसे वास्तविक बदलाव बने रहते हैं। यह cleanup serialized writer में नवीनतम saved history पर होता है, current description या entry timestamps को नहीं बदलता, और source unchanged होने पर भी चलता है।
+
 Guarded writer:
 
 - project-handle scoped serialization करता है;
@@ -161,6 +165,10 @@ Guarded writer:
 - written payload read-back verify करता है;
 - failure पर previous content restore करता है;
 - project switch के बाद stale writer reject करता है।
+
+Schema migration complete `Story_Naming.json` को primary मानती है; file unavailable होने पर embedded project data, फिर recovery cache fallback है। `Story_Naming.schema-v1.json` backup और verified `Story_Naming.pending.json` staging के बाद नया schema save होता है। Invalid entries/history quarantine में रहती हैं। Category/document projections कभी authoritative migration input नहीं हैं।
+
+Normal और Advanced Promote केवल original draft identity से जुड़ी entries remap करते हैं। Advanced Promote पहला matching generated chapter चुनता है, फिर remainder, अन्यथा `source: null`। `Story_Naming.promotion.json` journal document/Naming/draft/manifest saves को recoverable रखता है; original draft commit के बाद हटता है। Interrupted transaction अगली project-open पर rollback या committed cleanup पूरी करती है।
 
 इस path को bypass करके `Story_Naming.json` direct overwrite न करें।
 
@@ -241,6 +249,7 @@ Focused suites:
 node tests/editor-history-policy.test.js
 node tests/workspace-section-loading.test.js
 node tests/naming-file-safety.test.js
+node tests/naming-source-v2.test.js
 node tests/advanced-import-promote-settings.test.js
 ```
 

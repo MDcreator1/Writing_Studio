@@ -933,6 +933,7 @@ function projectDetailsSetEmptyState(isEmpty) {
 async function projectDetailsLoadState() {
   await projectDetailsGetStoredProjectHandle();
 
+  if (projectDirectoryHandle) await window.LmNamingFileSafety.recoverPromotion(projectDirectoryHandle);
   const storedManifest = projectDetailsStoredJson(PROJECT_MANIFEST_KEY, null);
   const projectManifestFile = await projectDetailsReadProjectJsonFile(PROJECT_MANIFEST_FILE);
   const rawManifest = projectManifestFile || storedManifest;
@@ -950,7 +951,10 @@ async function projectDetailsLoadState() {
   chapterDrafts = normalizeDrafts(rawDrafts);
 
   const projectNamingData = await projectDetailsReadProjectJsonFile(PROJECT_NAMING_FILE);
-  namingData = normalizeNamingData(projectNamingData || projectDetailsStoredJson(NAMING_STORAGE_KEY, {}));
+  const namingFallback = projectNamingData || rawManifest.namingData || projectDetailsStoredJson(NAMING_STORAGE_KEY, { categories: [], entries: [] });
+  namingData = normalizeNamingData(projectDirectoryHandle
+    ? await window.LmNamingFileSafety.migrateAuthoritative(projectDirectoryHandle, namingFallback)
+    : migrateNamingDataset(namingFallback));
 
   const storedFacts = projectDetailsStoredJson(FACTS_STORAGE_KEY, []);
   const factSource = Array.isArray(projectManifest.facts) && projectManifest.facts.length
@@ -1434,4 +1438,3 @@ function initProjectDetailsTabs() {
     button.addEventListener('click', () => projectDetailsActivateTab(button.dataset.projectDetailsTab));
   });
 }
-

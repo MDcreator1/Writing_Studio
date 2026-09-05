@@ -36,9 +36,12 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
-  background: var(--lm-floating-panel-glass-bg);
+  background:
+    var(--lm-bg-cloud-panel-tint),
+    color-mix(in srgb, var(--surface-raised) 78%, transparent);
   box-shadow: var(--lm-shadow-cloud-panel);
-  backdrop-filter: var(--lm-floating-panel-backdrop-filter);
+  -webkit-backdrop-filter: blur(3px) saturate(1.03);
+  backdrop-filter: blur(3px) saturate(1.03);
   transition: opacity .22s ease, box-shadow .22s ease;
   user-select: none;
 }
@@ -795,13 +798,13 @@
   padding: 0 4px;
   border: 1px solid color-mix(in srgb, var(--surface) 76%, transparent);
   border-radius: var(--radius-pill);
-  background: var(--accent);
+  background: var(--accent-light);
   color: var(--color-on-accent);
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 900;
   line-height: 1;
   pointer-events: none;
@@ -941,7 +944,6 @@
   border-color: transparent;
   border-radius: 8px;
   background: transparent;
-  font-size: 12px;
   font-weight: 800;
 }
 
@@ -949,6 +951,26 @@
   min-width: 100%;
   max-width: calc(100vw - 24px);
   overflow-x: hidden !important;
+  background-color: color-mix(in srgb, var(--surface-raised) 58%, transparent);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--accent-soft) 10%, transparent), transparent 68%),
+    color-mix(in srgb, var(--surface-raised) 58%, transparent);
+  -webkit-backdrop-filter: blur(6px) saturate(1.06);
+  backdrop-filter: blur(6px) saturate(1.06);
+}
+
+.word-editing-mini-category .lm-custom-select-option {
+  width: max-content;
+  min-width: 100%;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.word-editing-quick-panel:has(.word-editing-mini-category .lm-custom-select.is-open),
+.word-editing-collect-mini-panel:has(.word-editing-mini-category .lm-custom-select.is-open) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .word-editing-mini-switch {

@@ -62,6 +62,7 @@ const LM_EDITOR_ADVANCED_SCHEMA = [
   { category: 'Sidebar & feedback', key: 'draftFallbackHeight', label: 'Draft fallback height', unit: 'px', value: 190, min: 80, max: 600, step: 10, work: 'Fallback draft-box height when measurement is unavailable.', up: 'More draft space.', down: 'More chapter/editor space.' },
   { category: 'Sidebar & feedback', key: 'smartCopyReset', label: 'Smart Copy success duration', unit: 'ms', value: 3500, min: 0, max: 20000, step: 100, work: 'How long the copied icon remains active.', up: 'Copy confirmation stays longer.', down: 'Icon resets sooner.' },
 
+  { category: 'Advanced import', key: 'importActionMinimumWords', label: 'Import action minimum', unit: 'words', value: 250, min: 1, max: 50000, step: 10, work: 'Raw Import and Advanced Import appear only after pasted or file-loaded text reaches this word count.', up: 'Import actions stay hidden for longer text.', down: 'Import actions become available for shorter text.' },
   { category: 'Advanced import', key: 'importDefaultWords', label: 'Default words per draft', unit: 'words', value: 2500, min: 100, max: 50000, step: 100, work: 'Initial split parameter for Advanced Import.', up: 'Fewer, larger drafts.', down: 'More, smaller drafts.' },
   { category: 'Advanced import', key: 'importMinimumWords', label: 'Minimum split parameter', unit: 'words', value: 100, min: 10, max: 10000, step: 10, work: 'Lowest value accepted by the split input.', up: 'Prevents very small drafts.', down: 'Allows smaller split drafts.' },
   { category: 'Advanced import', key: 'importMaximumWords', label: 'Maximum split parameter', unit: 'words', value: 50000, min: 1000, max: 500000, step: 1000, work: 'Highest value accepted by the split input.', up: 'Allows extremely large drafts.', down: 'Restricts accidental huge parameters.' },
@@ -117,6 +118,7 @@ const LM_EDITOR_ADVANCED_USER_COPY = {
   draftCompactMinimum: ['Start compact draft view at', 'Number of drafts required before the compact draft layout turns on.', 'Compact view starts only when there are more drafts.', 'Compact view starts sooner.'],
   draftFallbackHeight: ['Backup draft-panel height', 'Height used internally when the editor cannot measure the draft panel.', 'The backup layout gives drafts more room.', 'The backup layout gives chapters and editor more room.'],
   smartCopyReset: ['Copied confirmation display time', 'How long the Copy button continues to show that copying succeeded.', 'The confirmation remains noticeable longer.', 'The button returns to normal sooner.'],
+  importActionMinimumWords: ['Words required before import actions appear', 'Raw Import and Advanced Import remain hidden until pasted or file-loaded text reaches this count.', 'Users must provide more text before importing.', 'Import actions appear for shorter text.'],
   importDefaultWords: ['Preferred words per imported draft', 'Starting target size used when a long import is split into drafts.', 'The import creates fewer, longer drafts.', 'The import creates more, shorter drafts.'],
   importMinimumWords: ['Smallest allowed draft target', 'Lowest words-per-draft value accepted during Advanced Import.', 'Very small imported drafts are prevented.', 'Smaller imported drafts become possible.'],
   importMaximumWords: ['Largest allowed draft target', 'Highest words-per-draft value accepted during Advanced Import.', 'Very large imported drafts become possible.', 'Accidentally huge draft targets are restricted.'],
@@ -165,6 +167,7 @@ const LM_EDITOR_ADVANCED_HINDI_EXPLANATIONS = {
   draftCompactMinimum: ['इतने drafts होने के बाद sidebar compact draft layout activate करता है।', 'Compact mode देर से चालू होगा।', 'Compact mode कम drafts पर जल्दी चालू होगा।'],
   draftFallbackHeight: ['Real layout measurement उपलब्ध न हो तो draft box के लिए यह fallback height इस्तेमाल होती है।', 'Draft area को अधिक जगह मिलेगी।', 'Chapter/editor area के लिए अधिक जगह बचेगी।'],
   smartCopyReset: ['Successful Smart Copy के बाद copied icon इतने समय तक active रहता है; clipboard content पर असर नहीं पड़ता।', 'Copy confirmation अधिक देर दिखेगा।', 'Icon जल्दी normal होगा।'],
+  importActionMinimumWords: ['Paste या file से आए text में इतने words होने के बाद ही Raw Import और Advanced Import actions दिखाई देंगे।', 'User को import से पहले अधिक text देना होगा।', 'कम text पर भी import actions उपलब्ध होंगे।'],
   importDefaultWords: ['Advanced Import शुरू होने पर प्रति draft/chapter शुरुआती word target यह होता है।', 'कम लेकिन बड़े drafts बनेंगे।', 'अधिक लेकिन छोटे drafts बनेंगे।'],
   importMinimumWords: ['Advanced Import के words-per-chapter input की सबसे छोटी स्वीकार्य value है।', 'बहुत छोटे drafts बनने से रुकेंगे।', 'छोटे split targets की अनुमति मिलेगी।'],
   importMaximumWords: ['Advanced Import के words-per-chapter input की सबसे बड़ी स्वीकार्य value है।', 'बहुत बड़े drafts की अनुमति मिलेगी।', 'गलती से विशाल split target डालना रुकेगा।'],
@@ -194,7 +197,7 @@ const LM_EDITOR_ADVANCED_DIRECTION_RISK = Object.freeze({
   caretScrollSuppress: [3, 3], manualScrollOverride: [3, 2], manualScrollIntent: [3, 2], programmaticScrollWindow: [4, 4], markerDragThreshold: [2, 2], markerClickDelay: [2, 2], caretSyncDelay: [3, 3],
   autoScrollBandMinGap: [2, 2],
   sidebarMinHeight: [2, 1], draftVisibleItems: [2, 1], draftCompactMinimum: [1, 1], draftFallbackHeight: [1, 1], smartCopyReset: [1, 1],
-  importDefaultWords: [2, 2], importMinimumWords: [3, 2], importMaximumWords: [2, 3], importSmartLookAhead: [2, 2], customMinimumOccurrences: [2, 2], customSelectHeight: [1, 1]
+  importActionMinimumWords: [1, 1], importDefaultWords: [2, 2], importMinimumWords: [3, 2], importMaximumWords: [2, 3], importSmartLookAhead: [2, 2], customMinimumOccurrences: [2, 2], customSelectHeight: [1, 1]
 });
 
 function advancedEditorRiskColor(level, progress) {
@@ -642,7 +645,7 @@ function renderAdvancedEditorSettings() {
   const developerCategoryTabs = categories.map((category, categoryIndex) => {
     const active = categoryIndex === activeAdvancedEditorSettingsCategoryIndex;
     const count = category === 'Rendering Snapshots'
-      ? '4 actions'
+      ? '4'
       : category === 'Project Cache & Storage'
         ? 3
       : LM_EDITOR_ADVANCED_SCHEMA.filter(item => item.category === category).length;

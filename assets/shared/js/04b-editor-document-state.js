@@ -349,6 +349,7 @@ function activateChapterEditDraft(index = curChap) {
   if (hasTargetPart && chapterListOverflowMode === 'collapsed') chapterListOverflowMode = 'expanded';
   activeEditorMode = 'chapter';
   const chapterKey = chapterEditDraftKey(curChap);
+  const hadExistingDraft = Boolean(chapterEditDrafts[chapterKey]);
   const existingDraft = chapterEditDrafts[chapterKey]
     ? normalizeChapterEditDraft(chapterEditDrafts[chapterKey], chapterKey)
     : null;
@@ -365,10 +366,18 @@ function activateChapterEditDraft(index = curChap) {
     const draftText = typeof editorHTMLToText === 'function'
       ? editorHTMLToText(draft.content || chapters[curChap]?.content || '')
       : '';
-    if (typeof writeChapterEditDraftToLocalFile === 'function' && projectDirectoryHandle) {
+    const draftHasUnsavedMemoryChanges =
+      draft.content !== (draft.lastAutosavedHTML || '') ||
+      normalizeChapterEditComparePlainTextFile(draftText) !==
+        normalizeChapterEditComparePlainTextFile(draft.lastAutosavedText || '');
+    // Opening an already durable, unchanged draft must not cause another
+    // disk write. Changed memory content (or a newly-created draft) still
+    // follows the existing durable-write path.
+    const needsDurableWrite = !hadExistingDraft || draftHasUnsavedMemoryChanges;
+    if (needsDurableWrite && typeof writeChapterEditDraftToLocalFile === 'function' && projectDirectoryHandle) {
       writeChapterEditDraftToLocalFile(draft.chapterKey, draftText)
         .catch(error => console.warn('Chapter edit draft open save failed:', error));
-    } else {
+    } else if (needsDurableWrite) {
       persistChapterEditDrafts();
     }
   }

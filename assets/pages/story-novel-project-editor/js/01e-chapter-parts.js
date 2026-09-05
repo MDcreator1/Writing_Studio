@@ -187,6 +187,7 @@ function closeDraftActionsPanel() {
     panel.innerHTML = '';
     panel.removeAttribute('data-position-key');
     panel.classList.remove(
+      'is-focus-top-panel',
       'draft-actions-panel',
       'draft-delete-confirm-panel',
       'chapter-to-draft-panel',
@@ -195,6 +196,15 @@ function closeDraftActionsPanel() {
       'trash-actions-panel',
       'trash-bulk-actions-panel'
     );
+    delete panel.dataset.focusPanelSlot;
+    delete panel.dataset.focusPanelClose;
+    panel.style.position = '';
+    panel.style.left = '';
+    panel.style.top = '';
+    panel.style.right = '';
+    panel.style.bottom = '';
+    panel.style.transform = '';
+    panel.style.width = '';
   }
   activeDraftDetailsIndex = null;
   activeFloatingAnchor = null;
@@ -769,8 +779,33 @@ function restoreFocusTopPanel(panel, key) {
   } else {
     home.parent.appendChild(panel);
   }
+  panel.style.position = '';
+  panel.style.left = '';
+  panel.style.top = '';
+  panel.style.right = '';
+  panel.style.bottom = '';
+  panel.style.transform = '';
+  panel.style.width = '';
   if (key === 'theme') focusTopThemePanelHome = null;
   else focusTopSettingsPanelHome = null;
+}
+
+function restoreDraftDetailsPanelHomePosition() {
+  const panel = document.getElementById('draftDetailsPanel');
+  if (!panel) return;
+  panel.classList.remove('is-focus-top-panel');
+  delete panel.dataset.focusPanelSlot;
+  delete panel.dataset.focusPanelClose;
+  panel.style.position = '';
+  panel.style.left = '';
+  panel.style.top = '';
+  panel.style.right = '';
+  panel.style.bottom = '';
+  panel.style.transform = '';
+  panel.style.width = '';
+  if (!panel.hidden && typeof positionFloatingPanel === 'function') {
+    positionFloatingPanel(panel, activeFloatingAnchor || document.getElementById('promoteDraftBtn'));
+  }
 }
 
 function positionFocusTopPanel(panel, anchor, positionKey = 'focusTopPanel') {
@@ -806,6 +841,7 @@ function positionFocusTopPanel(panel, anchor, positionKey = 'focusTopPanel') {
   panel.style.right = 'auto';
   panel.style.bottom = 'auto';
   panel.style.transform = 'none';
+  panel.style.visibility = '';
   return true;
 }
 

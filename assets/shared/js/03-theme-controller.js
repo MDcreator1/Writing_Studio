@@ -182,6 +182,7 @@
       window.prepareFloatingPanelFocusReturn(panel);
     }
     panel.hidden = !open;
+    document.getElementById('top-bar')?.classList.toggle('is-theme-panel-open', open);
     syncThemePanelState();
     if (open) positionThemePanel();
   }

@@ -988,11 +988,13 @@ async function chapterEditDraftFileMatchesSavedChapter(index = curChap) {
   return draftTitle === chapterTitle && textMatches && formattingMatches;
 }
 
-async function saveCurrentProject() {
+async function saveCurrentProject(options = {}) {
   if (!hasActiveStory() || isProjectDataLoading) return;
   if (isTrashDraftActive()) return;
   await window.LmInitialRendering?.ensureFullNamingData?.();
-  if (typeof flushEditorHTMLMemoryCommit === 'function') await flushEditorHTMLMemoryCommit();
+  if (!options.skipEditorFlush && typeof flushEditorHTMLMemoryCommit === 'function') {
+    await flushEditorHTMLMemoryCommit();
+  }
   if (typeof flushEditorInputStatsUpdate === 'function') flushEditorInputStatsUpdate();
   if (typeof flushEditorHistorySnapshot === 'function') flushEditorHistorySnapshot('save');
   if (
@@ -1102,7 +1104,10 @@ async function runAutoSave(source = 'idle') {
   // editor/innerHTML/memory transfer, while the next operation persists data.
   setSaveStatusDot('busy', text().saving);
   try {
-    await saveCurrentProject();
+    // The autosave path has already flushed the authoritative editor buffer
+    // above; avoid doing the same potentially expensive worker/DOM handoff a
+    // second time inside saveCurrentProject().
+    await saveCurrentProject({ skipEditorFlush: true });
     const currentSnapshot = getCleanEditorHTML();
     const currentChapterEditDraft = activeChapterEditDraft();
     if (currentSnapshot === saveSnapshot) {

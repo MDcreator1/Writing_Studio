@@ -98,6 +98,16 @@ async function run() {
   assert.strictEqual(await context.window.LmNamingFileSafety.writeCurrentProject(project, { allowEntryRemoval: true }), true);
   assert.strictEqual(JSON.parse(namingFile.text).entries.length, 1, 'an explicit manual removal must still be persisted');
 
+  const importedAuthoritativeData = {
+    categories: [{ id: 'imported', title: 'Imported' }],
+    entries: [{ id: 'portable', name: 'Portable Name', categoryId: 'imported' }]
+  };
+  assert.strictEqual(await context.window.LmNamingFileSafety.writeCurrentProject(project, {
+    authoritativeData: importedAuthoritativeData,
+    allowEntryRemoval: true
+  }), true);
+  assert.strictEqual(JSON.parse(namingFile.text).entries[0].name, 'Portable Name', 'reviewed import data should be the authoritative save payload');
+
   const validBeforeFailure = namingFile.text;
   namingFile.corruptNextWrite = true;
   context.namingData.entries.push({ id: 'three', name: 'Three' });

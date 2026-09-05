@@ -335,17 +335,17 @@ function openDraftPromoteModePanel(draftIndex, anchor = null) {
       <strong>${escapeHtml(copy.promoteModeTitle || 'Promote draft')}</strong>
       <button class="name-panel-close" type="button" onclick="closeDraftActionsPanel()">${CROSS_CLOSE_SVG}</button>
     </div>
-    <p class="draft-delete-confirm-copy">${escapeHtml(copy.promoteModeBody || '')}</p>
-    <div class="draft-promote-mode-grid">
-      <button class="draft-promote-mode-btn" type="button" onclick="requestRawPromoteDraftToChapter(${draftIndex}, this)">
-        <strong>${escapeHtml(copy.rawPromote || 'Raw Promote')}</strong>
-        <span>${escapeHtml(copy.rawPromoteBody || '')}</span>
-      </button>
-      <button class="draft-promote-mode-btn is-advanced" type="button" onclick="openAdvancedDraftPromotePanel(${draftIndex})">
-        <strong>${escapeHtml(copy.advancedPromote || 'Advanced Promote')}</strong>
-        <span>${escapeHtml(copy.advancedPromoteBody || '')}</span>
-      </button>
-    </div>`;
+      <p class="draft-delete-confirm-copy">${escapeHtml(copy.promoteModeBody || '')}</p>
+      <div class="draft-promote-mode-grid">
+        <button class="draft-promote-mode-btn" type="button" onclick="requestRawPromoteDraftToChapter(${draftIndex}, this)">
+          <span class="draft-promote-mode-label"><strong>${escapeHtml(copy.rawPromote || 'Raw Promote')}</strong></span>
+          <span class="draft-promote-mode-tooltip" role="tooltip">${escapeHtml(copy.rawPromoteBody || '')}</span>
+        </button>
+        <button class="draft-promote-mode-btn is-advanced" type="button" onclick="openAdvancedDraftPromotePanel(${draftIndex})">
+          <span class="draft-promote-mode-label"><strong>${escapeHtml(copy.advancedPromote || 'Advanced Promote')}</strong></span>
+          <span class="draft-promote-mode-tooltip" role="tooltip">${escapeHtml(copy.advancedPromoteBody || '')}</span>
+        </button>
+      </div>`;
 
   panel.hidden = false;
   positionFloatingPanel(panel, positionAnchor);
@@ -1214,6 +1214,10 @@ async function applyAdvancedTextImportRaw() {
 }
 
 async function applyAdvancedDraftPromote() {
+  return runNamingPromotion(performAdvancedDraftPromote);
+}
+
+async function performAdvancedDraftPromote() {
   const state = syncAdvancedPromoteControlsFromPanel();
   if (!state) return;
   const isTextImport = state.mode === 'import';
@@ -1265,6 +1269,9 @@ async function applyAdvancedDraftPromote() {
     return;
   }
 
+  await window.LmInitialRendering?.ensureFullNamingData?.();
+  const promotionSnapshot = captureNamingPromotionState();
+  const draftIdentity = isTextImport ? null : createNamingSource(draft, 'draft', state.draftIndex);
   showAppLoader(isTextImport ? 'Importing chapters…' : (text().advancedPromoteApply || text().saveDraftAsChapter));
 
   const manifest = normalizeProjectManifest(projectManifest || createProjectManifest());
@@ -1311,7 +1318,7 @@ async function applyAdvancedDraftPromote() {
 
   newChapters.forEach((chapter, offset) => {
     chapters.push(chapter);
-    scanCurrentChapterForNamingUses(firstChapterIndex + offset, proposedChapters[offset].text, promotedAt);
+
   });
 
   const remainderText = advancedPromoteNormalizedText(state.remainderText);
@@ -1338,6 +1345,9 @@ async function applyAdvancedDraftPromote() {
     if (remainderText) {
       const remainderDraft = normalizeDraft({
         ...draft,
+        id: Date.now() + newChapters.length + 1,
+        contentPath: nextDraftFilePath(),
+        contentHandle: null,
         title: draft.title || `${text().draftPrefix} ${state.draftIndex + 1}`,
         content: textToEditorHTML(remainderText),
         updatedAt: promotedAt,
@@ -1347,6 +1357,19 @@ async function applyAdvancedDraftPromote() {
     } else {
       chapterDrafts.splice(state.draftIndex, 1);
     }
+  }
+
+  if (!isTextImport) remapNamesForAdvancedPromotion({
+    draftIdentity,
+    createdChapters: newChapters.map((chapter, offset) => ({ chapter, index: firstChapterIndex + offset, text: proposedChapters[offset].text })),
+    remainderDraft: remainderText ? { draft: chapterDrafts[state.draftIndex], index: state.draftIndex, text: remainderText } : null,
+    promotedAt
+  });
+  newChapters.forEach((chapter, offset) => {
+    scanNamingUsesForDocument(chapter.contentPath, proposedChapters[offset].text, null, promotedAt, { resolveUnattached: false });
+  });
+  if (!isTextImport && remainderText) {
+    scanNamingUsesForDocument(chapterDrafts[state.draftIndex].contentPath, remainderText, null, promotedAt, { resolveUnattached: false });
   }
 
   chapterDrafts = normalizeDrafts(chapterDrafts);
@@ -1364,40 +1387,33 @@ async function applyAdvancedDraftPromote() {
   isPartsListForceExpanded = !shouldPromoteToRaw && targetPartIndex >= 0;
   if (!shouldPromoteToRaw && targetPartIndex >= 0 && chapterListOverflowMode === 'collapsed') chapterListOverflowMode = 'expanded';
 
-  persistProjectManifestSnapshot();
-  saveToStorage(false);
-  closeAdvancedDraftPromotePanel();
-  setDraftBoxSaveIndicator('busy');
-  loadEditor();
-  renderChapters();
-  renderActiveWorkspaceSidePanel();
-  updateChapterStatus();
-
+  let promotionCommitted = false;
+  const promotedNamingData = namingData;
   try {
-    if (projectDirectoryHandle) {
-      await Promise.all(newChapters.map((chapter, offset) =>
-        getProjectFileHandle(chapter.contentPath, { create: true })
-          .then(fileHandle => {
-            chapter.contentHandle = fileHandle;
-            return writeFileText(fileHandle, proposedChapters[offset].text);
-          })
-      ));
-
-      if (!isTextImport) {
-        if (remainderText) await writeDraftToLocalFile(state.draftIndex, remainderText);
-        else await removeProjectFileIfExists(draftPath);
-      }
-      if (importedRemainderDraft) await writeDraftToLocalFile(importedRemainderDraft.index, remainderText);
-
-      await writeProjectManifest();
-      await writeDraftsDataToProject();
-      await writeNamingDataToProject();
-    }
+    const documents = newChapters.map((chapter, offset) => ({ path: chapter.contentPath, text: proposedChapters[offset].text }));
+    if (!isTextImport && remainderText) documents.push({ path: chapterDrafts[state.draftIndex].contentPath, text: remainderText });
+    if (importedRemainderDraft) documents.push({ path: importedRemainderDraft.draft.contentPath, text: remainderText });
+    await window.LmNamingFileSafety.commitPromotion(projectDirectoryHandle, {
+      promotionId: state.promotionId || (state.promotionId = `promotion-${promotedAt}`),
+      documents,
+      removePaths: draftPath ? [draftPath] : []
+    });
+    promotionCommitted = true;
+    persistProjectManifestSnapshot();
+    saveToStorage(false);
+    closeAdvancedDraftPromotePanel();
+    await loadEditor();
+    await window.LmInitialRendering?.syncNamingIndex?.(promotedNamingData);
+    renderChapters();
+    renderActiveWorkspaceSidePanel();
+    updateChapterStatus();
     rememberCurrentChapterSaved();
     setDraftBoxSaveIndicator('saved');
     setSaveStatusDot('saved', text().advancedPromoteSaved || text().draftPromoted);
   } catch (error) {
+    if (!promotionCommitted) restoreNamingPromotionState(promotionSnapshot);
     console.warn('Advanced draft promote failed:', error);
+    showMiniReminder(promotionCommitted ? 'Promotion saved; reload to refresh the editor.' : 'Promotion save failed; original draft is recoverable.');
     setDraftBoxSaveIndicator('idle');
   } finally {
     hideAppLoader();

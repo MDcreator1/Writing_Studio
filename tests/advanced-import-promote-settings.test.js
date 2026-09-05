@@ -7,6 +7,8 @@ const root = path.resolve(__dirname, '..');
 const settingsSource = fs.readFileSync(path.join(root, 'assets/shared/js/05aa-advanced-import-promote-settings.js'), 'utf8');
 const promoteSource = fs.readFileSync(path.join(root, 'assets/pages/story-novel-project-editor/js/05-advanced-draft-promote.js'), 'utf8');
 const importSplittingSource = fs.readFileSync(path.join(root, 'assets/pages/story-novel-project-editor/js/05a-advanced-import-splitting.js'), 'utf8');
+const importCssSource = fs.readFileSync(path.join(root, 'assets/pages/story-novel-project-editor/css/05-text-import.css'), 'utf8');
+const customSelectSource = fs.readFileSync(path.join(root, 'assets/shared/js/06d-editor-paste-settings.js'), 'utf8');
 const htmlSource = fs.readFileSync(path.join(root, 'story-novel-project-editor.html'), 'utf8');
 const values = new Map();
 const localStorage = {
@@ -53,6 +55,8 @@ assert(promoteSource.includes("advancedPromoteIcon('smartCopyDefault'"), 'previe
 assert(promoteSource.includes("advancedPromoteIcon('delete'"), 'preview delete action should use the icon registry');
 assert(promoteSource.includes('data-advanced-promote-full-word-state'), 'preview should expose conditional full-word metrics');
 assert(promoteSource.includes('id="advancedImportTarget"'), 'Import target control should be rendered');
+assert(importCssSource.includes('.advanced-import-target-field .lm-custom-select-option') && importCssSource.includes('white-space: nowrap'), 'Import target options should stay on one line');
+assert(customSelectSource.includes("select.closest('.advanced-import-target-field')") && customSelectSource.includes('const relativeLeft = viewportLeft - shellRect.left;'), 'Import target menu should size to its widest option and remain centered below its trigger');
 assert(promoteSource.indexOf('id="advancedImportTarget"') < promoteSource.indexOf('id="advancedPromoteWordLimitInp"'), 'Import target should precede Words per chapter');
 assert(promoteSource.indexOf('id="advancedImportSplitMode"') < promoteSource.indexOf('id="advancedPromoteWordLimitInp"'), 'Split method should precede Words per chapter');
 assert(promoteSource.includes('advanced-import-word-limit-control advanced-number-stepper dock-fsize-control'), 'Words per chapter should use the Advanced Settings number stepper');

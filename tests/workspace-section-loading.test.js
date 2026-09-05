@@ -154,7 +154,7 @@ async function testInitialRenderingCache() {
     normalizeProjectManifest: value => value, normalizeStoryFacts: value => value || [],
     chaptersFromManifest: value => value.chapters || [], normalizeDrafts: value => value || [], normalizeTrashDrafts: value => value || [],
     draftsForStorage: () => context.chapterDrafts, trashDraftsForStorage: () => context.chapterTrashDrafts,
-    normalizeNamingData: value => ({ categories: value?.categories || [], entries: value?.entries || [], hiddenByChapter: value?.hiddenByChapter || {}, visibleByChapter: value?.visibleByChapter || {} }),
+    normalizeNamingData: value => ({ schemaVersion: value?.schemaVersion || 2, categories: value?.categories || [], entries: value?.entries || [], hiddenByChapter: value?.hiddenByChapter || {}, visibleByChapter: value?.visibleByChapter || {} }),
     localStorage: { setItem() {} }, console
   };
   vm.createContext(context);
@@ -267,6 +267,7 @@ function testStorageAndActionContracts() {
   const sharedModalCss = read('assets/shared/css/01-find-modals.css');
   const advancedSettingsCss = read('assets/pages/story-novel-project-editor/css/06-advanced-editor-settings.css');
   const namingSafety = read('assets/shared/js/06aa-naming-file-safety.js');
+  const portableNaming = read('assets/pages/story-novel-project-editor/js/03f-naming-portable-transfer.js');
   const normalization = read('assets/shared/js/04a-state-defaults-normalization.js');
   const projectDetails = read('assets/pages/project-details/js/00a-details-foundation-documents.js');
 
@@ -287,6 +288,11 @@ function testStorageAndActionContracts() {
   check(namingSafety.includes('const writeTasks = new WeakMap()') && namingSafety.includes('projectHandle !== projectDirectoryHandle'), 'Story_Naming writes should be serialized and guarded per project handle');
   check(namingSafety.includes('Story_Naming.previous.json') && namingSafety.includes('verifiedText !== payload') && namingSafety.includes('writeHandleText(targetHandle, previousText)'), 'Story_Naming writes should create a backup, verify the result and roll back failures');
   check(namingSafety.includes('capturedFullData') && namingSafety.includes('preserveRecordsUnlessExplicitlyRemoved'), 'Story_Naming writes must capture full data and preserve records against projection races');
+  check(namingSafety.includes('options.authoritativeData') && portableNaming.includes('authoritativeData: working'), 'reviewed portable imports should reach the guarded writer as an explicit authoritative dataset');
+  check(html.includes('exportPortableNamingData()') && html.includes('openPortableNamingImportPicker()') && html.includes('03f-naming-portable-transfer.js'), 'Naming toolbar should expose versioned portable export and import actions');
+  check(portableNaming.includes("NAMING_PORTABLE_FORMAT = 'lekhak-manch.naming-portable'") && portableNaming.includes('migratePortableNamingPayload') && portableNaming.includes('analyzePortableNamingImport'), 'portable Naming import should validate versions, migrate legacy data and analyze conflicts before writing');
+  check(portableNaming.includes('refreshNamingEntrySource') && portableNaming.includes('rebuildAllNamingDocumentStates') && portableNaming.includes('deduplicateDescriptionHistory: true'), 'portable Naming import should deep scan affected names and rebuild document snapshots after the guarded save');
+  check(sidePanelCss.includes('.naming-transfer-modal') && sidePanelCss.includes('.naming-transfer-conflict-list') && sideInfoScroll.includes("'.naming-transfer-conflict-list'"), 'portable Naming conflicts should use the full review panel and project custom scroll thumb');
   check(deepScan.includes('activeExpandedCategoryWithShowMoreDocumentKey') && deepScan.includes('resetFullNamingCategoryListAfterDocumentSwitch(chapterKey)'), 'document switches should collapse only the Show more naming list state');
   check(deepScan.includes('is-draft-created') && namingPanels.includes('namingEntryDraftAppearanceLabel') && !html.includes('nameDetailOrigin'), 'draft-created names should expose a text-color tag hint and hover-only origin label');
   check(sidePanelCss.includes('.naming-entry-item.is-draft-created .tname') && sidePanelCss.includes('var(--lm-status-orphan-color)') && !sidePanelCss.includes('.naming-entry-item.is-draft-created::before'), 'draft-origin styling should recolor only the name text and must not add a D marker');
@@ -302,6 +308,7 @@ function testStorageAndActionContracts() {
   check(editorLayoutCss.includes('#rawChapterSection.is-expanded') && editorLayoutCss.includes('grid-template-rows: minmax(34px, auto) minmax(0, 1fr)') && editorLayoutCss.includes('overflow: hidden'), 'expanded Temporary Chapters must stay inside its allocated sidebar height');
   check(editorLayoutCss.includes('#rawChapterSection>.raw-chapter-list') && editorLayoutCss.includes('height: 100%') && editorLayoutCss.includes('overflow-y: auto'), 'Temporary Chapters content must scroll inside its bounded grid row');
   check(sharedModalCss.includes('scrollbar-width: none !important') && sharedModalCss.includes('display: none !important') && advancedSettingsCss.includes('width: 0 !important'), 'custom select menus must never expose a visible native scrollbar');
+  check(sharedModalCss.includes('border: 1px solid color-mix(in srgb, var(--border) 72%, transparent)') && sharedModalCss.includes('.lm-custom-select-option:not(:disabled):hover') && sharedModalCss.includes('.lm-custom-select-option:not(:disabled):focus-visible'), 'every custom select option should have a subtle border and matching pointer or keyboard highlight');
   check(html.includes('editor-auto-scroll-mode-switch') && html.includes('role="radiogroup"') && html.includes('Loop marker') && normalization.includes("editorAutoScrollModeBand: 'Loop marker'") && (html.match(/data-editor-auto-scroll-mode=/g) || []).length === 2, 'Depth Marker and Loop Marker should share one mutually exclusive mode switch with a stable localized label');
   check(!html.includes('editorAutoScrollModeDepthState') && !html.includes('editorAutoScrollModeBandState') && customSelect.includes("optionBtn.setAttribute('aria-checked', String(isActive))"), 'auto-scroll modes should expose selected state instead of separate On and Off badges');
   check(editorLayoutCss.includes('.editor-auto-scroll-mode-choice.is-active') && html.includes('editorAutoScrollEmptyOnlyToggleBtn') && html.includes('editorAutoScrollFocusSpeedRange'), 'mode switch styling should retain Paragraph Follow and Scrolling Speed controls');
@@ -360,7 +367,8 @@ function testStorageAndActionContracts() {
   check(draftActions.includes('commitPreviousSnapshot: () => commitHiddenSwitchedSnapshotToMemory(switchedSnapshot)'), 'draft switch must await snapshot normalization before saving');
   check(chapterActions.includes('switchedSnapshot.projectHandle !== projectDirectoryHandle'), 'old-project snapshots must not save into a newly opened project');
   check(rendering.includes("const CACHE_DIR = 'Initial_Rendering'"), 'project rendering cache should use its own folder');
-  check(rendering.includes('const NAMING_SCHEMA_VERSION = 3') && rendering.includes('sourceContentHash') && rendering.includes('contentHash: true'), 'Naming snapshots should use versioned content hashes instead of timestamp-only validation');
+  check(rendering.includes('const NAMING_SCHEMA_VERSION = 4') && rendering.includes('sourceContentHash') && rendering.includes('contentHash: true'), 'Naming snapshots should use versioned content hashes instead of timestamp-only validation');
+  check(rendering.includes('categoryOrphanCounts') && rendering.includes('namingCategoryOrphanCount'), 'Naming snapshots should retain category-wide orphan counts for lazy status rendering');
   check(rendering.includes('left.contentHash === right.contentHash'), 'Naming snapshot validation should reject content-hash mismatches');
   check(rendering.includes(').slice(0, 6);'), 'per-document Naming snapshots should cap initial categories at six');
   check(deepScan.includes('initialNamingCategoriesForActiveDocument(6)') && deepScan.includes('activeCount'), 'empty and populated drafts should render a maximum of six priority categories initially');
@@ -371,7 +379,14 @@ function testStorageAndActionContracts() {
   check(snapshotTools.includes("actionRow('left'") && snapshotTools.includes("actionRow('facts'") && snapshotTools.includes("actionRow('naming-snapshots'") && snapshotTools.includes("actionRow('naming'"), 'developer snapshot section should expose panel builders and the all-document Naming snapshot action');
   check(snapshotTools.includes('Recent day window') && snapshotTools.includes('Latest chapter window'), 'developer snapshot section should expose day and chapter conditions');
   check(advancedConfig.includes("'Rendering Snapshots'"), 'advanced developer settings should include a rendering snapshot section');
-  check(advancedConfig.includes("'Rendering Snapshots', 'Project Cache & Storage'") && advancedConfig.includes("? '4 actions'"), 'developer category navigation should reach cache storage after the rendering actions tab');
+  check(
+    advancedConfig.includes("'Rendering Snapshots', 'Project Cache & Storage'") &&
+    advancedConfig.includes("category === 'Rendering Snapshots'") &&
+    advancedConfig.includes("? '4'") &&
+    advancedConfig.includes("category === 'Project Cache & Storage'") &&
+    advancedConfig.includes("? 3"),
+    'developer category navigation should reach cache storage after the rendering actions tab'
+  );
   check(advancedConfig.includes('`${LM_EDITOR_ADVANCED_SCHEMA.length} internal controls`'), 'developer settings count should stay synchronized with its schema');
   check(advancedConfig.includes("await deleteAdvancedSettingsIndexedDB('lm-advanced-word-editing')"), 'word dictionary reset should wait for IndexedDB deletion before reloading its disk source');
   check(advancedConfig.includes('await Promise.all(databaseNames.map(deleteAdvancedSettingsIndexedDB))'), 'full studio reset should clear its IndexedDB databases before local settings and reload');
@@ -386,8 +401,8 @@ function testStorageAndActionContracts() {
   check(deepScan.includes('chapterScanTexts') && deepScan.includes('createDeepScanSavedNameMatcher'), 'deep scan should normalize document text and compile name matchers only once per scan');
   check(storage.includes('[entry.name, ...(Array.isArray(entry.similarNames) ? entry.similarNames : [])]') && storage.includes("searchNames.some(name => countEditorFindMatches(documentText, name, 'deep') > 0)"), 'project-open mention validation should preserve metadata when a primary name or any saved similar name is present');
   check(deepScan.indexOf('buildTextIndex') < deepScan.indexOf('const authoritativeNamingData = normalizeNamingData(') && deepScan.includes('namingData = authoritativeNamingData'), 'deep scan must re-hydrate and pin the full Naming dataset after asynchronous source reads');
-  check(deepScan.includes('entry.chapterTitle !== newChapterTitle') && deepScan.includes('entry.descriptionMeta?.chapterTitle !== newChapterTitle'), 'deep scan must repair incomplete first-appearance chapter titles even when status and key already match');
-  check((deepScan.match(/hasDeepScanSavedNameUse\(text\)/g) || []).length === 2, 'deep scan should test compiled matchers against chapter and draft text');
+  check(deepScan.includes('refreshNamingEntrySource(entry, documents, checkedAt, matcher)') && !deepScan.includes('entry.descriptionMeta ='), 'deep scan repairs only source metadata through the shared helper');
+  check(deepScan.includes('createDeepScanSavedNameMatcher(namingEntrySearchNames(entry))'), 'deep scan compiles primary-name and alias matchers for each entry');
   check(!deepScan.includes('hasDeepScanSavedNameUse(searchNames, text)'), 'deep scan should never test a saved-name matcher against its own search-name list');
   check(rendering.includes('const batchSize = 6') && rendering.includes('Promise.all(batch.map'), 'naming snapshots should write in bounded parallel batches');
   check(html.includes('namingDeepScanStatus'), 'naming deep scan should expose visible phase and progress feedback');
@@ -430,6 +445,7 @@ function testStorageAndActionContracts() {
   check(wordEditing.includes('function resetProjectData') && wordEditing.includes('Dictionary will load when this section opens'), 'word dictionary module should support lazy project reset');
   check(html.includes('data-awe-dock-temporary-count') && html.includes('word-editing-quick-badge'), 'Temporary Names quick action should expose an icon-only live count badge');
   check(html.includes('wordEditingCollectMiniPanel') && html.includes('data-awe-dock-collect-category') && html.includes('data-awe-dock-collect-minimum-input'), 'Collect quick action should own a compact category and minimum-count panel');
+  check(floatingToolsCss.includes('.word-editing-quick-panel:has(.word-editing-mini-category .lm-custom-select.is-open)') && floatingToolsCss.includes('.word-editing-mini-category .lm-custom-select-option') && floatingToolsCss.includes('width: max-content') && floatingToolsCss.includes('white-space: nowrap'), 'Collect category menu should expose the page backdrop and size unwrapped options from their longest label');
   check(!html.includes('<small>Keep words</small>') && !html.includes('data-awe-dock-collect-policy'), 'Word Editing quick actions should no longer render text labels');
   check(wordEditing.includes('minimumOccurrences: state.unmatchedReplacementThreshold,') && wordEditing.includes('state.unmatchedReplacementThreshold = minimum;') && wordEditing.includes('node.textContent = String(panelState.minimumOccurrences);'), 'quick threshold input and badge should show the exact same unsuffixed number as Advanced Word Editing');
   check(wordEditing.includes('renderWorkspaceView();') && wordEditing.includes('persistSoon();'), 'mini-panel changes should refresh Advanced controls and use project dictionary persistence');

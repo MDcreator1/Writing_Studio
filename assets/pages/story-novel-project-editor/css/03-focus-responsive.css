@@ -46,6 +46,14 @@ body.focus-mode .editor-smart-copy-btn {
   z-index: 120;
 }
 
+/* Keep the Word Dictionary quick action anchored to the visible editor
+   surface in focus mode, rather than to the full-width editor wrapper. */
+body.focus-mode .awe-editor-refresh-quick-button {
+  right: calc((100vw - min(var(--focus-editor-width, 70vw), calc(100vw - 48px))) / 2 + 14px);
+  bottom: calc(var(--focus-editor-padding-top-botom) + 14px);
+  z-index: 120;
+}
+
 .lm-id-focus-overlay {
   display: none;
   position: fixed;
@@ -829,6 +837,11 @@ body.focus-mode .fact-detail-popover.is-focus-center-panel .fact-detail-descript
   body.focus-mode .editor-smart-copy-btn {
     bottom: 92px;
     left: calc((100vw - min(var(--focus-editor-width, 70vw), calc(100vw - 24px))) / 2 + 12px);
+  }
+
+  body.focus-mode .awe-editor-refresh-quick-button {
+    right: calc((100vw - min(var(--focus-editor-width, 70vw), calc(100vw - 24px))) / 2 + 12px);
+    bottom: 92px;
   }
 
   .lm-id-focus-stats {

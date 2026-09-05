@@ -1,6 +1,10 @@
 'use strict';
 
 let textImportState = null;
+const TEXT_IMPORT_ACTION_MINIMUM_WORDS = 250;
+const TEXT_IMPORT_DROP_FILE_EXTENSIONS = new Set(['txt', 'text', 'md', 'markdown', 'docx']);
+let textImportInternalDragActive = false;
+let textImportDropDepth = 0;
 
 function ensureTextImportModal() {
   let modal = document.getElementById('textImportModal');
@@ -22,9 +26,70 @@ function textImportWordCount(value = '') {
     : String(value || '').trim().split(/\s+/).filter(Boolean).length;
 }
 
+function textImportActionMinimumWords() {
+  const configured = typeof lmEditorAdvancedNumber === 'function'
+    ? lmEditorAdvancedNumber('importActionMinimumWords', TEXT_IMPORT_ACTION_MINIMUM_WORDS)
+    : TEXT_IMPORT_ACTION_MINIMUM_WORDS;
+  return Math.max(1, Math.round(Number(configured) || TEXT_IMPORT_ACTION_MINIMUM_WORDS));
+}
+
+function textImportActionsAvailable(value = textImportState?.value) {
+  return textImportWordCount(value) >= textImportActionMinimumWords();
+}
+
 function textImportDefaultTitle() {
   const fileTitle = String(textImportState?.fileName || '').replace(/\.(?:txt|text|md|docx|doc)$/i, '').trim();
   return fileTitle || `Imported ${text()?.draftPrefix || 'Draft'}`;
+}
+
+function textImportDroppedFileIsSupported(file) {
+  const fileName = String(file?.name || '').trim();
+  const extension = fileName.includes('.') ? fileName.split('.').pop().toLowerCase() : '';
+  if (TEXT_IMPORT_DROP_FILE_EXTENSIONS.has(extension)) return true;
+  const mime = String(file?.type || '').toLowerCase();
+  return !extension && (mime === 'text/plain' || mime === 'text/markdown');
+}
+
+function textImportDroppedText(dataTransfer) {
+  const plainText = String(dataTransfer?.getData?.('text/plain') || '').replace(/\r\n?/g, '\n').trim();
+  if (plainText) return plainText;
+  const html = String(dataTransfer?.getData?.('text/html') || '');
+  if (!html || typeof DOMParser !== 'function') return '';
+  const parsed = new DOMParser().parseFromString(html, 'text/html');
+  return String(parsed.body?.innerText || parsed.body?.textContent || '').replace(/\r\n?/g, '\n').trim();
+}
+
+function openDroppedTextImportText(value) {
+  const droppedText = String(value || '').replace(/\r\n?/g, '\n').trim();
+  if (!droppedText) return false;
+  textImportState = { mode: 'paste', value: droppedText, fileName: '', error: '', loading: false };
+  renderTextImportPanel();
+  requestAnimationFrame(() => document.getElementById('textImportPreview')?.focus());
+  return true;
+}
+
+async function openDroppedTextImportFile(file) {
+  if (!textImportDroppedFileIsSupported(file)) {
+    if (typeof showMiniReminder === 'function') {
+      showMiniReminder('Drop a .txt, .text, .md, .markdown or .docx file.');
+    }
+    return false;
+  }
+  textImportState = { mode: 'file', value: '', fileName: file.name || '', error: '', loading: false };
+  renderTextImportPanel();
+  await handleTextImportFile(file);
+  return textImportState?.mode === 'file' && Boolean(textImportState.value.trim());
+}
+
+function textImportRawDraftTitle(index, state = textImportState, generatedTitle = '') {
+  const fileTitle = state?.mode === 'file'
+    ? String(state.fileName || '').replace(/\.(?:txt|text|md|docx|doc)$/i, '').trim()
+    : '';
+  if (fileTitle) return fileTitle;
+  const fallbackTitle = String(generatedTitle || '').trim();
+  if (fallbackTitle) return fallbackTitle;
+  const draftPrefix = typeof text === 'function' ? (text()?.draftPrefix || 'Draft') : 'Draft';
+  return `${draftPrefix} ${Number(index || 0) + 1}`;
 }
 
 function renderTextImportPanel() {
@@ -33,18 +98,33 @@ function renderTextImportPanel() {
   const hasMode = Boolean(state.mode);
   const words = textImportWordCount(state.value);
   const paragraphs = String(state.value || '').split(/\n+/).filter(value => value.trim()).length;
+  const minimumWords = textImportActionMinimumWords();
+  const actionsAvailable = hasMode && !state.loading && words >= minimumWords;
+  const isFileMode = state.mode === 'file';
   modal.innerHTML = `
-    <section class="text-import-panel" role="dialog" aria-modal="true" aria-labelledby="textImportTitle">
+    <section class="text-import-panel ${hasMode ? 'is-text-entry-view' : 'is-source-choice-view'}" role="dialog" aria-modal="true" aria-labelledby="textImportTitle">
       <header class="text-import-head">
         <div>
-          <p class="text-import-kicker">Draft Import</p>
-          <h2 id="textImportTitle">Import your text</h2>
-          <p>Paste writing directly or choose a text/Word file. Nothing is saved until you select an import action.</p>
+          <h2 id="textImportTitle">${hasMode ? (isFileMode ? 'Review imported file' : 'Review imported text') : 'Import your story'}</h2>
         </div>
         <button class="text-import-close" type="button" onclick="closeTextImportPanel()" aria-label="Close">${window.lmIcon('close', 'text-import-close-icon')}</button>
       </header>
       <div class="text-import-body">
-        <div class="text-import-options ${hasMode ? 'has-mode' : ''}">
+        ${hasMode ? `<div class="text-import-workspace">
+          <div class="text-import-entry-status ${actionsAvailable ? 'is-ready' : ''}" aria-live="polite">
+            <span data-text-import-source-label>${isFileMode && state.fileName ? escapeHtml(state.fileName) : 'Story text'}</span>
+            <span data-text-import-metrics>${words} words · ${paragraphs} paragraphs</span>
+            <span data-text-import-threshold>${actionsAvailable ? 'Ready to import' : `${minimumWords - words} more words needed`}</span>
+          </div>
+          <div class="text-import-editor-shell">
+            <textarea id="textImportPreview" class="text-import-preview" placeholder="Paste your story here" oninput="updateTextImportPreview(this.value)">${escapeHtml(state.value)}</textarea>
+            <div class="text-import-editor-actions" data-text-import-actions ${actionsAvailable ? '' : 'hidden'}>
+              <button type="button" onclick="runRawTextImport()">Raw Import</button>
+              <button class="is-primary" type="button" onclick="runAdvancedTextImport()">Advanced Import</button>
+            </div>
+          </div>
+          ${state.error ? `<p class="text-import-error">${escapeHtml(state.error)}</p>` : ''}
+        </div>` : `<div class="text-import-options">
           <button class="text-import-option ${state.mode === 'paste' ? 'is-active' : ''}" type="button" onclick="selectTextImportMode('paste')">
             ${lmIcon('paste', 'text-import-option-icon')}
             <strong>Paste text</strong>
@@ -55,20 +135,8 @@ function renderTextImportPanel() {
             <strong>${state.loading ? 'Reading file…' : 'Import file'}</strong>
             <small>Choose a .txt, .md or .docx document from this device.</small>
           </button>
-        </div>
-        <div class="text-import-workspace" ${hasMode ? '' : 'hidden'}>
-          <div class="text-import-meta">
-            <span>${state.fileName ? escapeHtml(state.fileName) : 'Imported text preview'}</span>
-            <span>${words} words · ${paragraphs} paragraphs</span>
-          </div>
-          <textarea id="textImportPreview" class="text-import-preview" placeholder="Paste your text here…" oninput="updateTextImportPreview(this.value)">${escapeHtml(state.value)}</textarea>
-          ${state.error ? `<p class="text-import-error">${escapeHtml(state.error)}</p>` : ''}
-        </div>
+        </div>`}
       </div>
-      ${hasMode ? `<footer class="text-import-footer">
-        <button type="button" onclick="runRawTextImport()" ${state.value.trim() && !state.loading ? '' : 'disabled'}>Raw Import</button>
-        <button class="is-primary" type="button" onclick="runAdvancedTextImport()" ${state.value.trim() && !state.loading ? '' : 'disabled'}>Advanced Import</button>
-      </footer>` : ''}
       <input id="textImportFileInput" type="file" accept=".txt,.text,.md,.docx,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden onchange="handleTextImportFile(this.files?.[0])">
     </section>`;
   modal.hidden = false;
@@ -105,10 +173,17 @@ function updateTextImportPreview(value) {
   textImportState.value = String(value || '').replace(/\r\n?/g, '\n');
   textImportState.error = '';
   const workspace = document.querySelector('.text-import-workspace');
-  const metrics = workspace?.querySelector('.text-import-meta span:last-child');
+  const metrics = workspace?.querySelector('[data-text-import-metrics]');
+  const thresholdStatus = workspace?.querySelector('[data-text-import-threshold]');
+  const actions = document.querySelector('[data-text-import-actions]');
+  const words = textImportWordCount(textImportState.value);
+  const minimumWords = textImportActionMinimumWords();
+  const actionsAvailable = words >= minimumWords;
   const paragraphs = textImportState.value.split(/\n+/).filter(item => item.trim()).length;
-  if (metrics) metrics.textContent = `${textImportWordCount(textImportState.value)} words · ${paragraphs} paragraphs`;
-  document.querySelectorAll('.text-import-footer button').forEach(button => { button.disabled = !textImportState.value.trim(); });
+  if (metrics) metrics.textContent = `${words} words · ${paragraphs} paragraphs`;
+  if (thresholdStatus) thresholdStatus.textContent = actionsAvailable ? 'Ready to import' : `${minimumWords - words} more words needed`;
+  workspace?.querySelector('.text-import-entry-status')?.classList.toggle('is-ready', actionsAvailable);
+  if (actions) actions.hidden = !actionsAvailable;
 }
 
 function textImportFindZipEntry(bytes, targetName) {
@@ -168,25 +243,28 @@ async function textImportReadDocx(file) {
 async function handleTextImportFile(file) {
   if (!file || !textImportState) return;
   if (textImportState.loading) return;
-  textImportState.loading = true;
+  const importState = textImportState;
+  importState.loading = true;
   try {
     const extension = String(file.name || '').split('.').pop().toLowerCase();
     if (extension === 'doc') throw new Error('Old .doc files are not supported yet. Save it as .docx or .txt and try again.');
     const importedValue = extension === 'docx' ? await textImportReadDocx(file) : await file.text();
     if (!importedValue.trim()) throw new Error('No readable text was found in this file.');
-    textImportState.mode = 'file';
-    textImportState.value = importedValue.replace(/\r\n?/g, '\n');
-    textImportState.fileName = file.name || '';
-    textImportState.error = '';
+    if (textImportState !== importState) return;
+    importState.mode = 'file';
+    importState.value = importedValue.replace(/\r\n?/g, '\n');
+    importState.fileName = file.name || '';
+    importState.error = '';
   } catch (error) {
+    if (textImportState !== importState) return;
     if (typeof showMiniReminder === 'function') {
       showMiniReminder(error?.message || 'The selected file could not be read.');
     } else {
       console.warn('Text import file rejected:', error);
     }
   } finally {
-    textImportState.loading = false;
-    if (textImportState.mode === 'file') {
+    importState.loading = false;
+    if (textImportState === importState && importState.mode === 'file') {
       renderTextImportPanel();
       requestAnimationFrame(() => document.getElementById('textImportPreview')?.focus());
     }
@@ -198,9 +276,10 @@ async function createTextImportDraft() {
   chapterDrafts = normalizeDrafts(chapterDrafts);
   const index = chapterDrafts.length;
   const sourceText = textImportState.value.replace(/\r\n?/g, '\n').trimEnd();
+  const generatedDraft = createDefaultDraft(index);
   const draft = normalizeDraft({
-    ...createDefaultDraft(index),
-    title: textImportDefaultTitle(),
+    ...generatedDraft,
+    title: textImportRawDraftTitle(index, textImportState, generatedDraft.title),
     content: textToEditorHTML(sourceText),
     contentPath: nextDraftFilePath(),
     _wordCount: textImportWordCount(sourceText),
@@ -229,7 +308,7 @@ async function createTextImportDraft() {
 }
 
 async function runRawTextImport() {
-  if (textImportState?.loading) return;
+  if (textImportState?.loading || !textImportActionsAvailable()) return;
   try {
     const index = await createTextImportDraft();
     if (index < 0) return;
@@ -244,12 +323,69 @@ async function runRawTextImport() {
 }
 
 async function runAdvancedTextImport() {
-  if (textImportState?.loading || !textImportState?.value.trim()) return;
+  if (textImportState?.loading || !textImportActionsAvailable()) return;
   const sourceText = textImportState.value.replace(/\r\n?/g, '\n').trimEnd();
   const sourceTitle = textImportDefaultTitle();
   closeTextImportPanel();
   openAdvancedTextImportPanel(sourceText, sourceTitle);
 }
+
+function textImportHasExternalDropPayload(event) {
+  if (textImportInternalDragActive) return false;
+  const openImportPanel = document.querySelector('#textImportModal:not([hidden]) .text-import-panel');
+  if (openImportPanel && !openImportPanel.classList.contains('is-source-choice-view')) return false;
+  const types = Array.from(event.dataTransfer?.types || []);
+  return types.includes('Files') || types.includes('text/plain') || types.includes('text/html');
+}
+
+function clearTextImportDropTarget() {
+  textImportDropDepth = 0;
+  document.body?.classList.remove('is-text-import-drop-target');
+}
+
+document.addEventListener('dragstart', () => {
+  textImportInternalDragActive = true;
+  clearTextImportDropTarget();
+});
+
+document.addEventListener('dragend', () => {
+  textImportInternalDragActive = false;
+  clearTextImportDropTarget();
+});
+
+document.addEventListener('dragenter', event => {
+  if (!textImportHasExternalDropPayload(event)) return;
+  event.preventDefault();
+  textImportDropDepth += 1;
+  document.body?.classList.add('is-text-import-drop-target');
+});
+
+document.addEventListener('dragover', event => {
+  if (!textImportHasExternalDropPayload(event)) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+  document.body?.classList.add('is-text-import-drop-target');
+});
+
+document.addEventListener('dragleave', event => {
+  if (!document.body?.classList.contains('is-text-import-drop-target')) return;
+  textImportDropDepth = Math.max(0, textImportDropDepth - 1);
+  if (!textImportDropDepth) clearTextImportDropTarget();
+});
+
+document.addEventListener('drop', event => {
+  if (!textImportHasExternalDropPayload(event)) return;
+  event.preventDefault();
+  const dataTransfer = event.dataTransfer;
+  const droppedFiles = Array.from(dataTransfer?.files || []);
+  clearTextImportDropTarget();
+  if (droppedFiles.length) {
+    void openDroppedTextImportFile(droppedFiles[0]);
+    return;
+  }
+  const droppedText = textImportDroppedText(dataTransfer);
+  if (droppedText) openDroppedTextImportText(droppedText);
+});
 
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && textImportState) closeTextImportPanel();

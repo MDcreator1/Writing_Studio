@@ -1322,6 +1322,7 @@ function toggleFocus(options = {}) {
     if (typeof hideFocusChapterContextPanel === 'function') hideFocusChapterContextPanel();
     if (typeof hideFocusFactsPanel === 'function') hideFocusFactsPanel();
     if (typeof hideFocusTopControls === 'function') hideFocusTopControls();
+    if (typeof restoreDraftDetailsPanelHomePosition === 'function') restoreDraftDetailsPanelHomePosition();
     if (typeof restoreNamingEntryPanelHome === 'function') restoreNamingEntryPanelHome();
     if (typeof restoreFactComposerPanelHome === 'function') restoreFactComposerPanelHome();
   }

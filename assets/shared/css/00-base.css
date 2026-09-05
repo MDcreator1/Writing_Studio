@@ -569,6 +569,14 @@ button,
   transition: background .25s ease, border-color .25s ease, box-shadow .25s ease;
 }
 
+.lm-id-top-bar.is-story-library-open {
+  z-index: 20;
+}
+
+.lm-id-top-bar.is-theme-panel-open {
+  z-index: 20;
+}
+
 .lm-id-top-bar::after {
   content: "";
   position: absolute;
@@ -892,10 +900,10 @@ button,
   border: var(--border-width) solid var(--lm-border-cloud-panel-color);
   border-radius: var(--radius-2xl);
   background-color: var(--surface-raised);
-  background: var(--lm-floating-panel-glass-bg);
+  background: var(--lm-bg-cloud-panel-tint), color-mix(in srgb, var(--surface-raised) 58%, transparent);
   box-shadow: var(--lm-shadow-cloud-panel);
-  -webkit-backdrop-filter: var(--lm-floating-panel-backdrop-filter);
-  backdrop-filter: var(--lm-floating-panel-backdrop-filter);
+  -webkit-backdrop-filter: blur(12px) saturate(1.08);
+  backdrop-filter: blur(12px) saturate(1.08);
 }
 
 .theme-mode-panel {
@@ -1102,6 +1110,7 @@ button,
 .story-library-story-btn {
   display: grid;
   gap: 3px;
+  border-color: var(--border-muted);
 }
 
 .story-library-story-btn span {
@@ -1133,6 +1142,16 @@ button,
   gap: 6px;
   max-height: min(280px, calc(100vh - 170px));
   overflow-y: auto;
+}
+
+#storyLibraryList > .story-library-kicker {
+  position: sticky;
+  top: -8px;
+  z-index: 2;
+  margin-top: -8px;
+  padding-top: 8px;
+  background: var(--lm-floating-panel-glass-bg);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
 }
 
 .story-library-empty {

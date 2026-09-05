@@ -374,19 +374,7 @@ function activeNamingDocumentMeta(savedAt = new Date().toISOString()) {
 function applyNamingEntryDocumentMeta(entry = {}, documentMeta = null, attachedAt = new Date().toISOString()) {
   if (!entry || !documentMeta) return false;
 
-  entry.chapterStatus = documentMeta.chapterStatus;
-  entry.documentType = documentMeta.documentType;
-  entry.chapterKey = documentMeta.chapterKey;
-  entry.chapterIndex = documentMeta.chapterIndex;
-  entry.chapterNo = documentMeta.chapterNo;
-  entry.chapterTitle = documentMeta.chapterTitle;
-  entry.draftKey = documentMeta.draftKey || null;
-  entry.draftIndex = documentMeta.draftIndex ?? null;
-  entry.draftNo = documentMeta.draftNo ?? null;
-  entry.draftTitle = documentMeta.draftTitle || '';
-  entry.contentPath = documentMeta.contentPath || documentMeta.chapterKey || '';
-  entry.descriptionMeta = { ...documentMeta, attachedAt };
-  entry.attachedAt = attachedAt;
+  entry.source = sourceFromNamingMeta(documentMeta, attachedAt);
   return true;
 }
 
@@ -405,42 +393,12 @@ function resolveUndefinedNamingEntriesForDocument(documentText = getCleanEditorT
   return didResolve;
 }
 
-function resolveDraftNamingEntriesForChapter(chapterIndex = curChap, chapterText = getCleanEditorText(), savedAt = new Date().toISOString()) {
-  const chapter = chapters[chapterIndex];
-  if (!chapter) return false;
-
-  namingData = normalizeNamingData(namingData);
-  const chapterKey = chapterStorageKey(chapterIndex);
-  const chapterTitle = chapterDisplayTitle(chapter, chapterIndex);
-  let didResolve = false;
-
-  namingData.entries.forEach(entry => {
-    if (!isDraftNamingEntry(entry)) return;
-    if (!isNamingEntryUsedInText(entry, chapterText)) return;
-
-    const draftMeta = entry.resolvedFromDraft || {
-      draftKey: entry.draftKey || entry.chapterKey || null,
-      draftIndex: entry.draftIndex ?? null,
-      draftNo: entry.draftNo ?? null,
-      draftTitle: entry.draftTitle || entry.chapterTitle || text().draftPrefix
-    };
-
-    entry.chapterStatus = 'chapter';
-    entry.documentType = 'chapter';
-    entry.chapterKey = chapterKey;
-    entry.chapterIndex = chapterIndex;
-    entry.chapterNo = chapter.chapterNo || chapterIndex + 1;
-    entry.chapterTitle = chapterTitle;
-    entry.contentPath = chapter.contentPath || chapterKey;
-    entry.resolvedAt = savedAt;
-    entry.chapterSavedAt = savedAt;
-    entry.draftPromotedAt = savedAt;
-    entry.resolvedFromDraft = draftMeta;
-    didResolve = true;
+function resolveDraftNamingEntriesForChapter(chapterIndex = curChap, chapterText = getCleanEditorText(), savedAt = new Date().toISOString(), draftIdentity = null) {
+  if (!draftIdentity || !chapters[chapterIndex]) return false;
+  return remapNamesForAdvancedPromotion({
+    draftIdentity, createdChapters: [{ chapter: chapters[chapterIndex], index: chapterIndex, text: chapterText }],
+    remainderDraft: null, promotedAt: savedAt
   });
-
-  if (didResolve) namingData = normalizeNamingData(namingData);
-  return didResolve;
 }
 
 function activeChapterTextForNameCount() {
@@ -463,9 +421,9 @@ function nameDetailTimeLabel(entry = {}) {
   return '';
 }
 
-function scanNamingUsesForDocument(documentKey = currentNamingChapterKey(), documentText = getCleanEditorText(), documentMeta = activeNamingDocumentMeta(), savedAt = new Date().toISOString()) {
+function scanNamingUsesForDocument(documentKey = currentNamingChapterKey(), documentText = getCleanEditorText(), documentMeta = activeNamingDocumentMeta(), savedAt = new Date().toISOString(), options = {}) {
   namingData = normalizeNamingData(namingData);
-  const resolvedUndefined = resolveUndefinedNamingEntriesForDocument(documentText, documentMeta, savedAt);
+  const resolvedUndefined = options.resolveUnattached === false ? false : resolveUndefinedNamingEntriesForDocument(documentText, documentMeta, savedAt);
   const currentDocumentEntryIds = new Set(
     namingData.entries
       .filter(entry => entry.chapterKey === documentKey)
@@ -495,8 +453,7 @@ function scanCurrentChapterForNamingUses(chapterIndex = curChap, chapterText = g
   namingData = normalizeNamingData(namingData);
   const chapterKey = chapterStorageKey(chapterIndex);
   const documentMeta = namingMetaForChapterDocument(chapterIndex, savedAt);
-  const resolvedDraft = resolveDraftNamingEntriesForChapter(chapterIndex, chapterText, savedAt);
-  return scanNamingUsesForDocument(chapterKey, chapterText, documentMeta, savedAt) || resolvedDraft;
+  return scanNamingUsesForDocument(chapterKey, chapterText, documentMeta, savedAt);
 }
 
 function scanActiveEditorForNamingUses(savedAt = new Date().toISOString(), documentText = getCleanEditorText()) {

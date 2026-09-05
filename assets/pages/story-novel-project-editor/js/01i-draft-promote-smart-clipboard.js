@@ -106,6 +106,7 @@ async function requestPromoteDraftToChapter(draftIndex, anchor = null) {
 async function switchDraft(index) {
   ensureChapters();
   if (index < 0 || index >= chapterDrafts.length || (isDraftActive() && index === curDraft)) return;
+  const navigationStartedAt = performance.now();
   if (!(await ensureDraftContentLoaded(index))) {
     showMiniReminder('Draft content load नहीं हुआ; सुरक्षित रूप से switch रोक दिया गया।');
     return;
@@ -141,9 +142,11 @@ async function switchDraft(index) {
   const documentItem = activeEditorDocument() || chapterDrafts[curDraft];
   const sequence = ++editorDocumentLoadSequence;
   loadEditor({ phase: 'paint', documentItem });
+  syncSidebarForDraftNavigation();
   syncImmediateSidebarDocumentHighlight('draft', curDraft, sequence);
   updateChapterStatus();
   scheduleEditorDocumentPostRender(sequence, documentItem, {
+    navigationStartedAt,
     commitPreviousSnapshot: () => commitHiddenSwitchedSnapshotToMemory(switchedSnapshot),
     cleanupPreviousEditDraft: () => !switchedSnapshot.canPersist
       ? false
@@ -161,7 +164,44 @@ async function switchDraft(index) {
     });
 }
 
+function captureNamingPromotionState() {
+  return { projectHandle: projectDirectoryHandle, chapters: [...chapters], drafts: [...chapterDrafts], naming: JSON.parse(JSON.stringify(namingData)),
+    manifest: projectManifest, curChap, curDraft, curPart, activeEditorMode };
+}
+
+function restoreNamingPromotionState(snapshot) {
+  if (snapshot.projectHandle !== projectDirectoryHandle) return;
+  chapters = snapshot.chapters;
+  chapterDrafts = snapshot.drafts;
+  namingData = normalizeNamingData(snapshot.naming);
+  projectManifest = snapshot.manifest;
+  curChap = snapshot.curChap;
+  curDraft = snapshot.curDraft;
+  curPart = snapshot.curPart;
+  activeEditorMode = snapshot.activeEditorMode;
+  window.LmInitialRendering?.reset?.();
+  loadEditor();
+  renderChapters();
+  renderActiveWorkspaceSidePanel();
+}
+
+let namingPromotionBusy = false;
+async function runNamingPromotion(operation) {
+  if (namingPromotionBusy) return false;
+  namingPromotionBusy = true;
+  const wasLoading = isProjectDataLoading;
+  const startedProject = projectDirectoryHandle;
+  isProjectDataLoading = true;
+  clearTimeout(autoSaveTimer);
+  try { return await operation(); }
+  finally { namingPromotionBusy = false; if (startedProject === projectDirectoryHandle) isProjectDataLoading = wasLoading; }
+}
+
 async function promoteDraftToChapter(draftIndex, destination = 'part') {
+  return runNamingPromotion(() => performDraftToChapterPromotion(draftIndex, destination));
+}
+
+async function performDraftToChapterPromotion(draftIndex, destination = 'part') {
   ensureChapters();
   if (!(await ensureDraftContentLoaded(draftIndex))) {
     showMiniReminder('Draft content load नहीं हुआ; promote रोक दिया गया।');
@@ -170,6 +210,9 @@ async function promoteDraftToChapter(draftIndex, destination = 'part') {
   const draft = chapterDrafts[draftIndex];
   if (!draft) return;
 
+  await window.LmInitialRendering?.ensureFullNamingData?.();
+  const promotionSnapshot = captureNamingPromotionState();
+  const draftIdentity = createNamingSource(draft, 'draft', draftIndex);
   showAppLoader(text().saveDraftAsChapter);
   if (isDraftActive() && draftIndex === curDraft) {
     draft.content = getCleanEditorHTML();
@@ -221,7 +264,8 @@ async function promoteDraftToChapter(draftIndex, destination = 'part') {
     : editorHTMLToText(draft.content);
 
   chapters.push(chapter);
-  scanCurrentChapterForNamingUses(nextIndex, chapterText, promotedAt);
+  resolveDraftNamingEntriesForChapter(nextIndex, chapterText, promotedAt, draftIdentity);
+  scanNamingUsesForDocument(chapter.contentPath, chapterText, null, promotedAt, { resolveUnattached: false });
   chapterDrafts.splice(draftIndex, 1);
   chapterDrafts = normalizeDrafts(chapterDrafts);
   selectedDraftIndexes.clear();
@@ -237,29 +281,29 @@ async function promoteDraftToChapter(draftIndex, destination = 'part') {
   isPartsListCollapsedByRaw = shouldPromoteToRaw;
   isPartsListForceExpanded = !shouldPromoteToRaw && targetPartIndex >= 0;
   if (!shouldPromoteToRaw && targetPartIndex >= 0 && chapterListOverflowMode === 'collapsed') chapterListOverflowMode = 'expanded';
-  persistProjectManifestSnapshot();
-  saveToStorage(false);
-  closeDraftActionsPanel();
-  setDraftBoxSaveIndicator('busy');
-  loadEditor();
-  renderChapters();
-  renderActiveWorkspaceSidePanel();
-  updateChapterStatus();
-
+  let promotionCommitted = false;
+  const promotedNamingData = namingData;
   try {
-    if (projectDirectoryHandle) {
-      const chapterHandle = await getProjectFileHandle(chapter.contentPath, { create: true });
-      chapter.contentHandle = chapterHandle;
-      await writeFileText(chapterHandle, chapterText);
-      await removeProjectFileIfExists(draftPath);
-      await writeProjectManifest();
-      await writeDraftsDataToProject();
-      await writeNamingDataToProject();
-    }
+    await window.LmNamingFileSafety.commitPromotion(projectDirectoryHandle, {
+      promotionId: `promotion-${draftIdentity.documentId || draftIdentity.documentKey}-${promotedAt}`,
+      documents: [{ path: chapter.contentPath, text: chapterText }],
+      removePaths: draftPath ? [draftPath] : []
+    });
+    promotionCommitted = true;
+    persistProjectManifestSnapshot();
+    saveToStorage(false);
+    closeDraftActionsPanel();
+    await loadEditor();
+    await window.LmInitialRendering?.syncNamingIndex?.(promotedNamingData);
+    renderChapters();
+    renderActiveWorkspaceSidePanel();
+    updateChapterStatus();
     rememberCurrentChapterSaved();
     setDraftBoxSaveIndicator('saved');
   } catch (error) {
+    if (!promotionCommitted) restoreNamingPromotionState(promotionSnapshot);
     console.warn('Draft promote failed:', error);
+    showMiniReminder(promotionCommitted ? 'Promotion saved; reload to refresh the editor.' : 'Draft promotion save failed; original draft is recoverable.');
     setDraftBoxSaveIndicator('idle');
   } finally {
     hideAppLoader();
@@ -372,6 +416,7 @@ function draftNamingCleanupEntriesForIndexes(indexes = []) {
 
   return namingData.entries.filter(entry => {
     if (normalizeNamingEntryStatus(entry) !== 'draft') return false;
+    if (Object.prototype.hasOwnProperty.call(entry, 'source')) return draftRefs.some(({ draft, index }) => namingEntryBelongsToDraft(entry, createNamingSource(draft, 'draft', index)));
     const entryPaths = [entry.draftKey, entry.contentPath, entry.chapterKey]
       .map(normalizeDraftNamingCleanupPath)
       .filter(Boolean);
@@ -495,20 +540,7 @@ function applyDraftNamingCleanupDecision(entries = [], action = 'keep', deletedA
   let didChange = false;
   namingData.entries.forEach(entry => {
     if (!cleanupIds.has(entry.id)) return;
-    const sourceMeta = {
-      draftKey: entry.draftKey || entry.chapterKey || entry.contentPath || null,
-      draftIndex: entry.draftIndex ?? null,
-      draftNo: entry.draftNo ?? null,
-      draftTitle: entry.draftTitle || entry.chapterTitle || text().draftPrefix,
-      contentPath: entry.contentPath || entry.draftKey || entry.chapterKey || null,
-      orphanedAt: deletedAt
-    };
-    entry.chapterStatus = 'orphan';
-    entry.documentType = 'orphan';
-    entry.chapterIndex = null;
-    entry.chapterNo = null;
-    entry.orphanedAt = deletedAt;
-    entry.orphanedFromDraft = entry.orphanedFromDraft || sourceMeta;
+    entry.source = null;
     didChange = true;
   });
 

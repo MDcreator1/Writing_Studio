@@ -909,6 +909,7 @@ function customSelectBoundaryElement(shell) {
     '.chapter-details-panel',
     '.advanced-editor-settings-content',
     '.advanced-editor-settings-card',
+    '.naming-transfer-card',
     '.side-workspace',
     '.modal-card',
     '.project-gate-card'
@@ -1025,9 +1026,42 @@ function updateCustomSelectMenuHeight(select, shell, trigger, menu) {
     return;
   }
 
+  const isAdvancedImportTarget = Boolean(select.closest('.advanced-import-target-field'));
+  if (isAdvancedImportTarget) {
+    const shellRect = shell.getBoundingClientRect();
+    const menuGap = 7;
+    const viewportGap = 12;
+    const availableBelow = Math.max(48, Math.floor(window.innerHeight - shellRect.bottom - menuGap - viewportGap));
+    const availableAbove = Math.max(48, Math.floor(shellRect.top - menuGap - viewportGap));
+    const openUpwards = availableBelow < allOptionsHeight && availableAbove > availableBelow;
+    const directionalSpace = openUpwards ? availableAbove : availableBelow;
+    const usedHeight = Math.min(allOptionsHeight, directionalSpace);
+    const widestButton = optionButtons.reduce((width, button) => Math.max(width, Math.ceil(button.scrollWidth)), 0);
+    const desiredWidth = Math.max(shellRect.width, widestButton + 18);
+    const usedWidth = Math.min(desiredWidth, Math.max(shellRect.width, window.innerWidth - (viewportGap * 2)));
+    const viewportLeft = centeredCustomSelectLeft(shellRect, usedWidth, viewportGap, true);
+    const relativeLeft = viewportLeft - shellRect.left;
+
+    menu.classList.toggle('opens-upward', openUpwards);
+    menu.style.setProperty('position', 'absolute', 'important');
+    menu.style.setProperty('top', openUpwards ? 'auto' : `calc(100% + ${menuGap}px)`, 'important');
+    menu.style.setProperty('bottom', openUpwards ? `calc(100% + ${menuGap}px)` : 'auto', 'important');
+    menu.style.setProperty('left', `${relativeLeft}px`, 'important');
+    menu.style.setProperty('right', 'auto', 'important');
+    menu.style.setProperty('width', `${usedWidth}px`, 'important');
+    menu.style.setProperty('min-width', `${shellRect.width}px`, 'important');
+    menu.style.setProperty('max-width', `calc(100vw - ${viewportGap * 2}px)`, 'important');
+    menu.style.setProperty('max-height', `${usedHeight}px`, 'important');
+    menu.style.setProperty('overflow-y', allOptionsHeight > directionalSpace ? 'auto' : 'hidden', 'important');
+    menu.style.setProperty('z-index', '99999', 'important');
+    menu.style.setProperty('--lm-custom-select-menu-max-height', `${usedHeight}px`);
+    return;
+  }
+
   const isInAdvancedSettings = Boolean(
     select.closest('.advanced-editor-settings-modal') ||
     select.closest('.advanced-editor-settings-card') ||
+    select.closest('.naming-transfer-modal') ||
     select.closest('.awe-temporary-candidate-row')
   );
   if (isInAdvancedSettings) {

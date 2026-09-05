@@ -989,8 +989,7 @@ body.is-advanced-editor-settings-open {
 
 .advanced-runtime-number {
   position: relative;
-  min-width: 100px;
-  width: 100px;
+  width: auto;
   display: block;
 }
 
@@ -1332,7 +1331,7 @@ body.is-advanced-editor-settings-open {
   box-shadow: none;
   color: var(--ink);
   font: inherit;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 800;
   text-align: center;
   appearance: textfield;
@@ -1543,10 +1542,14 @@ body.is-advanced-editor-settings-open {
   font-size: 26px;
 }
 
-.advanced-editor-settings-card .lm-custom-select-trigger,
+
 .advanced-editor-settings-header p,
 .advanced-editor-settings-section-head p {
   font-size: 13px;
+}
+
+.advanced-editor-settings-card .lm-custom-select-option {
+  font-size: 14px;
 }
 
 .advanced-editor-settings-nav-label,
@@ -1558,6 +1561,7 @@ body.is-advanced-editor-settings-open {
 .advanced-editor-setting-info-popover {
   font-size: 12px;
 }
+
 
 .advanced-editor-settings-nav>button strong {
   font-size: 16px;
@@ -1576,7 +1580,6 @@ body.is-advanced-editor-settings-open {
 .advanced-runtime-group p,
 .advanced-runtime-setting-row>span:first-child p,
 .advanced-runtime-setting-row>select,
-.advanced-editor-settings-card .lm-custom-select-option,
 .advanced-editor-settings-section-tools>strong,
 .advanced-editor-setting-copy p {
   font-size: 12px;
@@ -1586,6 +1589,8 @@ body.is-advanced-editor-settings-open {
 .advanced-editor-developer-toggle strong {
   font-size: 18px;
 }
+
+
 
 .advanced-developer-category-tabs small,
 .advanced-runtime-number em {

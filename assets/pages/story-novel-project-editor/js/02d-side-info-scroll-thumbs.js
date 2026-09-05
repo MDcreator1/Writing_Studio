@@ -13,10 +13,30 @@
     '#advancedPromoteSourceText',
     '.advanced-import-source-only.is-remainder-draft textarea',
     '.advanced-promote-full-reading',
-    '.advanced-promote-full-editor'
+    '.advanced-promote-full-editor',
+    '.naming-transfer-conflict-list',
+    '#textImportPreview',
+    '#storyLibraryList'
   ].join(',');
   const bindings = new Set();
   const byPanel = new WeakMap();
+
+  // These values are intentionally scoped to the story-library thumb. Change
+  // them when fine-tuning that list without moving thumbs on other panels.
+  const STORY_LIBRARY_THUMB_TOP_INSET_PX = 20;
+  const STORY_LIBRARY_THUMB_BOTTOM_INSET_PX = 0;
+  const STORY_LIBRARY_THUMB_RIGHT_INSET_PX = -2;
+
+  function scrollThumbInsets(panel) {
+    if (panel?.id === 'storyLibraryList') {
+      return {
+        top: STORY_LIBRARY_THUMB_TOP_INSET_PX,
+        bottom: STORY_LIBRARY_THUMB_BOTTOM_INSET_PX,
+        right: STORY_LIBRARY_THUMB_RIGHT_INSET_PX
+      };
+    }
+    return { top: 9, bottom: 9, right: 9 };
+  }
 
   function clearHideTimer(binding) {
     clearTimeout(binding.hideTimer);
@@ -47,14 +67,15 @@
       return false;
     }
     const rect = panel.getBoundingClientRect();
-    const trackTop = rect.top + 9;
-    const trackHeight = Math.max(1, rect.height - 18);
+    const insets = scrollThumbInsets(panel);
+    const trackTop = rect.top + insets.top;
+    const trackHeight = Math.max(1, rect.height - insets.top - insets.bottom);
     const maximumScroll = panel.scrollHeight - panel.clientHeight;
     const thumbHeight = Math.min(trackHeight, Math.max(30, panel.clientHeight / panel.scrollHeight * trackHeight));
     const movableTrack = Math.max(1, trackHeight - thumbHeight);
     const thumbTop = trackTop + panel.scrollTop / maximumScroll * movableTrack;
     thumb.style.top = `${thumbTop}px`;
-    thumb.style.left = `${Math.max(2, rect.right - 9)}px`;
+    thumb.style.left = `${Math.max(2, rect.right - insets.right)}px`;
     thumb.style.height = `${thumbHeight}px`;
     thumb.style.zIndex = String(panelStackingLevel(panel));
     binding.metrics = { maximumScroll, movableTrack };
@@ -124,6 +145,7 @@
     bindings.add(binding);
 
     panel.addEventListener('scroll', () => showTemporarily(binding), { passive: true });
+    panel.addEventListener('input', () => requestAnimationFrame(() => update(binding, binding.hovered || Boolean(binding.drag))));
     panel.addEventListener('pointerenter', () => {
       binding.hovered = true;
       clearHideTimer(binding);

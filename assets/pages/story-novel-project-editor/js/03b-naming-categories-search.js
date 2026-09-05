@@ -1097,7 +1097,24 @@ function categoryManagerPanelPosition(panel, anchor, anchorRect, panelWidth, pan
 function positionFloatingPanel(panel, anchor) {
   if (!panel) return;
   if (typeof prepareFloatingPanelFocusReturn === 'function') prepareFloatingPanelFocusReturn(panel);
-
+  // In focus mode the original draft action button is hidden in the normal
+  // editor chrome. Use the visible focus-top action as the positioning anchor
+  // so draft action/promote panels open directly below that button.
+  const focusDraftAnchor = typeof isFocus !== 'undefined' && isFocus &&
+    panel.id === 'draftDetailsPanel'
+    ? document.getElementById('focusTopChapterActionBtn')
+    : null;
+  if (focusDraftAnchor && typeof positionFocusTopPanel === 'function') {
+    panel.classList.add('is-focus-top-panel');
+    if (typeof claimFocusPanelSlot === 'function') {
+      claimFocusPanelSlot(panel, 'top', { closeFunction: 'closeDraftActionsPanel' });
+    }
+    panel.style.visibility = 'hidden';
+    requestAnimationFrame(() => {
+      if (!panel.hidden) positionFocusTopPanel(panel, focusDraftAnchor, 'focusTopPanel');
+    });
+    return;
+  }
   panel.style.visibility = 'hidden';
   panel.style.right = 'auto';
   panel.style.bottom = 'auto';
@@ -1251,24 +1268,10 @@ function saveNamingEntry() {
 
   const editingEntry = namingData.entries.find(entry => entry.id === activeEditingNamingEntryId);
   if (editingEntry) {
-    const description = descriptionInput.value.trim();
-    const editedAt = new Date().toISOString();
-    const descriptionMeta = currentDescriptionChapterMeta(editedAt);
-    const previousSimilarNames = Array.isArray(editingEntry.similarNames) ? editingEntry.similarNames : [];
-    const similarNamesChanged = previousSimilarNames.length !== similarNames.length ||
-      previousSimilarNames.some((alias, index) => alias !== similarNames[index]);
-    const changed = editingEntry.name !== name || editingEntry.description !== description || similarNamesChanged;
-
+    const changed = applyNamingEntryEdit(editingEntry, {
+      name, similarNames, categoryId: activeNamingCategoryId, description: descriptionInput.value
+    });
     if (changed) {
-      editingEntry.name = name;
-      editingEntry.similarNames = [...similarNames];
-      editingEntry.description = description;
-      editingEntry.updatedAt = editedAt;
-      editingEntry.descriptionMeta = descriptionMeta;
-      editingEntry.descriptionHistory = [
-        ...(Array.isArray(editingEntry.descriptionHistory) ? editingEntry.descriptionHistory : []),
-        { description, editedAt, chapterMeta: descriptionMeta }
-      ];
       expandedNamingCategoryId = editingEntry.categoryId;
       renderTags();
       saveNamingData();
@@ -1282,31 +1285,19 @@ function saveNamingEntry() {
   const createdAt = new Date().toISOString();
   const shouldAttachToActiveDocument = typeof isNamingEntryUsedInText === 'function' &&
     isNamingEntryUsedInText({ name, similarNames }, getCleanEditorText());
-  const descriptionMeta = shouldAttachToActiveDocument
-    ? currentDescriptionChapterMeta(createdAt)
-    : undefinedDescriptionChapterMeta(createdAt);
-  namingData.entries.push({
+  const source = shouldAttachToActiveDocument && !isTrashDraftActive()
+    ? sourceFromNamingMeta(currentDescriptionChapterMeta(createdAt), createdAt) : null;
+  namingData.entries.push(namingSourceReadView({
     id: `name-${Date.now()}`,
     categoryId: activeNamingCategoryId,
-    chapterKey: descriptionMeta.chapterKey,
-    chapterIndex: descriptionMeta.chapterIndex,
-    chapterNo: descriptionMeta.chapterNo,
-    chapterTitle: descriptionMeta.chapterTitle,
-    chapterStatus: descriptionMeta.chapterStatus,
-    documentType: descriptionMeta.documentType,
-    draftKey: descriptionMeta.draftKey || null,
-    draftIndex: descriptionMeta.draftIndex ?? null,
-    draftNo: descriptionMeta.draftNo ?? null,
-    draftTitle: descriptionMeta.draftTitle || '',
-    contentPath: descriptionMeta.contentPath,
     name,
-    similarNames: [...similarNames],
+    similarNames: normalizeNamingAliases(similarNames, name),
     description: descriptionInput.value.trim(),
+    descriptionHistory: [],
+    source,
     createdAt,
-    updatedAt: createdAt,
-    descriptionMeta,
-    descriptionHistory: []
-  });
+    updatedAt: createdAt
+  }));
 
   closeNamingEntryPanel();
   expandedNamingCategoryId = activeNamingCategoryId;
@@ -1361,89 +1352,18 @@ function htmlToPlainText(html) {
   return tmp.textContent || '';
 }
 
-function scanStoryForNamingEntry(entryId) {
+async function scanStoryForNamingEntry(entryId) {
+  const scanProject = projectDirectoryHandle;
+  const sourceIndex = await window.LmNamingDeepScanSource.buildTextIndex();
+  await window.LmInitialRendering?.ensureFullNamingData?.();
+  if (scanProject !== projectDirectoryHandle) throw new Error('Project changed during Naming scan.');
   const entry = namingData.entries.find(item => item.id === entryId);
-  if (!entry) return;
-
-  const name = entry.name;
-
-  // 1. Search in chapters
-  for (let i = 0; i < chapters.length; i++) {
-    const chapter = chapters[i];
-    const text = htmlToPlainText(chapter.content);
-    if (countSavedNameUsesInText(name, text) > 0) {
-      entry.chapterStatus = 'chapter';
-      entry.documentType = 'chapter';
-      entry.chapterIndex = i;
-      entry.chapterKey = chapter.contentPath || chapterStorageKey(i);
-      entry.chapterTitle = chapter.title || '';
-      entry.chapterNo = chapter.chapterNo || (i + 1);
-      entry.draftKey = null;
-      entry.draftIndex = null;
-      entry.draftNo = null;
-      entry.draftTitle = '';
-
-      entry.orphanedAt = null;
-      entry.orphanedFromDraft = null;
-      entry.missingDocumentAt = null;
-      entry.missingDocumentMeta = null;
-      entry.sourceState = null;
-      entry.namingSourceState = null;
-
-      saveNamingData();
-      renderTags();
-
-      const successMsg = `Scanned: "${name}" found in ${chapter.title || 'Chapter ' + (i + 1)}! Set as entry document.`;
-      if (typeof showSmartCopyToast === 'function') {
-        showSmartCopyToast(successMsg);
-      } else {
-        alert(successMsg);
-      }
-      return true;
-    }
-  }
-
-  // 2. Search in drafts
-  for (let i = 0; i < chapterDrafts.length; i++) {
-    const draft = chapterDrafts[i];
-    const text = htmlToPlainText(draft.content);
-    if (countSavedNameUsesInText(name, text) > 0) {
-      entry.chapterStatus = 'draft';
-      entry.documentType = 'draft';
-      entry.draftIndex = i;
-      entry.draftKey = draft.contentPath || draftFilePath(i);
-      entry.chapterKey = entry.draftKey;
-      entry.draftTitle = draft.title || '';
-      entry.chapterTitle = draft.title || '';
-      entry.draftNo = draft.draftNo || (i + 1);
-      entry.chapterIndex = null;
-      entry.chapterNo = null;
-
-      entry.orphanedAt = null;
-      entry.orphanedFromDraft = null;
-      entry.missingDocumentAt = null;
-      entry.missingDocumentMeta = null;
-      entry.sourceState = null;
-      entry.namingSourceState = null;
-
-      saveNamingData();
-      renderTags();
-
-      const successMsg = `Scanned: "${name}" found in ${draft.title || 'Draft ' + (i + 1)}! Set as entry document.`;
-      if (typeof showSmartCopyToast === 'function') {
-        showSmartCopyToast(successMsg);
-      } else {
-        alert(successMsg);
-      }
-      return true;
-    }
-  }
-
-  const failMsg = `Not found: "${name}" is not present in any chapter or draft.`;
-  if (typeof showSmartCopyToast === 'function') {
-    showSmartCopyToast(failMsg);
-  } else {
-    alert(failMsg);
-  }
-  return false;
+  if (!entry) return false;
+  const documents = namingDocumentRegistry().map(item => ({ ...item,
+    text: item.documentType === 'draft' ? sourceIndex.draftTexts[item.index] : sourceIndex.chapterTexts[item.index]
+  }));
+  refreshNamingEntrySource(entry, documents);
+  await writeNamingDataToProject({ sourcePatches: { [entry.id]: entry.source } });
+  renderTags();
+  return Boolean(entry.source);
 }

@@ -1078,17 +1078,44 @@ function stageEditorHTMLForMemoryCommit() {
 }
 
 function syncImmediateSidebarDocumentHighlight(kind, index, sequence) {
+  document.querySelectorAll('.chap-item.is-selected').forEach(item => {
+    item.classList.remove('is-selected');
+    item.setAttribute('aria-selected', 'false');
+  });
   document.querySelectorAll('.chap-item.active').forEach(item => item.classList.remove('active'));
   const target = document.querySelector(`[data-editor-document="${kind}"][data-editor-document-index="${index}"]`);
   if (target) {
     target.classList.add('active');
-    return;
+    if (!target.closest('.part-section.is-collapsed, #rawChapterSection.is-collapsed, [hidden]')) return;
   }
 
   requestAnimationFrame(() => {
     if (sequence !== editorDocumentLoadSequence) return;
     renderChapters();
   });
+}
+
+function finalizeEditorDocumentAfterPaint(documentItem) {
+  const editor = document.getElementById('editor');
+  if (!editor || !documentItem) return;
+  if (!activeVirtualEditorDocument) {
+    const savedParagraphGap = typeof normalizeOptionalEditorParagraphGap === 'function'
+      ? normalizeOptionalEditorParagraphGap(documentItem.paragraphGap)
+      : null;
+    if (savedParagraphGap === null) {
+      const detectedParagraphGap = detectEditorParagraphGap(editor);
+      if (detectedParagraphGap > 0) {
+        documentItem.paragraphGap = detectedParagraphGap;
+        const margin = isEditorReviewMode(editor) && typeof editorReviewModeMarginDefault === 'function'
+          ? editorReviewModeMarginDefault() : null;
+        applyEditorSpacing(documentItem.lineHeight, detectedParagraphGap, margin, { resetDockManualSelection: true });
+      }
+    }
+  }
+  if (!isChapterEditDraftActive()) lastSavedChapterHTML = documentItem.content || '';
+  updateEditorScrollThumb(false);
+  positionEditorAutoScrollDepthMarker();
+  resetEditorHistoryForActiveDocument();
 }
 
 function applyEditorWorkerAnalysis(result, { sequence = editorDocumentLoadSequence, bufferVersion = null } = {}) {
@@ -1101,11 +1128,12 @@ function applyEditorWorkerAnalysis(result, { sequence = editorDocumentLoadSequen
     if (isDraftActive()) setDraftWordCache(curDraft, result.stats?.words || 0);
     else setChapterWordCache(curChap, result.stats?.words || 0);
   }
+  updateActiveDocumentWordCountLabel(result.stats?.words || 0);
   const namingChanged = !isQuarantined && scanActiveEditorForNamingUses(new Date().toISOString(), result.text || '');
   const shouldRefreshNamingProjection = !isQuarantined && Boolean(String(result.text || '').trim()) &&
     (activeSidePanel === 'naming' || window.LmWorkspaceSectionLoader?.isReady?.('naming'));
   if (shouldRefreshNamingProjection) window.LmInitialRendering?.queueActiveNamingSnapshotRefresh?.();
-  renderChapters();
+  updateStorySummary();
   if (activeSidePanel === 'naming' && namingChanged) renderTags();
   updateChapterStatus();
   return true;
@@ -1130,13 +1158,42 @@ function runSurfaceEditorWorkerAnalysis(sourceHTML, options = {}) {
   });
 }
 
+function scheduleAdjacentEditorDocumentPrefetch(kind, index, sequence = editorDocumentLoadSequence) {
+  const expectedProjectHandle = projectDirectoryHandle;
+  const collection = kind === 'draft' ? chapterDrafts : chapters;
+  const candidates = [index - 1, index + 1]
+    .map(candidateIndex => collection[candidateIndex])
+    .filter(documentItem => documentItem && !documentItem.content && documentItem._contentLoadState !== 'loaded' && documentItem._contentLoadState !== 'quarantined');
+  if (!candidates.length) return;
+
+  const prefetch = () => {
+    if (sequence !== editorDocumentLoadSequence || expectedProjectHandle !== projectDirectoryHandle) return;
+    candidates.forEach(documentItem => {
+      loadEditorDocumentContentCached(documentItem, kind, expectedProjectHandle).catch(error => {
+        console.warn('Adjacent document prefetch failed:', documentItem.contentPath, error);
+      });
+    });
+  };
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(prefetch, { timeout: 1200 });
+  else setTimeout(prefetch, 120);
+}
+
 function scheduleEditorDocumentPostRender(sequence, documentItem, tasks = {}) {
   requestAnimationFrame(() => {
+    // Establish history before input is accepted, then yield a paint before
+    // analysis, Naming hydration and cache writes consume the main thread.
+    if (sequence === editorDocumentLoadSequence) finalizeEditorDocumentAfterPaint(documentItem);
+    setTimeout(() => {
     const isCurrentDocument = sequence === editorDocumentLoadSequence;
     if (isCurrentDocument) {
+      if (Number.isFinite(tasks.navigationStartedAt)) {
+        window.lmLastDocumentSwitchTiming = {
+          kind: isDraftActive() ? 'draft' : 'chapter',
+          index: isDraftActive() ? curDraft : curChap,
+          clickToPaintMs: Math.round(performance.now() - tasks.navigationStartedAt)
+        };
+      }
       runSurfaceEditorWorkerAnalysis(documentItem.content || '', { sequence });
-      loadEditor({ phase: 'analysis-layout', documentItem });
-      renderChapters();
       const shouldRefreshNaming = activeSidePanel === 'naming' || window.LmWorkspaceSectionLoader?.isReady?.('naming');
       Promise.resolve(shouldRefreshNaming ? window.LmInitialRendering?.loadNamingForActiveDocument?.() : null)
         .then(() => {
@@ -1149,7 +1206,8 @@ function scheduleEditorDocumentPostRender(sequence, documentItem, tasks = {}) {
         })
         .catch(error => console.warn('Active naming render refresh failed:', error));
       updateChapterStatus();
-      saveToStorage(false);
+      saveEditorNavigationToStorage();
+      scheduleAdjacentEditorDocumentPrefetch(isDraftActive() ? 'draft' : 'chapter', isDraftActive() ? curDraft : curChap, sequence);
     }
 
     Promise.resolve(tasks.commitPreviousSnapshot?.())
@@ -1157,19 +1215,21 @@ function scheduleEditorDocumentPostRender(sequence, documentItem, tasks = {}) {
       .then(previousEditDraftRemoved => tasks.savePreviousDocument?.(Boolean(previousEditDraftRemoved)))
       .then(() => {
         tasks.releasePreviousSnapshot?.();
-        if (isCurrentDocument) setSaveStatusDot('saved', text().saved);
+        if (sequence === editorDocumentLoadSequence) setSaveStatusDot('saved', text().saved);
       })
       .catch(error => {
         console.warn('Background document save failed:', error);
         tasks.releasePreviousSnapshot?.();
-        if (isCurrentDocument) setDefaultSaveStatus();
+        if (sequence === editorDocumentLoadSequence) setDefaultSaveStatus();
       });
+    }, 0);
   });
 }
 
 async function switchChap(index) {
   ensureChapters();
   if (index < 0 || index >= chapters.length || (!isDraftActive() && index === curChap)) return;
+  const navigationStartedAt = performance.now();
   if (!(await ensureChapterContentLoaded(index))) {
     showMiniReminder('Chapter content load नहीं हुआ; सुरक्षित रूप से switch रोक दिया गया।');
     return;
@@ -1211,6 +1271,7 @@ async function switchChap(index) {
   syncImmediateSidebarDocumentHighlight('chapter', curChap, sequence);
   updateChapterStatus();
   scheduleEditorDocumentPostRender(sequence, documentItem, {
+    navigationStartedAt,
     commitPreviousSnapshot: () => commitHiddenSwitchedSnapshotToMemory(switchedSnapshot),
     cleanupPreviousEditDraft: () => !switchedSnapshot.canPersist
       ? false
@@ -1275,6 +1336,7 @@ function loadEditor(options = {}) {
     return;
   }
   if (options.phase === 'paint') {
+    if (typeof applyActiveEditorSettingsForDocument === 'function') applyActiveEditorSettingsForDocument(documentItem);
     resetActiveEditorHTMLBuffer(documentItem.content || '');
     if (shouldVirtualizeEditorDocument(documentItem)) {
       startVirtualEditorDocument(documentItem, editorDocumentLoadSequence);

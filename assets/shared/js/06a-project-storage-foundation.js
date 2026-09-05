@@ -716,6 +716,7 @@ function chaptersToManifest() {
 }
 
 async function readProjectManifest() {
+  if (projectDirectoryHandle) await window.LmNamingFileSafety?.recoverPromotion?.(projectDirectoryHandle);
   try {
     const manifestHandle = await getProjectFileHandle(PROJECT_MANIFEST_FILE);
     return normalizeProjectManifest(JSON.parse(await readFileText(manifestHandle)));
@@ -779,7 +780,9 @@ async function writeProjectManifest(manifest = chaptersToManifest(), options = {
   }));
   if (includedFacts?.length) storyFacts = includedFacts;
   const manifestHandle = await getProjectFileHandle(PROJECT_MANIFEST_FILE, { create: true });
-  await writeFileText(manifestHandle, JSON.stringify(projectManifest, null, 2));
+  const manifestPayload = JSON.stringify(projectManifest, null, 2);
+  await writeFileText(manifestHandle, manifestPayload);
+  if (await readFileText(manifestHandle) !== manifestPayload) throw new Error('Project manifest verification failed.');
   cacheProjectManifest(projectManifest);
   await window.LmInitialRendering?.syncLeftPanelData?.();
 }
@@ -884,14 +887,14 @@ async function readNamingDataFromProject() {
   if (!projectDirectoryHandle) return;
   try {
     const namingHandle = await getProjectFileHandle(PROJECT_NAMING_FILE);
-    namingData = normalizeNamingData(JSON.parse(await readFileText(namingHandle)));
+    namingData = normalizeNamingData(await window.LmNamingFileSafety.migrateAuthoritative(projectDirectoryHandle));
   } catch (error) {
     if (error?.name !== 'NotFoundError') {
       console.error('Story_Naming.json read failed; overwrite blocked:', error);
       showMiniReminder('Story_Naming.json सुरक्षित रूप से पढ़ी नहीं जा सकी; overwrite रोक दिया गया है।');
       throw error;
     }
-    namingData = normalizeNamingData(namingData);
+    namingData = normalizeNamingData(await window.LmNamingFileSafety.migrateAuthoritative(projectDirectoryHandle, projectManifest?.namingData || namingData));
     await writeNamingDataToProject();
   }
   const documentLinksChanged = validateNamingEntryDocumentLinksOnProjectOpen();
@@ -985,6 +988,7 @@ function namingEntryDocumentTitle(entry = {}, status = normalizeNamingEntryStatu
 }
 
 function namingEntryDocumentExists(entry = {}) {
+  if (Object.prototype.hasOwnProperty.call(entry, 'source')) return !entry.source || namingDocumentRegistry().some(item => sourcesIdentifySameDocument(entry.source, item.source));
   const status = normalizeNamingEntryStatus(entry);
   if (status !== 'draft' && status !== 'chapter') return true;
 
@@ -1024,35 +1028,7 @@ function namingEntryDocumentMetaSnapshot(entry = {}, missingAt = new Date().toIS
 }
 
 function setNamingEntryDocumentUndefined(entry = {}, missingAt = new Date().toISOString()) {
-  const missingDocumentMeta = entry.missingDocumentMeta || namingEntryDocumentMetaSnapshot(entry, missingAt);
-  const previousDescriptionMeta = entry.descriptionMeta && typeof entry.descriptionMeta === 'object'
-    ? entry.descriptionMeta
-    : {};
-  const undefinedMeta = {
-    ...undefinedDescriptionChapterMeta(missingAt),
-    missingDocumentAt: entry.missingDocumentAt || missingAt,
-    missingDocumentMeta,
-    sourceState: 'missing-document'
-  };
-
-  entry.chapterStatus = 'undefined';
-  entry.documentType = 'undefined';
-  entry.chapterKey = '';
-  entry.chapterIndex = null;
-  entry.chapterNo = null;
-  entry.chapterTitle = '';
-  entry.draftKey = null;
-  entry.draftIndex = null;
-  entry.draftNo = null;
-  entry.draftTitle = '';
-  entry.contentPath = '';
-  entry.missingDocumentAt = undefinedMeta.missingDocumentAt;
-  entry.missingDocumentMeta = missingDocumentMeta;
-  entry.sourceState = 'missing-document';
-  entry.descriptionMeta = {
-    ...previousDescriptionMeta,
-    ...undefinedMeta
-  };
+  entry.source = null;
 }
 
 function namingMentionValidationText(value = '') {
@@ -1160,6 +1136,7 @@ function namingEntryNameFoundInAnyStoryDocument(entry = {}, options = {}) {
 
 function namingEntryMatchesDraftDocument(entry = {}, draft = {}, draftIndex = -1) {
   if (normalizeNamingEntryStatus(entry) !== 'draft' || !draft) return false;
+  if (Object.prototype.hasOwnProperty.call(entry, 'source')) return namingEntryBelongsToDraft(entry, createNamingSource(draft, 'draft', draftIndex));
   const draftPrefix = typeof text === 'function' ? text().draftPrefix : 'Draft';
   const draftTitle = draft.title || `${draftPrefix} ${draftIndex + 1}`;
   const documentPaths = new Set(namingDocumentPaths([draft.contentPath, draftFilePath(draftIndex)]));
@@ -1197,69 +1174,11 @@ function namingEntryStoryMentionMetaSnapshot(entry = {}, checkedAt = new Date().
 }
 
 function setNamingEntryNameMentionUndefined(entry = {}, draft = {}, draftIndex = -1, checkedAt = new Date().toISOString()) {
-  const missingNameMentionMeta = entry.missingNameMentionMeta ||
-    namingEntryNameMentionMetaSnapshot(entry, draft, draftIndex, checkedAt);
-  const previousDescriptionMeta = entry.descriptionMeta && typeof entry.descriptionMeta === 'object'
-    ? entry.descriptionMeta
-    : {};
-  const undefinedMeta = {
-    ...undefinedDescriptionChapterMeta(checkedAt),
-    missingNameMentionAt: entry.missingNameMentionAt || checkedAt,
-    missingNameMentionMeta,
-    sourceState: 'missing-name-mention'
-  };
-
-  entry.chapterStatus = 'undefined';
-  entry.documentType = 'undefined';
-  entry.chapterKey = '';
-  entry.chapterIndex = null;
-  entry.chapterNo = null;
-  entry.chapterTitle = '';
-  entry.draftKey = null;
-  entry.draftIndex = null;
-  entry.draftNo = null;
-  entry.draftTitle = '';
-  entry.contentPath = '';
-  entry.missingNameMentionAt = undefinedMeta.missingNameMentionAt;
-  entry.missingNameMentionMeta = missingNameMentionMeta;
-  entry.sourceState = 'missing-name-mention';
-  entry.descriptionMeta = {
-    ...previousDescriptionMeta,
-    ...undefinedMeta
-  };
+  entry.source = null;
 }
 
 function setNamingEntryStoryMentionUndefined(entry = {}, checkedAt = new Date().toISOString()) {
-  const missingNameMentionMeta = entry.missingNameMentionMeta ||
-    namingEntryStoryMentionMetaSnapshot(entry, checkedAt);
-  const previousDescriptionMeta = entry.descriptionMeta && typeof entry.descriptionMeta === 'object'
-    ? entry.descriptionMeta
-    : {};
-  const undefinedMeta = {
-    ...undefinedDescriptionChapterMeta(checkedAt),
-    missingNameMentionAt: entry.missingNameMentionAt || checkedAt,
-    missingNameMentionMeta,
-    sourceState: 'missing-name-mention'
-  };
-
-  entry.chapterStatus = 'undefined';
-  entry.documentType = 'undefined';
-  entry.chapterKey = '';
-  entry.chapterIndex = null;
-  entry.chapterNo = null;
-  entry.chapterTitle = '';
-  entry.draftKey = null;
-  entry.draftIndex = null;
-  entry.draftNo = null;
-  entry.draftTitle = '';
-  entry.contentPath = '';
-  entry.missingNameMentionAt = undefinedMeta.missingNameMentionAt;
-  entry.missingNameMentionMeta = missingNameMentionMeta;
-  entry.sourceState = 'missing-name-mention';
-  entry.descriptionMeta = {
-    ...previousDescriptionMeta,
-    ...undefinedMeta
-  };
+  entry.source = null;
 }
 
 function validateNamingEntryMentionsForDraft(draftIndex = curDraft, options = {}) {
@@ -1267,7 +1186,7 @@ function validateNamingEntryMentionsForDraft(draftIndex = curDraft, options = {}
   const draft = chapterDrafts[draftIndex];
   if (!draft) return false;
   const hasExplicitText = typeof options.text === 'string';
-  const sourceIsLoaded = draft._contentLoadState === 'loaded' || typeof draft.content === 'string' || typeof draft.contentHTML === 'string';
+  const sourceIsLoaded = draft._contentLoadState ? draft._contentLoadState === 'loaded' : typeof draft.content === 'string' || typeof draft.contentHTML === 'string';
   if (!hasExplicitText && !sourceIsLoaded) return false;
 
   namingData = normalizeNamingData(namingData);
@@ -1289,7 +1208,7 @@ function validateNamingEntryMentionsForDraft(draftIndex = curDraft, options = {}
 function validateNamingEntriesWithoutStoryMentions(options = {}) {
   const searchableDocuments = [...chapters, ...chapterDrafts];
   const allSourcesLoaded = searchableDocuments.every(item =>
-    item?._contentLoadState === 'loaded' || typeof item?.content === 'string' || typeof item?.contentHTML === 'string'
+    item?._contentLoadState ? item._contentLoadState === 'loaded' : typeof item?.content === 'string' || typeof item?.contentHTML === 'string'
   );
   if (!options.documentTexts && !allSourcesLoaded) return false;
   namingData = normalizeNamingData(namingData);
@@ -1351,7 +1270,9 @@ async function writeDraftsDataToProject() {
   if (!projectDirectoryHandle) return;
   chapterDrafts = normalizeDrafts(chapterDrafts);
   const draftsHandle = await getProjectFileHandle(PROJECT_DRAFTS_FILE, { create: true });
-  await writeFileText(draftsHandle, JSON.stringify({ drafts: draftsForStorage(false) }, null, 2));
+  const draftsPayload = JSON.stringify({ drafts: draftsForStorage(false) }, null, 2);
+  await writeFileText(draftsHandle, draftsPayload);
+  if (await readFileText(draftsHandle) !== draftsPayload) throw new Error('Draft metadata verification failed.');
   localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(draftsForStorage(false)));
   await window.LmInitialRendering?.syncLeftPanelData?.();
 }
@@ -1448,6 +1369,7 @@ async function loadLocalProject(handle, shouldStoreHandle = true, options = {}) 
       (localStorage.getItem(PROJECT_TYPE_FOLDER_KEY) || '') === (nextTypeFolderName || '')
     );
   projectDirectoryHandle = handle;
+  await window.LmNamingFileSafety?.recoverPromotion?.(handle);
   setActiveProjectTypeFolderName(nextTypeFolderName);
   window.LmWorkspaceSectionLoader?.reset?.();
   isDraftTrashMode = false;
@@ -1475,6 +1397,18 @@ async function loadLocalProject(handle, shouldStoreHandle = true, options = {}) 
     isProjectDataLoading = false;
     return false;
   }
+  // Resolve the complete authoritative Naming dataset before lazy projections.
+  // A different project's browser cache must never seed a missing source file.
+  let namingRecovery = normalizeNamingData();
+  if (shouldRestoreSavedTarget) {
+    try {
+      const cachedNaming = JSON.parse(localStorage.getItem(NAMING_STORAGE_KEY) || 'null');
+      if (Array.isArray(cachedNaming?.categories) && Array.isArray(cachedNaming?.entries)) namingRecovery = cachedNaming;
+    } catch (_error) { /* Invalid cache is not an authoritative dataset. */ }
+  }
+  namingData = normalizeNamingData(await window.LmNamingFileSafety.migrateAuthoritative(
+    handle, projectManifest?.namingData || namingRecovery
+  ));
   window.LmFirstProjectOpenMismatchRepair?.begin?.(handle);
   loadPasteCopySettings();
   loadAutoScrollSettingsFromManifest();
