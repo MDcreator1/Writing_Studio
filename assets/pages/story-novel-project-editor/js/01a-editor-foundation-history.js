@@ -11,6 +11,11 @@ function lmChevronSpan(direction = 'right', extraClass = '') {
   return `<span class="part-chevron">${lmChevronIcon(direction, extraClass)}</span>`;
 }
 
+function lmChapterBoundaryTransferSpan(direction = 'down') {
+  const directionClass = direction === 'up' ? 'is-up' : '';
+  return `<span class="part-chevron">${lmIcon('chapterBoundaryTransfer', directionClass)}</span>`;
+}
+
 const FOCUS_WIDTH_ACTIVE_IDLE_MS = lmEditorAdvancedNumber('focusIdleDelay', 5000);
 const EDITOR_CARET_AUTO_SCROLL_SUPPRESS_MS = lmEditorAdvancedNumber('caretScrollSuppress', 260);
 const EDITOR_MANUAL_SCROLL_OVERRIDE_MS = lmEditorAdvancedNumber('manualScrollOverride', 1200);
@@ -238,10 +243,11 @@ function isEditorReviewMode(editor = document.getElementById('editor')) {
 
 function setEditorRenderMode(editor, mode) {
   if (!editor) return;
-  const normalizedMode = mode === 'review' ? 'review' : 'plain';
+  const normalizedMode = mode === 'review' ? 'review' : mode === 'rich' ? 'rich' : 'plain';
   editor.dataset.editorMode = normalizedMode;
   editor.classList.toggle('is-plain-text-mode', normalizedMode === 'plain');
   editor.classList.toggle('is-review-mode', normalizedMode === 'review');
+  editor.classList.toggle('is-rich-text-mode', normalizedMode === 'rich');
 }
 
 function cleanPlainTextEditorValue(root) {
@@ -316,8 +322,15 @@ function renderEditorDocumentContent(editor, documentItem, options = {}) {
   }
   const sourceText = editorHTMLToText(documentItem?.content || '');
   const canEdit = typeof canEditActiveDocument === 'function' ? canEditActiveDocument() : true;
-  setEditorRenderMode(editor, canEdit ? 'plain' : 'review');
-  if (canEdit) setPlainTextEditorValue(editor, sourceText);
+  const hasRichFormatting = canEdit && typeof editorContentHasRichFormatting === 'function' &&
+    editorContentHasRichFormatting(documentItem?.content || '');
+  setEditorRenderMode(editor, canEdit ? (hasRichFormatting ? 'rich' : 'plain') : 'review');
+  if (hasRichFormatting) {
+    editor.innerHTML = documentItem.content || '';
+    normalizeEditorGapMarkers(editor);
+    if (typeof normalizeEditorParagraphBlocks === 'function') normalizeEditorParagraphBlocks(editor);
+    syncEditorPlaceholderState();
+  } else if (canEdit) setPlainTextEditorValue(editor, sourceText);
   else setReviewEditorValue(editor, sourceText);
 }
 
@@ -1376,4 +1389,3 @@ function prepareVirtualEditorHistoryRestore() {
   activeEditorHTMLBridgePromise = null;
   virtualEditorWindowRequest += 1;
 }
-

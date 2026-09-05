@@ -557,27 +557,56 @@ function renderTags() {
       return;
     }
 
-    const {
-      activeDocumentEntries: entries,
-      detectedEntries,
-      existingEntries
-    } = namingEntriesByActiveTextPriority(matchingEntries, activeText);
-
-    const htmlParts = [];
-    entries.forEach(entry => {
-      htmlParts.push(namingEntryItemHtml(entry, '', activeText));
-    });
-    detectedEntries.forEach(entry => {
-      htmlParts.push(namingEntryItemHtml(entry, 'naming-detected-entry', activeText));
-    });
-    existingEntries.forEach(entry => {
-      const extraClass = namingEntryUsesOrphanStyle(entry)
-        ? 'naming-existing-entry naming-orphan-entry'
-        : 'naming-existing-entry';
-      htmlParts.push(namingEntryItemHtml(entry, extraClass, activeText));
+    const categoryOrder = new Map(namingData.categories.map((category, index) => [category.id, index]));
+    const categoryById = new Map(namingData.categories.map(category => [category.id, category]));
+    const groupedEntries = new Map();
+    matchingEntries.forEach(entry => {
+      const categoryId = entry.categoryId || '__uncategorized__';
+      if (!groupedEntries.has(categoryId)) groupedEntries.set(categoryId, []);
+      groupedEntries.get(categoryId).push(entry);
     });
 
-    display.innerHTML = `<div class="naming-flat-search-list">${htmlParts.join('')}</div>`;
+    const searchGroups = [...groupedEntries.entries()].map(([categoryId, groupEntries]) => {
+      const category = categoryById.get(categoryId) || { id: categoryId, title: 'Uncategorized' };
+      const priority = namingEntriesByActiveTextPriority(groupEntries, activeText);
+      const statusScore = priority.activeDocumentEntries.length
+        ? 3
+        : priority.detectedEntries.length ? 2 : 1;
+      return { category, groupEntries, priority, statusScore };
+    });
+
+    if (namingSortOption === 'count') {
+      searchGroups.sort((left, right) => right.groupEntries.length - left.groupEntries.length ||
+        (categoryOrder.get(left.category.id) ?? Number.MAX_SAFE_INTEGER) - (categoryOrder.get(right.category.id) ?? Number.MAX_SAFE_INTEGER));
+    } else if (namingSortOption === 'alphabetical') {
+      searchGroups.sort((left, right) => String(left.category.title || '').localeCompare(String(right.category.title || ''), undefined, { sensitivity: 'base' }));
+    } else {
+      searchGroups.sort((left, right) => right.statusScore - left.statusScore ||
+        (categoryOrder.get(left.category.id) ?? Number.MAX_SAFE_INTEGER) - (categoryOrder.get(right.category.id) ?? Number.MAX_SAFE_INTEGER));
+    }
+
+    const groupedHtml = searchGroups.map(({ category, groupEntries, priority }) => {
+      const entryHtml = [
+        ...priority.activeDocumentEntries.map(entry => namingEntryItemHtml(entry, '', activeText)),
+        ...priority.detectedEntries.map(entry => namingEntryItemHtml(entry, 'naming-detected-entry', activeText)),
+        ...priority.existingEntries.map(entry => namingEntryItemHtml(
+          entry,
+          namingEntryUsesOrphanStyle(entry)
+            ? 'naming-existing-entry naming-orphan-entry'
+            : 'naming-existing-entry',
+          activeText
+        ))
+      ].join('');
+      return `<section class="naming-search-category-group" data-category-id="${escapeHtml(category.id)}">
+        <header class="naming-search-category-heading">
+          <strong>${escapeHtml(category.title || 'Uncategorized')}</strong>
+          <small>${groupEntries.length} ${groupEntries.length === 1 ? 'name' : 'names'}</small>
+        </header>
+        <div class="naming-search-category-entries">${entryHtml}</div>
+      </section>`;
+    }).join('');
+
+    display.innerHTML = `<div class="naming-grouped-search-list">${groupedHtml}</div>`;
     return;
   }
 

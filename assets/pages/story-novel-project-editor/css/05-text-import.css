@@ -32,11 +32,7 @@
 .text-import-trigger svg {
   width: 18px;
   height: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.9;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  fill: currentColor;
 }
 
 .text-import-modal[hidden] {
@@ -101,12 +97,20 @@ body.is-text-import-open {
   width: 34px;
   height: 34px;
   flex: 0 0 34px;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   border-radius: 50%;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  font-size: 20px;
+  display: grid;
+  place-items: center;
+}
+
+.text-import-close-icon {
+  width: 24px;
+  height: 24px;
+  display: block;
+  fill: currentColor;
 }
 
 .text-import-body {
@@ -141,8 +145,11 @@ body.is-text-import-open {
 }
 
 .text-import-option-icon {
+  width: 24px;
+  height: 24px;
+  display: block;
+  fill: currentColor;
   color: var(--accent);
-  font-size: 24px;
 }
 
 .text-import-option strong {
@@ -180,8 +187,8 @@ body.is-text-import-open {
 }
 
 .text-import-options.has-mode .text-import-option-icon {
-  font-size: 17px;
-  line-height: 1;
+  width: 17px;
+  height: 17px;
 }
 
 .text-import-options.has-mode .text-import-option strong {

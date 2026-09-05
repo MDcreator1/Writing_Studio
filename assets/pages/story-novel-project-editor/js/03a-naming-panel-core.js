@@ -10,7 +10,7 @@ function renderNamingSimilarNames() {
   list.innerHTML = activeNamingSimilarNames.map((name, index) => `
     <span class="naming-similar-name-chip">
       <span>${escapeHtml(name)}</span>
-      <button type="button" onclick="removeNamingSimilarName(${index})" aria-label="Remove ${escapeHtml(name)}">&times;</button>
+      <button type="button" onclick="removeNamingSimilarName(${index})" aria-label="Remove ${escapeHtml(name)}">${window.lmIcon('close', 'naming-similar-name-remove-icon')}</button>
     </span>`).join('');
 }
 

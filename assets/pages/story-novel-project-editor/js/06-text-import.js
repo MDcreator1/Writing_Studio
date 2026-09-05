@@ -41,17 +41,17 @@ function renderTextImportPanel() {
           <h2 id="textImportTitle">Import your text</h2>
           <p>Paste writing directly or choose a text/Word file. Nothing is saved until you select an import action.</p>
         </div>
-        <button class="text-import-close" type="button" onclick="closeTextImportPanel()" aria-label="Close">×</button>
+        <button class="text-import-close" type="button" onclick="closeTextImportPanel()" aria-label="Close">${window.lmIcon('close', 'text-import-close-icon')}</button>
       </header>
       <div class="text-import-body">
         <div class="text-import-options ${hasMode ? 'has-mode' : ''}">
           <button class="text-import-option ${state.mode === 'paste' ? 'is-active' : ''}" type="button" onclick="selectTextImportMode('paste')">
-            <span class="text-import-option-icon">✎</span>
+            ${lmIcon('paste', 'text-import-option-icon')}
             <strong>Paste text</strong>
             <small>Paste or type content, then review it before importing.</small>
           </button>
           <button class="text-import-option ${state.mode === 'file' ? 'is-active' : ''}" type="button" onclick="selectTextImportMode('file')">
-            <span class="text-import-option-icon">⇩</span>
+            ${lmIcon('import2', 'text-import-option-icon')}
             <strong>${state.loading ? 'Reading file…' : 'Import file'}</strong>
             <small>Choose a .txt, .md or .docx document from this device.</small>
           </button>

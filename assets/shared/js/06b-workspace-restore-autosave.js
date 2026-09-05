@@ -118,6 +118,7 @@ function chaptersForStorage() {
     title: chapter.title,
     content: chapter.content,
     contentHTML: chapter.content || '',
+    richContentHTML: editorDocumentRichContentForStorage(chapter),
     notes: chapter.notes || [],
     contentPath: chapter.contentPath || '',
     partIndex: chapter.partIndex || 0,
@@ -129,7 +130,9 @@ function chaptersForStorage() {
     paragraphMargin: normalizeOptionalEditorParagraphMargin(chapter.paragraphMargin),
     fontFamily: normalizeEditorFontFamily(chapter.fontFamily),
     fontSize: normalizeEditorFontSize(chapter.fontSize),
-    editorSettings: normalizeEditorSettings(chapter.editorSettings),
+    editorSettings: chapter.editorSettings
+      ? normalizeEditorSettings(chapter.editorSettings)
+      : mergeProjectAutoScrollSettings(null),
     _wordCount: Number.isFinite(chapter._wordCount) ? chapter._wordCount : null,
     _wordCountVerifiedSignature: typeof chapter._wordCountVerifiedSignature === 'string'
       ? chapter._wordCountVerifiedSignature
@@ -143,6 +146,7 @@ function draftsForStorage(includeContent = true) {
     title: draft.title,
     content: includeContent ? draft.content : '',
     contentHTML: includeContent ? draft.content || '' : '',
+    richContentHTML: editorDocumentRichContentForStorage(draft),
     notes: draft.notes || [],
     contentPath: draft.contentPath || '',
     draftNo: draft.draftNo || 1,
@@ -153,7 +157,9 @@ function draftsForStorage(includeContent = true) {
     paragraphMargin: normalizeOptionalEditorParagraphMargin(draft.paragraphMargin),
     fontFamily: normalizeEditorFontFamily(draft.fontFamily),
     fontSize: normalizeEditorFontSize(draft.fontSize),
-    editorSettings: normalizeEditorSettings(draft.editorSettings),
+    editorSettings: draft.editorSettings
+      ? normalizeEditorSettings(draft.editorSettings)
+      : mergeProjectAutoScrollSettings(null),
     _wordCount: Number.isFinite(draft._wordCount) ? draft._wordCount : null,
     _wordCountVerifiedSignature: typeof draft._wordCountVerifiedSignature === 'string'
       ? draft._wordCountVerifiedSignature
@@ -167,6 +173,7 @@ function trashDraftsForStorage(includeContent = true) {
     title: draft.title,
     content: includeContent ? draft.content : '',
     contentHTML: includeContent ? draft.content || '' : '',
+    richContentHTML: editorDocumentRichContentForStorage(draft),
     notes: draft.notes || [],
     contentPath: draft.contentPath || '',
     draftNo: draft.draftNo || 1,
@@ -180,7 +187,9 @@ function trashDraftsForStorage(includeContent = true) {
     paragraphMargin: normalizeOptionalEditorParagraphMargin(draft.paragraphMargin),
     fontFamily: normalizeEditorFontFamily(draft.fontFamily),
     fontSize: normalizeEditorFontSize(draft.fontSize),
-    editorSettings: normalizeEditorSettings(draft.editorSettings),
+    editorSettings: draft.editorSettings
+      ? normalizeEditorSettings(draft.editorSettings)
+      : mergeProjectAutoScrollSettings(null),
     _wordCount: Number.isFinite(draft._wordCount) ? draft._wordCount : null
   }));
 }
@@ -193,6 +202,7 @@ function chapterEditDraftsForStorage(includeContent = true) {
     title: draft.title,
     content: includeContent ? draft.content : '',
     contentHTML: includeContent ? draft.content || '' : '',
+    richContentHTML: editorDocumentRichContentForStorage(draft),
     contentPath: draft.contentPath || '',
     draftNo: draft.draftNo || 1,
     createdAt: draft.createdAt || new Date().toISOString(),
@@ -203,7 +213,9 @@ function chapterEditDraftsForStorage(includeContent = true) {
     paragraphMargin: normalizeOptionalEditorParagraphMargin(draft.paragraphMargin),
     fontFamily: normalizeEditorFontFamily(draft.fontFamily),
     fontSize: normalizeEditorFontSize(draft.fontSize),
-    editorSettings: normalizeEditorSettings(draft.editorSettings),
+    editorSettings: draft.editorSettings
+      ? normalizeEditorSettings(draft.editorSettings)
+      : mergeProjectAutoScrollSettings(null),
     lastAutosavedHTML: draft.lastAutosavedHTML || draft.content || '',
     lastAutosavedText: draft.lastAutosavedText || ''
   }));

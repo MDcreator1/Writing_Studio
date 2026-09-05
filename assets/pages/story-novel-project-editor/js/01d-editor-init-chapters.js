@@ -595,7 +595,7 @@ function saveToStorage(updateCurrentContent = true) {
   localStorage.setItem('lm_theme', currentThemeMode);
   if (!hasActiveStory()) {
     localStorage.setItem('lm_dark', isDark);
-    saveEditorSettings();
+    saveEditorSettings({ persistProject: false });
     if (workspaceDirectoryHandle) {
       localStorage.setItem(PROJECT_MODE_KEY, 'workspace');
       localStorage.setItem(WORKSPACE_FOLDER_KEY, workspaceDirectoryHandle.name || '');
@@ -618,7 +618,7 @@ function saveToStorage(updateCurrentContent = true) {
     const documentItem = activeEditorDocument();
     if (documentItem) documentItem.content = currentContent;
   }
-  saveEditorSettings();
+  saveEditorSettings({ persistProject: false });
   if (!projectDirectoryHandle) {
     localStorage.setItem('lm_chapters', JSON.stringify(chaptersForStorage()));
   }

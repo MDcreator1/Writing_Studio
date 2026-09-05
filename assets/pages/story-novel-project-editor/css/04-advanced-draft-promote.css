@@ -405,7 +405,7 @@ body.is-advanced-promote-open {
   border-radius: 8px;
   background: var(--surface);
   color: var(--accent);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-large);
   font-weight: 950;
   display: inline-flex;
   align-items: center;
@@ -426,13 +426,13 @@ body.is-advanced-promote-open {
 }
 
 .advanced-promote-chapter-list-copy strong {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xl);
   font-weight: 900;
 }
 
 .advanced-promote-chapter-list-copy small {
   color: var(--muted);
-  font-size: var(--font-size-2xs);
+  font-size: var(--font-size-xs);
   font-weight: 750;
 }
 

@@ -776,17 +776,17 @@ function renderChapters() {
       ${boundaryActions.moveUp ? `<button class="part-menu-btn chapter-boundary-transfer-btn" type="button"
         onclick="event.stopPropagation(); moveSelectedPartBoundaryChapters(${partIndex}, 'up')"
         title="Move selected chapters to the previous part" aria-label="Move selected chapters to the previous part">
-        ${lmChevronSpan('up')}
+        ${lmChapterBoundaryTransferSpan('up')}
       </button>` : ''}
       ${boundaryActions.moveDown ? `<button class="part-menu-btn chapter-boundary-transfer-btn" type="button"
         onclick="event.stopPropagation(); moveSelectedPartBoundaryChapters(${partIndex}, 'down')"
         title="Move selected chapters to the next part" aria-label="Move selected chapters to the next part">
-        ${lmChevronSpan('down')}
+        ${lmChapterBoundaryTransferSpan('down')}
       </button>` : ''}
       ${boundaryActions.moveToTemporary ? `<button class="part-menu-btn chapter-boundary-transfer-btn" type="button"
         onclick="event.stopPropagation(); moveSelectedPartBoundaryChapters(${partIndex}, 'temporary')"
         title="Move selected chapters to Temporary Chapters" aria-label="Move selected chapters to Temporary Chapters">
-        ${lmChevronSpan('down')}
+        ${lmChapterBoundaryTransferSpan('down')}
       </button>` : ''}
       ${boundaryActions.moveToDraft ? `<button class="part-menu-btn chapter-to-draft-btn chapter-boundary-transfer-btn" type="button"
         onclick="event.stopPropagation(); openChapterRecentToDraftPanel('part', ${partIndex}, this)"

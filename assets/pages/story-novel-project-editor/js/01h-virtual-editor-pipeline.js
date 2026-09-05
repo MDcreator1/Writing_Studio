@@ -214,7 +214,9 @@ function initRestrictedInputFloatingPanelObserver() {
 }
 
 function shouldVirtualizeEditorDocument(documentItem) {
-  return Boolean(documentItem && isLargeVirtualEditorDocument(documentItem));
+  const hasRichFormatting = typeof editorContentHasRichFormatting === 'function' &&
+    editorContentHasRichFormatting(documentItem?.content || documentItem?.richContentHTML || '');
+  return Boolean(documentItem && !hasRichFormatting && isLargeVirtualEditorDocument(documentItem));
 }
 
 function boundedVirtualFallbackFromHTML(documentItem) {

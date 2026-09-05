@@ -2,8 +2,13 @@
 
 const LM_EDITOR_ADVANCED_SETTINGS_KEY = 'lm_editor_advanced_settings_v1';
 const LM_EDITOR_QUICK_SETTINGS_PINS_KEY = 'lm_editor_quick_settings_pins_v1';
+const LM_EDITOR_ADVANCED_EXPLANATION_LANGUAGE_KEY = 'lm_editor_advanced_explanation_language_v1';
 const LM_EDITOR_QUICK_SETTINGS_PIN_DEFAULTS = Object.freeze({
   autoscroll: true,
+  autoScrollParagraphFollow: true,
+  autoScrollClickReposition: true,
+  autoScrollDuration: true,
+  autoScrollApplyAll: true,
   smartCopy: true,
   smartPaste: true,
   globalFormatting: true,
@@ -50,9 +55,6 @@ const LM_EDITOR_ADVANCED_SCHEMA = [
   { category: 'Focus & auto-scroll', key: 'markerClickDelay', label: 'Marker click delay', unit: 'ms', value: 240, min: 0, max: 1000, step: 10, work: 'Wait used to distinguish click from double-click.', up: 'Better double-click detection; slower single click.', down: 'Faster click; double-click can misfire.' },
   { category: 'Focus & auto-scroll', key: 'caretSyncDelay', label: 'Caret position sync', unit: 'ms', value: 90, min: 0, max: 2000, step: 10, work: 'Delay before caret placement updates auto-scroll markers.', up: 'Fewer geometry reads; marker follows later.', down: 'Marker follows sooner; more layout reads.' },
   { category: 'Focus & auto-scroll', key: 'autoScrollBandMinGap', label: 'Comfort band minimum gap', unit: '%', value: 22, min: 5, max: 50, step: 1, work: 'Minimum vertical gap enforced between the comfort-band top and bottom boundaries.', up: 'Top and bottom guides remain farther apart.', down: 'Allows tighter comfort-band boundaries.' },
-  { category: 'Focus & auto-scroll', key: 'defaultAutoScrollDepth', label: 'Default single-marker position', unit: '%', value: 72, min: 1, max: 100, step: 1, work: 'Global default position for single depth marker mode.', up: 'Sets default single-marker position lower on the screen.', down: 'Sets default single-marker position higher on the screen.' },
-  { category: 'Focus & auto-scroll', key: 'defaultAutoScrollBandTop', label: 'Default comfort-band top', unit: '%', value: 14, min: 1, max: 99, step: 1, work: 'Global default upper boundary for comfort band mode.', up: 'Lowers the default top comfort boundary.', down: 'Raises the default top comfort boundary.' },
-  { category: 'Focus & auto-scroll', key: 'defaultAutoScrollBandBottom', label: 'Default comfort-band bottom', unit: '%', value: 88, min: 2, max: 100, step: 1, work: 'Global default lower boundary for comfort band mode.', up: 'Lowers the default bottom comfort boundary.', down: 'Raises the default bottom comfort boundary.' },
 
   { category: 'Sidebar & feedback', key: 'sidebarMinHeight', label: 'Chapter list minimum', unit: 'px', value: 160, min: 80, max: 500, step: 10, work: 'Minimum usable chapter-list height.', up: 'List keeps more space; editor may get less.', down: 'More room for other sidebar sections.' },
   { category: 'Sidebar & feedback', key: 'draftVisibleItems', label: 'Compact draft visibility', unit: 'items', value: 2.5, min: 1, max: 10, step: 0.5, work: 'Approximate visible drafts in compact mode.', up: 'More drafts visible; chapter area shrinks.', down: 'More chapter space; fewer drafts visible.' },
@@ -72,7 +74,7 @@ const LM_EDITOR_DEVELOPER_SETTING_KEYS = new Set([
   'workerWindowMaximum', 'workerResponseTimeout', 'patchBatchDelay', 'materializeDelay', 'fullAnalysisDelay', 'memoryCommitDelay',
   'autosaveDelay', 'autosaveIntervalDelay', 'historyDebounce', 'hindiLogicalRefresh', 'caretScrollSuppress',
   'manualScrollOverride', 'manualScrollIntent', 'programmaticScrollWindow', 'markerClickDelay', 'caretSyncDelay',
-  'draftFallbackHeight', 'customSelectHeight', 'autoScrollBandMinGap', 'defaultAutoScrollDepth', 'defaultAutoScrollBandTop', 'defaultAutoScrollBandBottom'
+  'draftFallbackHeight', 'customSelectHeight', 'autoScrollBandMinGap'
 ]);
 
 const LM_EDITOR_ADVANCED_USER_COPY = {
@@ -110,9 +112,6 @@ const LM_EDITOR_ADVANCED_USER_COPY = {
   focusWidthDefault: ['Default focus-mode page width', 'Starting width of the writing page when focus mode opens.', 'Focus mode opens with a wider writing area.', 'Focus mode opens with a narrower reading column.'],
   focusStatsHide: ['Selection statistics display time', 'How long word and selection statistics remain visible in focus mode.', 'Statistics stay visible longer.', 'Statistics disappear sooner.'],
   autoScrollBandMinGap: ['Comfort band minimum gap', 'Minimum vertical gap required between top and bottom comfort-band guides.', 'Top and bottom guides stay farther apart.', 'Allows top and bottom guides to get closer together.'],
-  defaultAutoScrollDepth: ['Default single-marker position', 'Global default position for single depth marker mode.', 'Sets default single-marker position lower on the screen.', 'Sets default single-marker position higher on the screen.'],
-  defaultAutoScrollBandTop: ['Default comfort-band top', 'Global default upper boundary for comfort band mode.', 'Lowers the default top comfort boundary.', 'Raises the default top comfort boundary.'],
-  defaultAutoScrollBandBottom: ['Default comfort-band bottom', 'Global default lower boundary for comfort band mode.', 'Lowers the default bottom comfort boundary.', 'Raises the default bottom comfort boundary.'],
   sidebarMinHeight: ['Minimum chapter-list height', 'Smallest height the chapter list is allowed to use.', 'More chapters remain visible, leaving less room for other sections.', 'Other sidebar sections gain space.'],
   draftVisibleItems: ['Drafts visible in compact view', 'Approximate number of drafts shown before the compact list scrolls.', 'More drafts are visible, leaving less room for chapters.', 'More room remains for chapters, with fewer drafts visible.'],
   draftCompactMinimum: ['Start compact draft view at', 'Number of drafts required before the compact draft layout turns on.', 'Compact view starts only when there are more drafts.', 'Compact view starts sooner.'],
@@ -125,6 +124,110 @@ const LM_EDITOR_ADVANCED_USER_COPY = {
   customMinimumOccurrences: ['Required custom split markers', 'Minimum times your custom word must appear before it can split an import.', 'Custom splitting requires more reliable markers.', 'Text can be split using fewer marker appearances.'],
   customSelectHeight: ['Split-method menu height', 'Maximum height of the split-method choice menu.', 'More choices fit without scrolling.', 'The menu is smaller and may need a scrollbar.']
 };
+
+const LM_EDITOR_ADVANCED_HINDI_EXPLANATIONS = {
+  virtualWordThreshold: ['इतने शब्द या अधिक होने पर document पूरा DOM में रखने के बजाय तेज़ virtual editor इस्तेमाल करता है।', 'Virtual mode केवल बड़े manuscripts पर शुरू होगा; मध्यम documents पूरी तरह render होंगे और typing भारी हो सकती है।', 'Virtual mode छोटे documents पर भी जल्दी शुरू होगा; DOM हल्का रहेगा, लेकिन scrolling और Worker coordination बढ़ेगा।'],
+  virtualWindowSize: ['Virtual editor में caret के आसपास अधिकतम इतने paragraphs DOM में सक्रिय रखे जाते हैं।', 'आस-पास का अधिक text तैयार रहेगा और long scrolling smooth होगी, पर DOM layout तथा typing पर load बढ़ेगा।', 'DOM updates हल्के होंगे, पर paragraph window अधिक बार बदलेगी।'],
+  workerWindowMaximum: ['Background Bridge Worker एक बार में अधिकतम इतने paragraphs का window तैयार कर सकता है।', 'Worker बड़े windows भेज सकेगा, जिससे memory और data-transfer का काम बढ़ेगा।', 'Memory cap सख्त होगा, लेकिन बड़े requested windows काटे जा सकते हैं।'],
+  workerResponseTimeout: ['Worker task इतने समय तक response न दे तो editor उसे stalled मानकर safe fallback या retry शुरू करता है।', 'बहुत धीमे tasks को पूरा होने का समय मिलेगा, लेकिन अटका Worker देर से recover होगा।', 'अटका Worker जल्दी recover होगा, पर बहुत भारी valid task बीच में timeout हो सकता है।'],
+  patchBatchDelay: ['लगातार paragraph edits को इतने समय तक जोड़कर एक batch में Worker को भेजा जाता है।', 'Worker messages कम होंगे, लेकिन counts और background state typing से थोड़ा पीछे रहेंगे।', 'Background state जल्दी update होगी, लेकिन Worker messages अधिक चलेंगे।'],
+  materializeDelay: ['Virtual paragraph state से पूरा authoritative innerHTML दोबारा बनाने से पहले typing रुकने की यह प्रतीक्षा है।', 'Typing के बीच full rebuild कम होंगे, पर memory/save के लिए पूरा HTML देर से तैयार होगा।', 'पूरा HTML जल्दी sync होगा, पर बड़े documents में rebuild work बढ़ेगा।'],
+  fullAnalysisDelay: ['Typing रुकने के बाद names और document statistics का पूरा analysis इतने समय बाद चलता है।', 'Typing को अधिक breathing room मिलेगा, लेकिन naming/statistics देर से update होंगे।', 'Analysis जल्दी दिखेगा, पर rapid typing के दौरान CPU competition बढ़ सकती है।'],
+  memoryCommitDelay: ['Normal, non-virtual document का बदला HTML application memory में commit करने का debounce है।', 'पास-पास के edits एक commit में जुड़ेंगे, लेकिन unsaved memory state देर से बदलेगी।', 'Memory जल्दी update होगी, लेकिन commits अधिक बार होंगे।'],
+  restrictedInputIdleDelay: ['Rapid typing के lightweight/restricted rendering से पूरे document rendering पर लौटने की idle अवधि है।', 'हल्का typing view लंबे pause तक सक्रिय रहेगा।', 'पूरा document view जल्दी लौटेगा, जिससे rendering work जल्दी शुरू होगा।'],
+  autosaveInputIdleDelay: ['आखिरी typed character के बाद वास्तविक persistence autosave शुरू होने की प्रतीक्षा है।', 'छोटे pauses में storage writes कम होंगी, पर हाल का काम disk/browser storage तक देर से पहुँचेगा।', 'काम जल्दी save होगा, लेकिन storage writes अधिक बार होंगी।'],
+  autosaveDelay: ['Content authoritative memory में पहुँचने के बाद भी save बाकी हो तो यह fallback persistence delay लागू होता है।', 'Fallback writes कम होंगे, लेकिन missed save की recovery धीमी होगी।', 'Fallback save जल्दी शुरू होगा और storage activity बढ़ेगी।'],
+  autosaveIntervalDelay: ['Unsaved data रहने तक editor इतनी अवधि पर periodic safety save/check चलाता है।', 'Checks कम होंगे, लेकिन missed idle save देर से पकड़ा जाएगा।', 'Missed save जल्दी recover होगा, पर background checks अधिक चलेंगे।'],
+  readingWordsPerMinute: ['Displayed reading-time estimate निकालने के लिए प्रति मिनट पढ़े गए शब्दों की यह मानक गति है; content नहीं बदलता।', 'अनुमानित reading time छोटा दिखाई देगा।', 'अनुमानित reading time लंबा दिखाई देगा।'],
+  savedStatusDuration: ['मुख्य Saved confirmation screen पर इतने समय तक दिखाई देता है।', 'Save confirmation अधिक देर दिखेगा।', 'Interface जल्दी साफ होगा और confirmation जल्दी हटेगा।'],
+  sideSaveDuration: ['Side panels में save confirmation इतने समय तक दिखाई देता है।', 'Sidebar feedback आसानी से दिखाई देगा।', 'Side panel जल्दी सामान्य स्थिति में लौटेगा।'],
+  historyLimit: ['एक document के लिए अधिकतम इतने undo HTML snapshots memory में रखे जाते हैं।', 'Undo अधिक पीछे तक जाएगा, लेकिन memory usage बढ़ेगा।', 'Memory बचेगी, लेकिन पुराने undo points जल्दी हटेंगे।'],
+  historyDocuments: ['Current session में अधिकतम इतने documents की undo history RAM में याद रखी जाती है; reload के बाद यह persist नहीं होती।', 'अधिक documents पर वापस जाकर undo मिल सकेगा, लेकिन memory बढ़ेगी।', 'पुराने document histories जल्दी हटेंगे और memory घटेगी।'],
+  historyTypingGroup: ['इस अवधि के भीतर हुई लगातार typing को एक undo operation में merge किया जा सकता है।', 'एक Undo अधिक बड़ा typed हिस्सा हटाएगा।', 'Undo अधिक granular होगा, पर snapshots ज्यादा बन सकते हैं।'],
+  historyDebounce: ['Typing pause के इतने समय बाद नया undo snapshot capture होता है।', 'Snapshots कम बनेंगे, लेकिन नवीन undo point देर से आएगा।', 'Undo point जल्दी बनेगा, लेकिन snapshot work और memory बढ़ेगी।'],
+  hindiLogicalRefresh: ['Hindi Unicode text की logical-character sequence का deferred rescan इतने समय बाद होता है।', 'Typing के दौरान scans कम होंगे, पर logical state देर से update होगी।', 'Unicode state जल्दी fresh होगी, लेकिन scans अधिक होंगे।'],
+  formatSelectionGrace: ['Captured text selection toolbar formatting के लिए इतने समय तक valid रहती है।', 'Toolbar देर से दबाने पर भी selection बचेगी, पर पुरानी selection target होने का जोखिम बढ़ेगा।', 'पुरानी selection जल्दी expire होगी, इसलिए targeting सुरक्षित पर कम forgiving होगी।'],
+  focusIdleDelay: ['Focus mode में inactivity के बाद controls को idle या hidden करने की प्रतीक्षा है।', 'Controls अधिक देर दिखाई देंगे।', 'Focus view जल्दी साफ और distraction-free होगा।'],
+  focusWidthMin: ['Focus editor को viewport की इस चौड़ाई से अधिक संकरा होने नहीं दिया जाता।', 'बहुत संकरा writing column रुकेगा, पर छोटे screens पर जगह कम लचीली होगी।', 'Narrow writing column की अनुमति मिलेगी।'],
+  focusWidthMax: ['Focus editor viewport की इस चौड़ाई से अधिक फैल नहीं सकता।', 'Text area और line length अधिक चौड़ी हो सकेगी।', 'Line width सीमित होगी और side space अधिक बचेगा।'],
+  focusWidthDefault: ['Focus mode खुलने पर writing area की शुरुआती चौड़ाई यह होती है।', 'Default writing area चौड़ा होगा।', 'Default reading/writing column संकरा होगा।'],
+  focusStatsHide: ['Selection statistics दिखाई देने के बाद इतने समय में अपने-आप छिपती हैं।', 'Statistics अधिक देर visible रहेंगी।', 'Statistics जल्दी हटेंगी।'],
+  caretScrollSuppress: ['Manual caret action के बाद auto-scroll को इतने समय तक दबाया जाता है ताकि page user से न लड़े।', 'Scroll fighting कम होगी, पर cursor-follow देर से लौटेगा।', 'Auto-follow जल्दी लौटेगा, पर manual action से टकरा सकता है।'],
+  manualScrollOverride: ['User wheel/touch से scroll करे तो auto-scroll इतने समय तक pause रहता है।', 'Manual position लंबे समय तक सम्मानित होगी।', 'Caret follow जल्दी वापस शुरू होगा।'],
+  manualScrollIntent: ['Wheel या touch event को intentional manual scrolling मानने की अवधि है।', 'User scroll को मजबूत priority मिलेगी।', 'Automatic scrolling जल्दी control वापस ले सकेगी।'],
+  programmaticScrollWindow: ['App द्वारा शुरू किए scroll events को manual user scroll से अलग पहचानने की time window है।', 'अधिक scroll events app-generated माने जाएंगे; वास्तविक user input miss हो सकता है।', 'App scroll को गलती से manual मानकर auto-follow pause हो सकता है।'],
+  markerDragThreshold: ['Pointer को इतने pixels चलाने के बाद auto-scroll marker click के बजाय drag माना जाता है।', 'Accidental drag कम होंगे, लेकिन marker खींचने के लिए अधिक movement चाहिए।', 'Dragging responsive होगा, पर accidental movement बढ़ सकता है।'],
+  markerClickDelay: ['Single-click और double-click में फर्क करने के लिए marker action इतनी देर प्रतीक्षा करता है।', 'Double-click पहचान बेहतर होगी, लेकिन single-click response धीमा लगेगा।', 'Single-click तेज़ होगा, पर double-click गलत पहचान सकता है।'],
+  caretSyncDelay: ['Caret placement बदलने के बाद auto-scroll marker geometry update करने का debounce है।', 'Layout reads कम होंगे, पर marker caret को देर से follow करेगा।', 'Marker जल्दी follow करेगा, लेकिन geometry/layout reads बढ़ेंगी।'],
+  autoScrollBandMinGap: ['Comfort-band की top और bottom boundaries के बीच न्यूनतम vertical दूरी है।', 'Guides अधिक दूर रहेंगी और comfort area बड़ा होगा।', 'Tighter comfort band की अनुमति मिलेगी।'],
+  sidebarMinHeight: ['Sidebar layout में chapter list को मिलने वाली न्यूनतम usable height है।', 'Chapter list अधिक जगह रखेगी, जिससे drafts/editor को कम जगह मिल सकती है।', 'अन्य sidebar sections के लिए अधिक जगह खुलेगी।'],
+  draftVisibleItems: ['Compact mode में लगभग इतने draft cards दिखाई देने लायक height रखी जाती है; decimal value आंशिक card दिखा सकती है।', 'अधिक drafts साथ दिखेंगे, लेकिन chapter area सिकुड़ेगा।', 'Chapter area बढ़ेगा, लेकिन कम drafts दिखेंगे।'],
+  draftCompactMinimum: ['इतने drafts होने के बाद sidebar compact draft layout activate करता है।', 'Compact mode देर से चालू होगा।', 'Compact mode कम drafts पर जल्दी चालू होगा।'],
+  draftFallbackHeight: ['Real layout measurement उपलब्ध न हो तो draft box के लिए यह fallback height इस्तेमाल होती है।', 'Draft area को अधिक जगह मिलेगी।', 'Chapter/editor area के लिए अधिक जगह बचेगी।'],
+  smartCopyReset: ['Successful Smart Copy के बाद copied icon इतने समय तक active रहता है; clipboard content पर असर नहीं पड़ता।', 'Copy confirmation अधिक देर दिखेगा।', 'Icon जल्दी normal होगा।'],
+  importDefaultWords: ['Advanced Import शुरू होने पर प्रति draft/chapter शुरुआती word target यह होता है।', 'कम लेकिन बड़े drafts बनेंगे।', 'अधिक लेकिन छोटे drafts बनेंगे।'],
+  importMinimumWords: ['Advanced Import के words-per-chapter input की सबसे छोटी स्वीकार्य value है।', 'बहुत छोटे drafts बनने से रुकेंगे।', 'छोटे split targets की अनुमति मिलेगी।'],
+  importMaximumWords: ['Advanced Import के words-per-chapter input की सबसे बड़ी स्वीकार्य value है।', 'बहुत बड़े drafts की अनुमति मिलेगी।', 'गलती से विशाल split target डालना रुकेगा।'],
+  importSmartLookAhead: ['Word target के बाद natural sentence या newline boundary खोजने के लिए इतने अतिरिक्त characters scan होते हैं।', 'Ending अधिक natural हो सकती है, लेकिन word target से deviation बढ़ेगा।', 'Word count target के करीब रहेगा, पर ending अचानक कट सकती है।'],
+  customMinimumOccurrences: ['Custom separator को valid split marker मानने के लिए text में कम-से-कम इतनी occurrences चाहिए।', 'Validation सख्त होगी और accidental markers कम मान्य होंगे।', 'कम marker appearances से भी splitting हो सकेगी।'],
+  customSelectHeight: ['Split Method dropdown menu की अधिकतम visual height है; splitting logic नहीं बदलता।', 'अधिक options बिना scroll दिखेंगे।', 'Menu छोटा होगा और scrollbar जल्दी आएगा।']
+};
+
+function lmEditorAdvancedExplanationLanguage() {
+  return localStorage.getItem(LM_EDITOR_ADVANCED_EXPLANATION_LANGUAGE_KEY) === 'hi' ? 'hi' : 'en';
+}
+
+function lmEditorAdvancedExplanation(item, language = lmEditorAdvancedExplanationLanguage()) {
+  const english = lmEditorAdvancedCopy(item);
+  const hindi = LM_EDITOR_ADVANCED_HINDI_EXPLANATIONS[item.key];
+  return language === 'hi' && hindi
+    ? { ...english, work: hindi[0], up: hindi[1], down: hindi[2] }
+    : english;
+}
+
+const LM_EDITOR_ADVANCED_DIRECTION_RISK = Object.freeze({
+  virtualWordThreshold: [3, 4], virtualWindowSize: [4, 2], workerWindowMaximum: [4, 3], workerResponseTimeout: [3, 4],
+  patchBatchDelay: [3, 3], materializeDelay: [4, 4], fullAnalysisDelay: [2, 3], memoryCommitDelay: [5, 4], restrictedInputIdleDelay: [2, 3],
+  autosaveInputIdleDelay: [5, 4], autosaveDelay: [5, 3], autosaveIntervalDelay: [5, 3], readingWordsPerMinute: [1, 1], savedStatusDuration: [1, 1], sideSaveDuration: [1, 1],
+  historyLimit: [3, 2], historyDocuments: [3, 2], historyTypingGroup: [2, 2], historyDebounce: [3, 2], hindiLogicalRefresh: [3, 3], formatSelectionGrace: [3, 2],
+  focusIdleDelay: [1, 1], focusWidthMin: [2, 2], focusWidthMax: [2, 2], focusWidthDefault: [2, 2], focusStatsHide: [1, 1],
+  caretScrollSuppress: [3, 3], manualScrollOverride: [3, 2], manualScrollIntent: [3, 2], programmaticScrollWindow: [4, 4], markerDragThreshold: [2, 2], markerClickDelay: [2, 2], caretSyncDelay: [3, 3],
+  autoScrollBandMinGap: [2, 2],
+  sidebarMinHeight: [2, 1], draftVisibleItems: [2, 1], draftCompactMinimum: [1, 1], draftFallbackHeight: [1, 1], smartCopyReset: [1, 1],
+  importDefaultWords: [2, 2], importMinimumWords: [3, 2], importMaximumWords: [2, 3], importSmartLookAhead: [2, 2], customMinimumOccurrences: [2, 2], customSelectHeight: [1, 1]
+});
+
+function advancedEditorRiskColor(level, progress) {
+  const intensity = Math.max(0, Math.min(1, progress)) * Math.max(1, Math.min(5, level)) / 5;
+  const hue = Math.round(132 * (1 - intensity));
+  const lightness = Math.round(39 + (1 - intensity) * 3);
+  return `hsl(${hue} 68% ${lightness}%)`;
+}
+
+function updateAdvancedEditorRiskIndicator(key) {
+  const item = lmEditorAdvancedDefinition(key);
+  const input = document.querySelector(`[data-advanced-editor-key="${key}"]`);
+  if (!item || !input) return;
+  const value = Number(input.value);
+  if (!Number.isFinite(value)) return;
+  const increase = document.querySelector(`[data-advanced-setting-increased="${key}"] b`);
+  const decrease = document.querySelector(`[data-advanced-setting-decreased="${key}"] b`);
+  const [increaseRisk, decreaseRisk] = LM_EDITOR_ADVANCED_DIRECTION_RISK[key] || [2, 2];
+  const aboveDefault = Math.max(0, value - item.value) / Math.max(1, item.max - item.value);
+  const belowDefault = Math.max(0, item.value - value) / Math.max(1, item.value - item.min);
+  if (increase) {
+    increase.style.color = advancedEditorRiskColor(increaseRisk, aboveDefault);
+    increase.title = value > item.value ? `Increase-side impact: ${Math.round(aboveDefault * 100)}% of the allowed range from default` : 'Increase moves the value toward or from its default';
+  }
+  if (decrease) {
+    decrease.style.color = advancedEditorRiskColor(decreaseRisk, belowDefault);
+    decrease.title = value < item.value ? `Decrease-side impact: ${Math.round(belowDefault * 100)}% of the allowed range from default` : 'Decrease moves the value toward or from its default';
+  }
+}
+
+function updateAdvancedEditorRiskIndicators() {
+  LM_EDITOR_ADVANCED_SCHEMA.forEach(item => updateAdvancedEditorRiskIndicator(item.key));
+}
 
 function lmEditorAdvancedCopy(item) {
   const copy = LM_EDITOR_ADVANCED_USER_COPY[item.key];
@@ -140,12 +243,12 @@ function lmEditorAdvancedStored() {
     const pf = projectManifest.globalTextFormatting;
     return {
       ...stored,
-      globalFontSize: stored.globalFontSize ?? pf.globalFontSize ?? pf.fontSize ?? 16,
-      globalLineSpacing: stored.globalLineSpacing ?? pf.globalLineSpacing ?? pf.lineHeight ?? 0,
-      globalParagraphGap: stored.globalParagraphGap ?? pf.globalParagraphGap ?? pf.paragraphGap ?? 1,
-      reviewModeMargin: stored.reviewModeMargin ?? pf.reviewModeMargin ?? pf.paragraphMargin ?? 0,
-      globalAlignment: stored.globalAlignment ?? pf.globalAlignment ?? pf.alignment ?? 'justify',
-      globalFontFamily: stored.globalFontFamily ?? pf.globalFontFamily ?? pf.fontFamily ?? (typeof EDITOR_FONT_FAMILIES !== 'undefined' ? EDITOR_FONT_FAMILIES[0] : 'Lora')
+      globalFontSize: pf.globalFontSize ?? pf.fontSize ?? stored.globalFontSize ?? 16,
+      globalLineSpacing: pf.globalLineSpacing ?? pf.lineHeight ?? stored.globalLineSpacing ?? 0,
+      globalParagraphGap: pf.globalParagraphGap ?? pf.paragraphGap ?? stored.globalParagraphGap ?? 1,
+      reviewModeMargin: pf.reviewModeMargin ?? pf.paragraphMargin ?? stored.reviewModeMargin ?? 0,
+      globalAlignment: pf.globalAlignment ?? pf.alignment ?? stored.globalAlignment ?? 'justify',
+      globalFontFamily: pf.globalFontFamily ?? pf.fontFamily ?? stored.globalFontFamily ?? (typeof EDITOR_FONT_FAMILIES !== 'undefined' ? EDITOR_FONT_FAMILIES[0] : 'Lora')
     };
   }
   return stored;
@@ -221,6 +324,13 @@ function syncAdvancedQuickPinButtons(key) {
   });
 }
 
+function syncAdvancedQuickPinParentVisibility(parentKey) {
+  const parentPinned = isEditorQuickSettingPinned(parentKey);
+  document.querySelectorAll(`[data-advanced-quick-pin-parent="${parentKey}"]`).forEach(button => {
+    button.hidden = !parentPinned;
+  });
+}
+
 function toggleEditorQuickSettingPin(event, key) {
   event?.preventDefault?.();
   event?.stopPropagation?.();
@@ -238,6 +348,7 @@ function toggleEditorQuickSettingPin(event, key) {
   }
 
   syncAdvancedQuickPinButtons(key);
+  if (key === 'autoscroll') syncAdvancedQuickPinParentVisibility('autoscroll');
   if (typeof updateEditorSettingsUI === 'function') updateEditorSettingsUI();
 }
 
@@ -245,10 +356,13 @@ function advancedQuickPinButton(key, label, options = {}) {
   const pinned = isEditorQuickSettingPinned(key);
   const title = pinned ? `Remove ${label} from quick settings` : `Pin ${label} to quick settings`;
   const compact = options.compact === true;
+  const parentKey = String(options.parentKey || '');
+  const parentAttribute = parentKey ? ` data-advanced-quick-pin-parent="${parentKey}"` : '';
+  const parentHidden = parentKey && !isEditorQuickSettingPinned(parentKey) ? ' hidden' : '';
   const pinIcon = typeof window.lmIcon === 'function'
     ? window.lmIcon(pinned ? 'pinPinned' : 'pinUnpinned')
     : '';
-  return `<button class="advanced-quick-pin-button ${compact ? 'is-compact' : ''} ${pinned ? 'is-pinned' : ''}" type="button" data-advanced-quick-pin="${key}" data-advanced-quick-pin-name="${label}" aria-pressed="${pinned}" aria-label="${title}" title="${title}" onclick="toggleEditorQuickSettingPin(event, '${key}')"><span class="advanced-quick-pin-mark" data-advanced-quick-pin-icon aria-hidden="true">${pinIcon}</span><span class="${compact ? 'advanced-quick-pin-label-hidden' : ''}" data-advanced-quick-pin-label>${pinned ? `${label} pinned` : `Pin ${label}`}</span></button>`;
+  return `<button class="advanced-quick-pin-button ${compact ? 'is-compact' : ''} ${pinned ? 'is-pinned' : ''}" type="button" data-advanced-quick-pin="${key}"${parentAttribute} data-advanced-quick-pin-name="${label}" aria-pressed="${pinned}" aria-label="${title}" title="${title}" onclick="toggleEditorQuickSettingPin(event, '${key}')"${parentHidden}><span class="advanced-quick-pin-mark" data-advanced-quick-pin-icon aria-hidden="true">${pinIcon}</span><span class="${compact ? 'advanced-quick-pin-label-hidden' : ''}" data-advanced-quick-pin-label>${pinned ? `${label} pinned` : `Pin ${label}`}</span></button>`;
 }
 
 function advancedNumberStepper(inputHTML, key, label) {
@@ -287,7 +401,7 @@ const LM_EDITOR_ADVANCED_TOP_SECTIONS = [
   { key: 'import-promote', icon: 'IP', label: 'Import & Promote', note: 'Workflow defaults', description: 'Keep imported-text and draft-promotion defaults, destinations, and permanent conclusions independent.' },
   { key: 'find-replace', icon: 'FR', label: 'Find & Replace', note: 'Matching and scope', description: 'Choose how text is matched and which results Replace All is allowed to change.' },
   { key: 'advanced-word-editing', icon: 'WE', label: 'Advanced Word Editing', note: 'Rules and replacement flow', description: 'Prepare how grouped aliases, matching priorities, dictionaries, previews, and safe bulk word edits will behave.' },
-  { key: 'developer', icon: 'Dev', label: 'Developer settings', note: '44 internal controls', description: 'Performance, saving, input, layout, feedback, and import engine controls.' }
+  { key: 'developer', icon: 'Dev', label: 'Developer settings', note: `${LM_EDITOR_ADVANCED_SCHEMA.length} internal controls`, description: 'Performance, saving, input, layout, feedback, and import engine controls.' }
 ];
 const LM_EDITOR_ADVANCED_CATEGORY_META = {
   'Large document & workers': { icon: 'Aa', description: 'Control how the editor keeps long chapters fast and comfortable while you write.' },
@@ -300,7 +414,7 @@ const LM_EDITOR_ADVANCED_CATEGORY_META = {
 
 function selectAdvancedEditorSettingsCategory(index, options = {}) {
   closeAdvancedEditorSettingInfo();
-  const categories = [...new Set(LM_EDITOR_ADVANCED_SCHEMA.map(item => item.category)), 'Project Cache & Storage'];
+  const categories = [...new Set(LM_EDITOR_ADVANCED_SCHEMA.map(item => item.category)), 'Rendering Snapshots', 'Project Cache & Storage'];
   const nextIndex = Math.max(0, Math.min(categories.length - 1, Number(index) || 0));
   activeAdvancedEditorSettingsCategoryIndex = nextIndex;
   document.querySelectorAll('[data-advanced-developer-category]').forEach(button => {
@@ -395,13 +509,44 @@ function toggleAdvancedEditorSettingInfo(event, key) {
   popover.style.top = `${Math.max(12, buttonRect.top - popoverRect.height - 10)}px`;
 }
 
+function setAdvancedEditorExplanationLanguage(language) {
+  const nextLanguage = language === 'hi' ? 'hi' : 'en';
+  localStorage.setItem(LM_EDITOR_ADVANCED_EXPLANATION_LANGUAGE_KEY, nextLanguage);
+  LM_EDITOR_ADVANCED_SCHEMA.forEach(item => {
+    const copy = lmEditorAdvancedExplanation(item, nextLanguage);
+    const description = document.querySelector(`[data-advanced-setting-description="${item.key}"]`);
+    const increased = document.querySelector(`[data-advanced-setting-increased="${item.key}"]`);
+    const decreased = document.querySelector(`[data-advanced-setting-decreased="${item.key}"]`);
+    if (description) description.textContent = copy.work;
+    if (increased) {
+      increased.querySelector('b').textContent = 'Increase';
+      increased.querySelector('small').textContent = copy.up;
+    }
+    if (decreased) {
+      decreased.querySelector('b').textContent = 'Decrease';
+      decreased.querySelector('small').textContent = copy.down;
+    }
+  });
+  const button = document.querySelector('[data-advanced-explanation-language-toggle]');
+  if (!button) return;
+  const isHindi = nextLanguage === 'hi';
+  button.classList.toggle('is-hindi', isHindi);
+  button.setAttribute('aria-pressed', String(isHindi));
+  button.setAttribute('aria-label', isHindi ? 'Switch setting explanations to English' : 'सेटिंग की व्याख्या हिंदी में दिखाएँ');
+  button.innerHTML = `<span aria-hidden="true">${isHindi ? 'हि' : 'En'}</span><strong>${isHindi ? 'English' : 'हिंदी'}</strong>`;
+}
+
+function toggleAdvancedEditorExplanationLanguage() {
+  setAdvancedEditorExplanationLanguage(lmEditorAdvancedExplanationLanguage() === 'hi' ? 'en' : 'hi');
+}
+
 function renderAdvancedEditorSettingsLegacy() {
   const modal = document.getElementById('advancedEditorSettingsModal');
   if (!modal) return;
   const stored = lmEditorAdvancedStored();
   const categories = [...new Set(LM_EDITOR_ADVANCED_SCHEMA.map(item => item.category))];
   modal.innerHTML = `<section class="advanced-editor-settings-card" role="dialog" aria-modal="true" aria-labelledby="advancedEditorSettingsTitle">
-    <header><div><span>Runtime configuration</span><h2 id="advancedEditorSettingsTitle">Advanced Editor Settings</h2><p>Changes are validated, saved locally, and applied after reload.</p></div><button type="button" onclick="closeAdvancedEditorSettings()" aria-label="Close">×</button></header>
+    <header><div><span>Runtime configuration</span><h2 id="advancedEditorSettingsTitle">Advanced Editor Settings</h2><p>Changes are validated, saved locally, and applied after reload.</p></div><button type="button" onclick="closeAdvancedEditorSettings()" aria-label="Close">${window.lmIcon('close', 'advanced-editor-settings-close-icon')}</button></header>
     <main>${categories.map((category, categoryIndex) => `<details ${categoryIndex === 0 ? 'open' : ''}><summary><strong>${category}</strong><span>${LM_EDITOR_ADVANCED_SCHEMA.filter(item => item.category === category).length} settings</span></summary><div class="advanced-editor-settings-grid">${LM_EDITOR_ADVANCED_SCHEMA.filter(item => item.category === category).map(item => `<label class="advanced-editor-setting-item"><span class="advanced-editor-setting-name"><strong>${item.label}</strong><em>${item.unit}</em></span>${advancedEditorSettingControl(item, stored)}<p>${item.work}</p><div><span class="is-up">Increase:</span> ${item.up}</div><div><span class="is-down">Decrease:</span> ${item.down}</div><button type="button" onclick="resetAdvancedEditorSetting('${item.key}')">Default ${item.value}</button></label>`).join('')}</div></details>`).join('')}</main></section>`;
 }
 
@@ -431,13 +576,13 @@ function renderAdvancedEditorSettingsCategoryLegacy() {
     return `<section class="advanced-editor-settings-section" data-advanced-settings-section="${categoryIndex}" ${categoryIndex === activeAdvancedEditorSettingsCategoryIndex ? '' : 'hidden'}><div class="advanced-editor-settings-section-head"><div><span>Advanced editor</span><h3>${category}</h3><p>${meta.description}</p></div><div class="advanced-editor-settings-section-tools"><strong>${items.length - developerCount}</strong>${developerToggle}</div></div><div class="advanced-editor-settings-list">${settings}</div></section>`;
   }).join('');
   modal.innerHTML = `<section class="advanced-editor-settings-card" role="dialog" aria-modal="true" aria-labelledby="advancedEditorSettingsTitle">
-    <header class="advanced-editor-settings-header"><div><h2 id="advancedEditorSettingsTitle">Advanced settings</h2><p>Fine-tune editor behavior and performance.</p></div><button type="button" onclick="closeAdvancedEditorSettings()" aria-label="Close">&times;</button></header>
+    <header class="advanced-editor-settings-header"><div><h2 id="advancedEditorSettingsTitle">Advanced settings</h2><p>Fine-tune editor behavior and performance.</p></div><button type="button" onclick="closeAdvancedEditorSettings()" aria-label="Close">${window.lmIcon('close', 'advanced-editor-settings-close-icon')}</button></header>
     <div class="advanced-editor-settings-shell"><aside class="advanced-editor-settings-nav" aria-label="Settings sections"><span class="advanced-editor-settings-nav-label">Settings</span>${navigation}<div class="advanced-editor-settings-nav-note">Changes apply after reload.</div></aside><main class="advanced-editor-settings-content" onscroll="closeAdvancedEditorSettingInfo()">${sections}</main></div>
   </section>`;
 }
 
 function advancedRuntimeSettingCopy(title, description, quickPin = null) {
-  return `<span><span class="advanced-runtime-title-line"><strong>${title}</strong>${quickPin ? advancedQuickPinButton(quickPin.key, quickPin.label, { compact: true }) : ''}</span><p>${description}</p></span>`;
+  return `<span><span class="advanced-runtime-title-line"><strong>${title}</strong>${quickPin ? advancedQuickPinButton(quickPin.key, quickPin.label, { compact: true, parentKey: quickPin.parentKey }) : ''}</span><p>${description}</p></span>`;
 }
 
 function decorateAdvancedEditorSettingsIcons() {
@@ -497,7 +642,7 @@ function renderAdvancedEditorSettings() {
   const developerCategoryTabs = categories.map((category, categoryIndex) => {
     const active = categoryIndex === activeAdvancedEditorSettingsCategoryIndex;
     const count = category === 'Rendering Snapshots'
-      ? 4
+      ? '4 actions'
       : category === 'Project Cache & Storage'
         ? 3
       : LM_EDITOR_ADVANCED_SCHEMA.filter(item => item.category === category).length;
@@ -543,7 +688,7 @@ function renderAdvancedEditorSettings() {
 
     const items = LM_EDITOR_ADVANCED_SCHEMA.filter(item => item.category === category);
     const settings = items.map((item, idx) => {
-      const copy = lmEditorAdvancedCopy(item);
+      const copy = lmEditorAdvancedExplanation(item);
       let subhead = '';
       if (category === 'Focus & auto-scroll') {
         if (item.key === 'focusIdleDelay') {
@@ -552,7 +697,7 @@ function renderAdvancedEditorSettings() {
           subhead = `<div class="advanced-developer-subhead" style="grid-column: 1 / -1; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); margin-bottom: 8px; font-weight: 700; color: var(--accent); text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;">Auto-Scroll Developer Settings</div>`;
         }
       }
-      return `${subhead}<div class="advanced-editor-setting-item"><div class="advanced-editor-setting-copy"><label class="advanced-editor-setting-name" for="advancedEditorSetting-${item.key}"><strong>${copy.label}</strong><em>${item.unit}</em></label><p id="advancedEditorSettingDescription-${item.key}">${copy.work}</p></div><div class="advanced-editor-setting-control">${advancedEditorSettingControl(item, stored)}<button type="button" onclick="resetAdvancedEditorSetting('${item.key}')">Reset to ${item.value}</button></div><div class="advanced-editor-setting-info-wrap"><button class="advanced-editor-setting-info-button" type="button" aria-label="Show what changing ${copy.label} does" aria-expanded="false" onclick="toggleAdvancedEditorSettingInfo(event, '${item.key}')"><span aria-hidden="true">i</span></button><div class="advanced-editor-setting-info-popover" data-advanced-setting-info="${item.key}" role="tooltip" hidden><span><b>If increased</b>${copy.up}</span><span><b>If decreased</b>${copy.down}</span></div></div></div>`;
+      return `${subhead}<div class="advanced-editor-setting-item"><div class="advanced-editor-setting-copy"><label class="advanced-editor-setting-name" for="advancedEditorSetting-${item.key}"><strong>${copy.label}</strong><em>${item.unit}</em></label><p id="advancedEditorSettingDescription-${item.key}" data-advanced-setting-description="${item.key}">${copy.work}</p></div><div class="advanced-editor-setting-control">${advancedEditorSettingControl(item, stored)}<button type="button" onclick="resetAdvancedEditorSetting('${item.key}')">Reset to ${item.value}</button></div><div class="advanced-editor-setting-info-wrap"><button class="advanced-editor-setting-info-button" type="button" aria-label="Show what changing ${copy.label} does" aria-expanded="false" onclick="toggleAdvancedEditorSettingInfo(event, '${item.key}')"><span aria-hidden="true">i</span></button><div class="advanced-editor-setting-info-popover lm-side-info-custom-scroll" data-advanced-setting-info="${item.key}" role="tooltip" hidden><span data-advanced-setting-increased="${item.key}"><b>Increase</b><small>${copy.up}</small></span><span data-advanced-setting-decreased="${item.key}"><b>Decrease</b><small>${copy.down}</small></span></div></div></div>`;
     }).join('');
 
     return `<section class="advanced-developer-settings-section" data-advanced-developer-section="${categoryIndex}" ${isActive ? '' : 'hidden'}><div class="advanced-developer-settings-copy"><h4>${category}</h4></div><div class="advanced-editor-settings-list">${settings}</div></section>`;
@@ -560,18 +705,33 @@ function renderAdvancedEditorSettings() {
 
   const developerMeta = LM_EDITOR_ADVANCED_TOP_SECTIONS.find(section => section.key === 'developer');
   const developerBody = `<div class="advanced-developer-category-tabs" role="tablist" aria-label="Developer setting categories">${developerCategoryTabs}</div>${developerSections}`;
+  const explanationsAreHindi = lmEditorAdvancedExplanationLanguage() === 'hi';
+  const developerLanguageToggle = `<button class="advanced-explanation-language-toggle ${explanationsAreHindi ? 'is-hindi' : ''}" type="button" data-advanced-explanation-language-toggle aria-pressed="${explanationsAreHindi}" aria-label="${explanationsAreHindi ? 'Switch setting explanations to English' : 'सेटिंग की व्याख्या हिंदी में दिखाएँ'}" onclick="toggleAdvancedEditorExplanationLanguage()"><span aria-hidden="true">${explanationsAreHindi ? 'हि' : 'En'}</span><strong>${explanationsAreHindi ? 'English' : 'हिंदी'}</strong></button>`;
 
   const autoScrollMeta = LM_EDITOR_ADVANCED_TOP_SECTIONS.find(section => section.key === 'autoscroll');
-  const focusTime = typeof currentEditorAutoScrollFocusTimeMs === 'function' ? currentEditorAutoScrollFocusTimeMs() : 320;
+  const globalAutoScroll = typeof projectAutoScrollSettingsTemplate === 'function'
+    ? projectAutoScrollSettingsTemplate()
+    : {
+        autoScrollEnabled: true,
+        autoScrollMode: 'depth',
+        autoScrollEmptyParagraphOnly: false,
+        autoScrollClickRepositionEnabled: true,
+        autoScrollFocusTime: 320,
+        autoScrollDepth: '72%',
+        autoScrollBandTop: '34%',
+        autoScrollBandBottom: '78%'
+      };
+  const focusTime = globalAutoScroll.autoScrollFocusTime;
   const autoScrollBody = `<div class="advanced-runtime-settings-list">
-    ${advancedRuntimeToggle('autoScrollEnabled', 'Follow the typing cursor', 'Automatically move the page when the cursor reaches the selected guide position.', Boolean(isEditorAutoScrollEnabled), true)}
-    ${advancedRuntimeToggle('autoScrollEmptyOnly', 'Follow only on empty paragraphs', 'Move the page only when you type or place the cursor on an empty paragraph.', Boolean(isEditorAutoScrollEmptyParagraphOnly), false)}
-    ${advancedRuntimeNumber('autoScrollFocusTime', 'Scroll movement duration', 'Time used to move the page smoothly to the cursor guide. Smaller values feel faster.', focusTime, 200, 5000, 10, 'ms', 320)}
-    ${advancedRuntimeSelect('autoScrollMode', 'Cursor-following style', 'Use one depth guide or keep the cursor inside a top-and-bottom comfort band.', editorAutoScrollMode, [{ value: 'depth', label: 'Single depth marker' }, { value: 'band', label: 'Top / bottom comfort band' }], 'depth')}
-    ${advancedRuntimeNumber('autoScrollDepth', 'Single-marker position', 'Vertical viewport position where the cursor is kept in single-marker mode.', advancedStoredPercent(EDITOR_AUTO_SCROLL_DEPTH_KEY, 72), 1, 100, 1, '%', 72)}
-    ${advancedRuntimeNumber('autoScrollBandTop', 'Comfort-band top', 'Upper boundary of the cursor comfort area.', advancedStoredPercent(EDITOR_AUTO_SCROLL_BAND_TOP_KEY, 14), 1, 99, 1, '%', 14)}
-    ${advancedRuntimeNumber('autoScrollBandBottom', 'Comfort-band bottom', 'Lower boundary of the cursor comfort area.', advancedStoredPercent(EDITOR_AUTO_SCROLL_BAND_BOTTOM_KEY, 88), 2, 100, 1, '%', 88)}
-  </div>`;
+    ${advancedRuntimeToggle('autoScrollEnabled', 'Follow the typing cursor', 'Saved project template for new documents. Existing documents change only when Apply to all is used.', Boolean(globalAutoScroll.autoScrollEnabled), true)}
+    ${advancedRuntimeToggle('autoScrollEmptyOnly', 'Follow only on empty paragraphs', 'Saved project template for whether cursor following runs only on empty paragraphs.', Boolean(globalAutoScroll.autoScrollEmptyParagraphOnly), false, { key: 'autoScrollParagraphFollow', label: 'Paragraph Follow', parentKey: 'autoscroll' })}
+    ${advancedRuntimeNumber('autoScrollFocusTime', 'Scroll movement duration', 'Saved project-template duration for moving the page smoothly to the cursor guide.', focusTime, 200, 5000, 10, 'ms', 320, { key: 'autoScrollDuration', label: 'Scroll Duration', parentKey: 'autoscroll' })}
+    ${advancedRuntimeSelect('autoScrollMode', 'Active marker mode', 'Choose which marker guides cursor following. The settings for both marker modes remain visible below.', globalAutoScroll.autoScrollMode, [{ value: 'depth', label: 'Depth marker' }, { value: 'band', label: 'Loop marker' }], 'depth')}
+    ${advancedRuntimeNumber('autoScrollDepth', 'Single-marker position', 'Saved project-template vertical position for the Depth Marker.', parseFloat(globalAutoScroll.autoScrollDepth) || 72, 1, 100, 1, '%', 72)}
+    ${advancedRuntimeToggle('autoScrollClickReposition', 'Reposition Depth Marker on editor click', 'Allow a mouse click inside the editor to move the Depth Marker to the clicked caret position. Marker dragging and keyboard controls remain available.', Boolean(globalAutoScroll.autoScrollClickRepositionEnabled), true, { key: 'autoScrollClickReposition', label: 'Depth Click Reposition', parentKey: 'autoscroll' })}
+    ${advancedRuntimeNumber('autoScrollBandTop', 'Comfort-band top', 'Saved project-template upper boundary for the Loop Marker.', parseFloat(globalAutoScroll.autoScrollBandTop) || 34, 1, 99, 1, '%', 34)}
+    ${advancedRuntimeNumber('autoScrollBandBottom', 'Comfort-band bottom', 'Saved project-template lower boundary for the Loop Marker.', parseFloat(globalAutoScroll.autoScrollBandBottom) || 78, 2, 100, 1, '%', 78)}
+  </div><div class="advanced-runtime-action"><span><span class="advanced-runtime-title-line"><strong>Apply Auto-scroll settings to all documents</strong>${advancedQuickPinButton('autoScrollApplyAll', 'Auto-scroll Apply to all', { compact: true, parentKey: 'autoscroll' })}</span><p>Save keeps these values as the project template without changing existing documents. Apply to all overwrites only Auto-scroll settings in every chapter, draft, and chapter-edit draft.</p></span><button type="button" onclick="runAdvancedAutoScrollApplyGlobally()">Apply to all</button></div>`;
 
   const globalFmt = typeof getStoredOrRuntimeGlobalFormatting === 'function'
     ? getStoredOrRuntimeGlobalFormatting()
@@ -627,8 +787,8 @@ function renderAdvancedEditorSettings() {
     || '<div class="advanced-word-editing-loading">Loading Advanced Import and Promote settings…</div>';
 
   const sections = [
-    advancedFeatureSection('developer', developerMeta, developerBody, `${LM_EDITOR_ADVANCED_SCHEMA.length} settings`),
-    advancedFeatureSection('autoscroll', autoScrollMeta, autoScrollBody, '7 controls', [{ key: 'autoscroll', label: 'Auto-scroll' }]),
+    advancedFeatureSection('developer', developerMeta, developerBody, `${LM_EDITOR_ADVANCED_SCHEMA.length} settings`, [], developerLanguageToggle),
+    advancedFeatureSection('autoscroll', autoScrollMeta, autoScrollBody, '8 controls', [{ key: 'autoscroll', label: 'Auto-scroll' }]),
     advancedFeatureSection('smart-copy', smartCopyMeta, smartCopyBody, '3 controls', [{ key: 'smartCopy', label: 'Smart Copy' }]),
     advancedFeatureSection('smart-paste', smartPasteMeta, smartPasteBody, '4 controls', [{ key: 'smartPaste', label: 'Smart Paste' }], smartPasteSyncButton),
     advancedFeatureSection('global', globalMeta, globalBody, '8 controls'),
@@ -638,17 +798,17 @@ function renderAdvancedEditorSettings() {
   ].join('');
 
   modal.innerHTML = `<section class="advanced-editor-settings-card" role="dialog" aria-modal="true" aria-labelledby="advancedEditorSettingsTitle">
-    <header class="advanced-editor-settings-header"><div><h2 id="advancedEditorSettingsTitle">Advanced settings</h2><p>Detailed controls for editor systems. Normal Editor Settings remain unchanged.</p></div><button type="button" onclick="closeAdvancedEditorSettings()" aria-label="Close">&times;</button></header>
+    <header class="advanced-editor-settings-header"><div><h2 id="advancedEditorSettingsTitle">Advanced settings</h2><p>Detailed controls for editor systems. Normal Editor Settings remain unchanged.</p></div><button type="button" onclick="closeAdvancedEditorSettings()" aria-label="Close">${window.lmIcon('close', 'advanced-editor-settings-close-icon')}</button></header>
     <div class="advanced-editor-settings-shell"><aside class="advanced-editor-settings-nav" aria-label="Advanced setting sections"><span class="advanced-editor-settings-nav-label">Advanced settings</span>${navigation}<div class="advanced-editor-settings-nav-note">Changes are saved from the action bar.</div></aside><main class="advanced-editor-settings-content" onscroll="closeAdvancedEditorSettingInfo()">${sections}</main></div>
     <footer class="advanced-settings-footer" data-advanced-settings-footer hidden><button class="advanced-settings-reset-all" type="button" onclick="resetAllAdvancedEditorSettings()">Reset all</button><button class="is-primary" type="button" onclick="saveAdvancedEditorSettings()">Save & Reload</button></footer>
   </section>`;
   attachAdvancedRuntimeQuickPin('findMode', 'find', 'Find settings');
   attachAdvancedRuntimeQuickPin('replaceScope', 'replace', 'Replace settings');
   syncAdvancedSmartCopyConditionalControls();
-  syncAdvancedAutoScrollConditionalControls();
   decorateAdvancedEditorSettingsIcons();
   window.lmAdvancedWordEditing?.mount?.(modal);
   window.LmAdvancedImportPromoteSettings?.syncImportCustomWordVisibility?.();
+  updateAdvancedEditorRiskIndicators();
 }
 
 let advancedEditorSettingsBaseline = {};
@@ -708,10 +868,12 @@ function openAdvancedEditorSettings() {
     modal.addEventListener('click', event => { if (event.target === modal) closeAdvancedEditorSettings(); });
     modal.addEventListener('input', event => {
       event.target?.classList?.remove('is-invalid');
+      if (event.target?.dataset?.advancedEditorKey) updateAdvancedEditorRiskIndicator(event.target.dataset.advancedEditorKey);
       if (event.target?.matches?.('[data-advanced-editor-key], [data-advanced-runtime-key]')) checkAdvancedEditorSettingsDirty();
     });
     modal.addEventListener('change', event => {
       handleAdvancedRuntimeControlChange(event);
+      if (event.target?.dataset?.advancedEditorKey) updateAdvancedEditorRiskIndicator(event.target.dataset.advancedEditorKey);
       if (event.target?.matches?.('[data-advanced-editor-key], [data-advanced-runtime-key]')) checkAdvancedEditorSettingsDirty();
     });
     document.body.appendChild(modal);
@@ -743,6 +905,7 @@ function resetAdvancedEditorSetting(key) {
   const input = document.querySelector(`[data-advanced-editor-key="${key}"]`);
   if (item && input) {
     input.value = item.value;
+    updateAdvancedEditorRiskIndicator(key);
     checkAdvancedEditorSettingsDirty();
   }
 }
@@ -764,6 +927,7 @@ function resetAllAdvancedEditorSettings() {
   });
   syncAdvancedSmartCopyConditionalControls();
   window.LmAdvancedImportPromoteSettings?.syncImportCustomWordVisibility?.();
+  updateAdvancedEditorRiskIndicators();
   checkAdvancedEditorSettingsDirty();
 }
 
@@ -794,26 +958,8 @@ function syncAdvancedSmartCopyConditionalControls() {
   if (customGapRow) customGapRow.hidden = advancedRuntimeControlValue('smartCopyMode') !== 'gap';
 }
 
-function syncAdvancedAutoScrollConditionalControls() {
-  const isBandMode = advancedRuntimeControlValue('autoScrollMode') === 'band';
-  const depthRow = document.querySelector('[data-advanced-runtime-row-key="autoScrollDepth"]');
-  const bandTopRow = document.querySelector('[data-advanced-runtime-row-key="autoScrollBandTop"]');
-  const bandBottomRow = document.querySelector('[data-advanced-runtime-row-key="autoScrollBandBottom"]');
-
-  if (depthRow) depthRow.hidden = isBandMode;
-  if (bandTopRow) bandTopRow.hidden = !isBandMode;
-  if (bandBottomRow) bandBottomRow.hidden = !isBandMode;
-}
-
 function syncAdvancedQuickControlsFromRuntime() {
   if (!document.getElementById('advancedEditorSettingsModal') || document.getElementById('advancedEditorSettingsModal').hidden) return;
-  setAdvancedRuntimeControlValue('autoScrollEnabled', isEditorAutoScrollEnabled);
-  setAdvancedRuntimeControlValue('autoScrollMode', editorAutoScrollMode);
-  setAdvancedRuntimeControlValue('autoScrollEmptyOnly', isEditorAutoScrollEmptyParagraphOnly);
-  if (typeof currentEditorAutoScrollFocusTimeMs === 'function') setAdvancedRuntimeControlValue('autoScrollFocusTime', currentEditorAutoScrollFocusTimeMs());
-  setAdvancedRuntimeControlValue('autoScrollDepth', advancedStoredPercent(EDITOR_AUTO_SCROLL_DEPTH_KEY, 72));
-  setAdvancedRuntimeControlValue('autoScrollBandTop', advancedStoredPercent(EDITOR_AUTO_SCROLL_BAND_TOP_KEY, 34));
-  setAdvancedRuntimeControlValue('autoScrollBandBottom', advancedStoredPercent(EDITOR_AUTO_SCROLL_BAND_BOTTOM_KEY, 78));
   setAdvancedRuntimeControlValue('smartPasteEnabled', isPasteSettingsEnabled);
   setAdvancedRuntimeControlValue('smartPasteLineSpacing', smartPasteLineSpacing);
   setAdvancedRuntimeControlValue('smartPasteParagraphGap', smartPasteParagraphGap);
@@ -826,7 +972,6 @@ function syncAdvancedQuickControlsFromRuntime() {
   setAdvancedRuntimeControlValue('findMode', editorFindMode);
   setAdvancedRuntimeControlValue('replaceScope', editorReplaceScope);
   syncAdvancedSmartCopyConditionalControls();
-  syncAdvancedAutoScrollConditionalControls();
   if (typeof syncCustomSelects === 'function') syncCustomSelects(document.getElementById('advancedEditorSettingsModal'));
 }
 
@@ -836,6 +981,10 @@ function handleAdvancedRuntimeControlChange(event) {
   const key = control.dataset.advancedRuntimeKey;
   const value = control.type === 'checkbox' ? Boolean(control.checked) : control.value;
   control.classList.remove('is-invalid');
+
+  if (key.startsWith('autoScroll')) {
+    return;
+  }
 
   if (key === 'smartCopyMode') {
     copyParaMode = value === 'single' ? 'single' : 'gap';
@@ -862,26 +1011,11 @@ function handleAdvancedRuntimeControlChange(event) {
     if (typeof doFind === 'function' && typeof isFindOpen !== 'undefined' && isFindOpen && document.getElementById('findInp')?.value) doFind();
   }
   else if (key === 'replaceScope' && typeof setEditorReplaceScope === 'function') setEditorReplaceScope(value);
-  else if (key === 'autoScrollEnabled') {
-    isEditorAutoScrollEnabled = Boolean(value);
-    if (typeof saveEditorSettings === 'function') saveEditorSettings();
-  } else if (key === 'autoScrollMode') {
-    if (typeof setEditorAutoScrollMode === 'function') setEditorAutoScrollMode(value, { enable: false });
-    syncAdvancedAutoScrollConditionalControls();
-  }
-  else if (key === 'autoScrollEmptyOnly') {
-    isEditorAutoScrollEmptyParagraphOnly = Boolean(value);
-    if (typeof saveEditorSettings === 'function') saveEditorSettings();
-  } else if (key === 'autoScrollFocusTime' && typeof setEditorAutoScrollFocusTime === 'function') setEditorAutoScrollFocusTime(value);
-  else if (key === 'autoScrollDepth') localStorage.setItem(EDITOR_AUTO_SCROLL_DEPTH_KEY, `${Math.max(1, Math.min(100, Number(value) || 72))}%`);
-  else if (key === 'autoScrollBandTop') localStorage.setItem(EDITOR_AUTO_SCROLL_BAND_TOP_KEY, `${Math.max(1, Math.min(99, Number(value) || 34))}%`);
-  else if (key === 'autoScrollBandBottom') localStorage.setItem(EDITOR_AUTO_SCROLL_BAND_BOTTOM_KEY, `${Math.max(2, Math.min(100, Number(value) || 78))}%`);
 
   if (key.startsWith('smartCopy') || key.startsWith('smartPaste') || key === 'globalAutoApply') {
     if (typeof savePasteCopySettings === 'function') savePasteCopySettings();
   }
   if (typeof updateEditorSettingsUI === 'function') updateEditorSettingsUI();
-  if (key.startsWith('autoScroll') && typeof positionEditorAutoScrollDepthMarker === 'function') positionEditorAutoScrollDepthMarker();
 }
 
 function focusInvalidAdvancedRuntimeControl(key, sectionKey, message) {
@@ -993,7 +1127,7 @@ async function runAdvancedGlobalStyleApply() {
 
 
 
-function saveAdvancedEditorSettings() {
+async function saveAdvancedEditorSettings() {
   if (window.LmAdvancedImportPromoteSettings?.validateFromPanel?.() === false) return;
   const next = {};
   for (const item of LM_EDITOR_ADVANCED_SCHEMA) {
@@ -1078,25 +1212,28 @@ function saveAdvancedEditorSettings() {
   if (window.LmAdvancedImportPromoteSettings?.saveFromPanel?.() === false) return;
   localStorage.setItem(LM_EDITOR_ADVANCED_SETTINGS_KEY, JSON.stringify(next));
 
-  isEditorAutoScrollEnabled = Boolean(advancedRuntimeControlValue('autoScrollEnabled'));
-  editorAutoScrollMode = advancedRuntimeControlValue('autoScrollMode') === 'band' ? 'band' : 'depth';
-  isEditorAutoScrollEmptyParagraphOnly = Boolean(advancedRuntimeControlValue('autoScrollEmptyOnly'));
+  const autoScrollTemplate = advancedAutoScrollTemplateFromPanel();
+  if (!autoScrollTemplate) return;
+  storeAdvancedAutoScrollProjectTemplate(autoScrollTemplate);
   editorFindMode = ['safe', 'raw', 'deep'].includes(advancedRuntimeControlValue('findMode')) ? advancedRuntimeControlValue('findMode') : 'safe';
   editorReplaceScope = ['all', 'after', 'before'].includes(advancedRuntimeControlValue('replaceScope')) ? advancedRuntimeControlValue('replaceScope') : 'all';
-  localStorage.setItem(EDITOR_AUTO_SCROLL_FOCUS_TIME_KEY, String(Math.round(focusTime)));
-  localStorage.setItem(EDITOR_AUTO_SCROLL_DEPTH_KEY, `${autoScrollDepth}%`);
-  localStorage.setItem(EDITOR_AUTO_SCROLL_BAND_TOP_KEY, `${bandTop}%`);
-  localStorage.setItem(EDITOR_AUTO_SCROLL_BAND_BOTTOM_KEY, `${bandBottom}%`);
-  if (typeof saveEditorSettings === 'function') saveEditorSettings();
   syncAdvancedClipboardValuesFromPanel();
   if (typeof persistProjectManifestSnapshot === 'function') persistProjectManifestSnapshot();
-  if (typeof applyAutoScrollCssVariablesFromSettings === 'function') applyAutoScrollCssVariablesFromSettings();
   if (typeof updateEditorSettingsUI === 'function') updateEditorSettingsUI();
-  if (typeof positionEditorAutoScrollDepthMarker === 'function') positionEditorAutoScrollDepthMarker();
   const saveBtn = document.querySelector('[data-advanced-settings-footer] .is-primary');
   const requiresReload = saveBtn?.dataset.requiresReload === 'true';
 
   if (typeof saveToStorage === 'function') saveToStorage(true);
+
+  if (projectDirectoryHandle && typeof writeProjectManifest === 'function') {
+    try {
+      await writeProjectManifest(projectManifest);
+    } catch (error) {
+      console.error('Advanced project settings save failed:', error);
+      notifyAdvancedSettings('Advanced settings browser में save हुईं, लेकिन project manifest नहीं लिखा जा सका।', 'error');
+      return;
+    }
+  }
 
   if (requiresReload) {
     location.reload();
@@ -1180,6 +1317,144 @@ function notifyAdvancedSettings(message, tone = 'success') {
   else if (typeof showMiniReminder === 'function') showMiniReminder(message);
 }
 
+function advancedAutoScrollTemplateFromPanel() {
+  const focusTime = Number(advancedRuntimeControlValue('autoScrollFocusTime'));
+  const depth = Number(advancedRuntimeControlValue('autoScrollDepth'));
+  const bandTop = Number(advancedRuntimeControlValue('autoScrollBandTop'));
+  const bandBottom = Number(advancedRuntimeControlValue('autoScrollBandBottom'));
+  if (!Number.isFinite(focusTime) || focusTime < 200 || focusTime > 5000) {
+    focusInvalidAdvancedRuntimeControl('autoScrollFocusTime', 'autoscroll', 'Scroll duration must be between 200 and 5000 ms.');
+    return null;
+  }
+  if (!Number.isFinite(depth) || depth < 1 || depth > 100) {
+    focusInvalidAdvancedRuntimeControl('autoScrollDepth', 'autoscroll', 'Depth Marker position must be between 1% and 100%.');
+    return null;
+  }
+  if (!Number.isFinite(bandTop) || !Number.isFinite(bandBottom) || bandTop < 1 || bandBottom > 100 || bandTop >= bandBottom) {
+    focusInvalidAdvancedRuntimeControl('autoScrollBandTop', 'autoscroll', 'The Loop Marker top must stay above its bottom boundary.');
+    return null;
+  }
+  return {
+    autoScrollEnabled: Boolean(advancedRuntimeControlValue('autoScrollEnabled')),
+    autoScrollMode: advancedRuntimeControlValue('autoScrollMode') === 'band' ? 'band' : 'depth',
+    autoScrollEmptyParagraphOnly: Boolean(advancedRuntimeControlValue('autoScrollEmptyOnly')),
+    autoScrollClickRepositionEnabled: Boolean(advancedRuntimeControlValue('autoScrollClickReposition')),
+    autoScrollFocusTime: Math.round(focusTime),
+    autoScrollDepth: `${depth}%`,
+    autoScrollBandTop: `${bandTop}%`,
+    autoScrollBandBottom: `${bandBottom}%`
+  };
+}
+
+function storeAdvancedAutoScrollProjectTemplate(template) {
+  if (!template || typeof projectManifest === 'undefined' || !projectManifest) return false;
+  projectManifest.autoScroll = {
+    enabled: template.autoScrollEnabled,
+    emptyOnly: template.autoScrollEmptyParagraphOnly,
+    clickRepositionEnabled: template.autoScrollClickRepositionEnabled,
+    mode: template.autoScrollMode,
+    focusTime: template.autoScrollFocusTime,
+    depth: parseFloat(template.autoScrollDepth),
+    bandTop: parseFloat(template.autoScrollBandTop),
+    bandBottom: parseFloat(template.autoScrollBandBottom),
+    bandMinGap: lmEditorAdvancedNumber('autoScrollBandMinGap', 22)
+  };
+  return true;
+}
+
+function overwriteDocumentAutoScrollSettings(documentItem, template) {
+  if (!documentItem || !template) return false;
+  const current = typeof normalizeEditorSettings === 'function'
+    ? normalizeEditorSettings(documentItem.editorSettings)
+    : { ...(documentItem.editorSettings || {}) };
+  documentItem.editorSettings = {
+    ...current,
+    autoScrollEnabled: template.autoScrollEnabled,
+    autoScrollMode: template.autoScrollMode,
+    autoScrollEmptyParagraphOnly: template.autoScrollEmptyParagraphOnly,
+    autoScrollClickRepositionEnabled: template.autoScrollClickRepositionEnabled,
+    autoScrollFocusTime: template.autoScrollFocusTime,
+    autoScrollDepth: template.autoScrollDepth,
+    autoScrollBandTop: template.autoScrollBandTop,
+    autoScrollBandBottom: template.autoScrollBandBottom
+  };
+  return true;
+}
+
+async function runAdvancedAutoScrollApplyGlobally() {
+  const template = advancedAutoScrollTemplateFromPanel();
+  if (!template) return;
+  const confirmed = await requestAdvancedSettingsDecision({
+    title: 'Apply Auto-scroll settings to all documents?',
+    message: 'Current project के सभी chapters, drafts और chapter-edit drafts की केवल Auto-scroll settings overwrite होंगी। बाकी document settings सुरक्षित रहेंगी।',
+    actions: [{ value: false, label: 'Cancel' }, { value: true, label: 'Apply to All' }]
+  });
+  if (!confirmed) return;
+
+  const documents = [
+    ...(Array.isArray(chapters) ? chapters : []),
+    ...(Array.isArray(chapterDrafts) ? chapterDrafts : []),
+    ...Object.values(chapterEditDrafts && typeof chapterEditDrafts === 'object' ? chapterEditDrafts : {})
+  ];
+  documents.forEach(documentItem => overwriteDocumentAutoScrollSettings(documentItem, template));
+  storeAdvancedAutoScrollProjectTemplate(template);
+  if (typeof persistProjectManifestSnapshot === 'function') persistProjectManifestSnapshot();
+
+  const activeDocument = typeof activeEditorSettingsDocument === 'function' ? activeEditorSettingsDocument() : null;
+  if (activeDocument && typeof applyEditorSettingsSnapshot === 'function') applyEditorSettingsSnapshot(activeDocument.editorSettings);
+  if (typeof saveToStorage === 'function') saveToStorage(true);
+
+  try {
+    if (projectDirectoryHandle) {
+      await Promise.all([
+        typeof writeProjectManifest === 'function' ? writeProjectManifest() : Promise.resolve(),
+        typeof writeDraftsDataToProject === 'function' ? writeDraftsDataToProject() : Promise.resolve(),
+        typeof writeChapterEditDraftsToProject === 'function' ? writeChapterEditDraftsToProject() : Promise.resolve()
+      ]);
+    }
+    ['autoScrollEnabled', 'autoScrollMode', 'autoScrollEmptyOnly', 'autoScrollFocusTime', 'autoScrollDepth', 'autoScrollClickReposition', 'autoScrollBandTop', 'autoScrollBandBottom'].forEach(key => {
+      const control = advancedRuntimeControl(key);
+      if (control) advancedEditorSettingsBaseline[key] = control.type === 'checkbox' ? Boolean(control.checked) : String(control.value ?? '');
+    });
+    checkAdvancedEditorSettingsDirty();
+    notifyAdvancedSettings(`Auto-scroll settings applied to ${documents.length} documents.`, 'success');
+  } catch (error) {
+    console.error('Global Auto-scroll apply failed:', error);
+    notifyAdvancedSettings('Auto-scroll settings current session में लागू हुईं, लेकिन project files पूरी तरह save नहीं हो सकीं।', 'error');
+  }
+}
+
+function deleteAdvancedSettingsIndexedDB(name) {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB || !name) {
+      resolve(false);
+      return;
+    }
+    let request;
+    try {
+      request = window.indexedDB.deleteDatabase(name);
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    request.onsuccess = () => resolve(true);
+    request.onerror = () => reject(request.error || new Error(`Could not delete IndexedDB database: ${name}`));
+    request.onblocked = () => reject(new Error(`Close other Lekhak Manch tabs before resetting ${name}.`));
+  });
+}
+
+async function studioIndexedDBNames() {
+  const names = new Set(['lekhak-manch-project', 'lm-advanced-word-editing']);
+  if (typeof window.indexedDB?.databases === 'function') {
+    const databases = await window.indexedDB.databases();
+    databases.forEach(database => {
+      const name = String(database?.name || '');
+      if (name.startsWith('lm-') || name.startsWith('lm_') || name.startsWith('lekhak-manch')) names.add(name);
+    });
+  }
+  return [...names];
+}
+
 window.runResetActiveProjectBrowserCache = async function runResetActiveProjectBrowserCache() {
   const confirmed = await requestAdvancedSettingsDecision({ title: 'Reset project browser cache?', message: 'Disk पर रखी project files (JSON/TXT) सुरक्षित रहेंगी और browser data files से दोबारा sync होगा।', actions: [{ value: false, label: 'Cancel' }, { value: true, label: 'Reset Cache', tone: 'danger' }] });
   if (!confirmed) return;
@@ -1224,10 +1499,10 @@ window.runResetWordEditingBrowserCache = async function runResetWordEditingBrows
   if (!confirmed) return;
 
   try {
-    localStorage.removeItem('lm_advanced_word_editing_dictionary_v1');
     if (window.indexedDB) {
-      try { window.indexedDB.deleteDatabase('lm-advanced-word-editing'); } catch { /* Ignore */ }
+      await deleteAdvancedSettingsIndexedDB('lm-advanced-word-editing');
     }
+    localStorage.removeItem('lm_advanced_word_editing_dictionary_v1');
     if (typeof readWordEditingDataFromProject === 'function') {
       readWordEditingDataFromProject().catch(() => {});
     }
@@ -1249,6 +1524,10 @@ window.runResetAllStudioBrowserCaches = async function runResetAllStudioBrowserC
       if (key && (key.startsWith('lm_') || key.startsWith('lm-'))) {
         lmKeys.push(key);
       }
+    }
+    if (window.indexedDB) {
+      const databaseNames = await studioIndexedDBNames();
+      await Promise.all(databaseNames.map(deleteAdvancedSettingsIndexedDB));
     }
     lmKeys.forEach(k => localStorage.removeItem(k));
     location.reload();
@@ -1274,8 +1553,10 @@ window.selectAdvancedEditorSettingsCategory = selectAdvancedEditorSettingsCatego
 window.selectAdvancedEditorTopSection = selectAdvancedEditorTopSection;
 window.handleAdvancedEditorSettingsNavKeydown = handleAdvancedEditorSettingsNavKeydown;
 window.toggleAdvancedEditorSettingInfo = toggleAdvancedEditorSettingInfo;
+window.toggleAdvancedEditorExplanationLanguage = toggleAdvancedEditorExplanationLanguage;
 window.closeAdvancedEditorSettingInfo = closeAdvancedEditorSettingInfo;
 window.runAdvancedGlobalStyleApply = runAdvancedGlobalStyleApply;
+window.runAdvancedAutoScrollApplyGlobally = runAdvancedAutoScrollApplyGlobally;
 window.syncSmartPasteFromGlobalFormatting = syncSmartPasteFromGlobalFormatting;
 window.stepAdvancedNumberInput = stepAdvancedNumberInput;
 window.openAdvancedEditorSettings = openAdvancedEditorSettings;

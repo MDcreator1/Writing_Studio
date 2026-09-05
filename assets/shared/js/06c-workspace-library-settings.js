@@ -583,6 +583,17 @@ async function ensureActiveDocumentContentLoaded() {
   }
 }
 
+function editorContentFromProjectText(documentItem, fileText) {
+  const plainText = String(fileText || '').replace(/\r\n?/g, '\n').trimEnd();
+  const richHTML = String(documentItem?.richContentHTML || '');
+  if (richHTML && typeof editorHTMLToText === 'function') {
+    const richText = editorHTMLToText(richHTML).replace(/\r\n?/g, '\n').trimEnd();
+    if (richText === plainText) return richHTML;
+  }
+  if (documentItem) documentItem.richContentHTML = '';
+  return textToEditorHTML(fileText);
+}
+
 async function loadChapterContent(chapter) {
   if (!chapter) return false;
   if (chapter._contentLoadState === 'quarantined') return true;
@@ -606,7 +617,7 @@ async function loadChapterContent(chapter) {
           return true;
         }
       }
-      chapter.content = textToEditorHTML(fileText);
+      chapter.content = editorContentFromProjectText(chapter, fileText);
       chapter._wordCount = storageWordCountFromText(fileText);
       chapter._contentLoadState = 'loaded';
       return true;
@@ -641,7 +652,7 @@ async function loadDraftContent(draft) {
           return true;
         }
       }
-      draft.content = textToEditorHTML(fileText);
+      draft.content = editorContentFromProjectText(draft, fileText);
       draft._wordCount = storageWordCountFromText(fileText);
       draft._contentLoadState = 'loaded';
       return true;
@@ -661,7 +672,7 @@ async function loadChapterEditDraftContent(draft) {
       const fileHandle = await getProjectFileHandle(draft.contentPath);
       draft.contentHandle = fileHandle;
       const fileText = await readFileText(fileHandle);
-      draft.content = textToEditorHTML(fileText);
+      draft.content = editorContentFromProjectText(draft, fileText);
       draft.lastAutosavedHTML = draft.lastAutosavedHTML || draft.content;
       draft.lastAutosavedText = draft.lastAutosavedText || fileText.replace(/\r\n?/g, '\n').trimEnd();
       chapterEditDrafts[draft.chapterKey] = normalizeChapterEditDraft(draft, draft.chapterKey);
@@ -850,6 +861,7 @@ function normalizeEditorSettings(settings = null) {
     autoScrollEnabled: true,
     autoScrollMode: 'depth',
     autoScrollEmptyParagraphOnly: false,
+    autoScrollClickRepositionEnabled: true,
     autoScrollFocusTime: editorSettingsDefaultFocusTime(),
     autoScrollDepth: null,
     autoScrollBandTop: null,
@@ -885,6 +897,12 @@ function normalizeEditorSettings(settings = null) {
         ?? source.auto_scroll_empty_paragraph_only,
       defaults.autoScrollEmptyParagraphOnly
     ),
+    autoScrollClickRepositionEnabled: normalizeBooleanSetting(
+      source.autoScrollClickRepositionEnabled
+        ?? source.editorAutoScrollClickRepositionEnabled
+        ?? source.auto_scroll_click_reposition_enabled,
+      defaults.autoScrollClickRepositionEnabled
+    ),
     autoScrollFocusTime: normalizedFocusTime,
     autoScrollDepth: normalizeNullableEditorSetting(
       source.autoScrollDepth ?? source.editorAutoScrollDepth ?? source.auto_scroll_depth ?? defaults.autoScrollDepth
@@ -902,6 +920,80 @@ function normalizeEditorSettings(settings = null) {
     replaceScope: normalizeEditorReplaceScope(
       source.replaceScope ?? source.editorReplaceScope ?? source.replace_scope ?? defaults.replaceScope
     )
+  };
+}
+
+function projectAutoScrollSettingsTemplate() {
+  const source = projectManifest?.autoScroll && typeof projectManifest.autoScroll === 'object'
+    ? projectManifest.autoScroll
+    : {};
+  return normalizeEditorSettings({
+    autoScrollEnabled: normalizeBooleanSetting(source.enabled, true),
+    autoScrollMode: normalizeEditorAutoScrollMode(source.mode || 'depth'),
+    autoScrollEmptyParagraphOnly: normalizeBooleanSetting(source.emptyOnly, false),
+    autoScrollClickRepositionEnabled: normalizeBooleanSetting(source.clickRepositionEnabled, true),
+    autoScrollFocusTime: source.focusTime ?? editorSettingsDefaultFocusTime(),
+    autoScrollDepth: source.depth ?? '72%',
+    autoScrollBandTop: source.bandTop ?? '34%',
+    autoScrollBandBottom: source.bandBottom ?? '78%'
+  });
+}
+
+function comparableEditorAutoScrollPosition(value, fallbackValue) {
+  const rawValue = value === undefined || value === null || value === '' ? fallbackValue : value;
+  const normalizedValue = String(rawValue ?? '').trim().toLowerCase();
+  const numericValue = Number.parseFloat(normalizedValue);
+  if (!Number.isFinite(numericValue)) return normalizedValue;
+  // Project manifests store marker percentages as numbers, while documents store
+  // them as percentage strings. Unitless marker values therefore mean percent.
+  const unit = normalizedValue.endsWith('px') ? 'px' : '%';
+  return `${Number(numericValue.toFixed(4))}${unit}`;
+}
+
+function activeDocumentAutoScrollPositionOverrides() {
+  if (!activeEditorSettingsDocument()) return { depth: false, loop: false };
+  const template = projectAutoScrollSettingsTemplate();
+  const normalizedSettings = normalizeEditorSettings(currentEditorSettingsSnapshot());
+  const normalizedTemplate = normalizeEditorSettings(template);
+  const depth = comparableEditorAutoScrollPosition(
+    normalizedSettings.autoScrollDepth,
+    normalizedTemplate.autoScrollDepth
+  ) !== comparableEditorAutoScrollPosition(normalizedTemplate.autoScrollDepth, normalizedTemplate.autoScrollDepth);
+  const loop = comparableEditorAutoScrollPosition(
+    normalizedSettings.autoScrollBandTop,
+    normalizedTemplate.autoScrollBandTop
+  ) !== comparableEditorAutoScrollPosition(normalizedTemplate.autoScrollBandTop, normalizedTemplate.autoScrollBandTop) ||
+    comparableEditorAutoScrollPosition(
+      normalizedSettings.autoScrollBandBottom,
+      normalizedTemplate.autoScrollBandBottom
+    ) !== comparableEditorAutoScrollPosition(normalizedTemplate.autoScrollBandBottom, normalizedTemplate.autoScrollBandBottom);
+  return { depth, loop };
+}
+
+function syncEditorAutoScrollGlobalOverrideMarkerState() {
+  const depthMarker = document.getElementById('editorAutoScrollDepthMarker');
+  const topMarker = document.getElementById('editorAutoScrollTopMarker');
+  const bottomMarker = document.getElementById('editorAutoScrollBottomMarker');
+  const overrides = activeDocumentAutoScrollPositionOverrides();
+  depthMarker?.classList.toggle('has-global-position-override', overrides.depth);
+  topMarker?.classList.toggle('has-global-position-override', overrides.loop);
+  bottomMarker?.classList.toggle('has-global-position-override', overrides.loop);
+  return overrides;
+}
+
+function mergeProjectAutoScrollSettings(settings = null) {
+  const base = normalizeEditorSettings(settings);
+  const template = projectAutoScrollSettingsTemplate();
+  return {
+    ...base,
+    autoScrollEnabled: template.autoScrollEnabled,
+    autoScrollMode: template.autoScrollMode,
+    autoScrollEmptyParagraphOnly: template.autoScrollEmptyParagraphOnly,
+    autoScrollClickRepositionEnabled: template.autoScrollClickRepositionEnabled,
+    autoScrollFocusTime: template.autoScrollFocusTime,
+    autoScrollDepth: template.autoScrollDepth,
+    autoScrollBandTop: template.autoScrollBandTop,
+    autoScrollBandBottom: template.autoScrollBandBottom
   };
 }
 
@@ -1101,10 +1193,14 @@ function editorAutoScrollModeLabel(mode = currentEditorAutoScrollMode(), short =
   return short ? copy.editorAutoScrollModeDepthShort : copy.editorAutoScrollModeDepth;
 }
 
-function saveEditorSettings() {
+function saveEditorSettings(options = {}) {
   const settings = currentEditorSettingsSnapshot();
   writeEditorSettingsToLocalStorage(settings);
   persistEditorSettingsToActiveDocument(settings);
+  syncEditorAutoScrollGlobalOverrideMarkerState();
+  if (options.persistProject !== false && typeof persistActiveDocumentSettings === 'function') {
+    persistActiveDocumentSettings();
+  }
   return settings;
 }
 
@@ -1114,6 +1210,7 @@ function currentEditorSettingsSnapshot() {
     autoScrollEnabled: isEditorAutoScrollEnabled,
     autoScrollMode: currentEditorAutoScrollMode(),
     autoScrollEmptyParagraphOnly: isEditorAutoScrollEmptyParagraphOnly,
+    autoScrollClickRepositionEnabled: isEditorAutoScrollClickRepositionEnabled,
     autoScrollFocusTime: typeof currentEditorAutoScrollFocusTimeMs === 'function'
       ? currentEditorAutoScrollFocusTimeMs()
       : localStorage.getItem(EDITOR_AUTO_SCROLL_FOCUS_TIME_KEY),
@@ -1141,6 +1238,7 @@ function writeEditorSettingsToLocalStorage(settings) {
   localStorage.setItem(EDITOR_AUTO_SCROLL_ENABLED_KEY, String(normalizedSettings.autoScrollEnabled));
   localStorage.setItem(EDITOR_AUTO_SCROLL_MODE_KEY, normalizedSettings.autoScrollMode);
   localStorage.setItem(EDITOR_AUTO_SCROLL_EMPTY_ONLY_KEY, String(normalizedSettings.autoScrollEmptyParagraphOnly));
+  localStorage.setItem(EDITOR_AUTO_SCROLL_CLICK_REPOSITION_KEY, String(normalizedSettings.autoScrollClickRepositionEnabled));
   localStorage.setItem(STATUS_VISIBILITY_KEY, JSON.stringify(normalizedSettings.visibleStatuses));
   localStorage.setItem(FIND_MODE_STORAGE_KEY, normalizedSettings.findMode);
   localStorage.setItem(REPLACE_SCOPE_STORAGE_KEY, normalizedSettings.replaceScope);
@@ -1168,6 +1266,7 @@ function applyEditorSettingsSnapshot(settings) {
   isEditorAutoScrollEnabled = normalizedSettings.autoScrollEnabled;
   editorAutoScrollMode = normalizeEditorAutoScrollMode(normalizedSettings.autoScrollMode);
   isEditorAutoScrollEmptyParagraphOnly = normalizedSettings.autoScrollEmptyParagraphOnly;
+  isEditorAutoScrollClickRepositionEnabled = normalizedSettings.autoScrollClickRepositionEnabled;
   visibleEditorStatuses = normalizeStatusVisibilityValue(normalizedSettings.visibleStatuses);
   editorFindMode = normalizeEditorFindMode(normalizedSettings.findMode);
   editorReplaceScope = normalizeEditorReplaceScope(normalizedSettings.replaceScope);
@@ -1190,7 +1289,8 @@ function applyEditorSettingsSnapshot(settings) {
 
 function applyActiveEditorSettingsForDocument(documentItem = activeEditorSettingsDocument()) {
   if (isTrashDraftActive()) return null;
-  const normalizedSettings = applyEditorSettingsSnapshot(documentItem?.editorSettings || null);
+  const sourceSettings = documentItem?.editorSettings || mergeProjectAutoScrollSettings(null);
+  const normalizedSettings = applyEditorSettingsSnapshot(sourceSettings);
   if (documentItem) documentItem.editorSettings = normalizedSettings;
   return normalizedSettings;
 }
@@ -1256,6 +1356,10 @@ function updateEditorSettingsUI() {
   const settingsBtn = document.getElementById('editorSettingsBtn');
   const autosaveBtn = document.getElementById('autosaveToggleBtn');
   const autoScrollModeBtn = document.getElementById('editorAutoScrollModeToggleBtn');
+  const autoScrollParagraphFollowBtn = document.getElementById('editorAutoScrollEmptyOnlyToggleBtn');
+  const autoScrollClickRepositionBtn = document.getElementById('editorAutoScrollClickRepositionToggleBtn');
+  const autoScrollDurationRow = document.querySelector('.lm-id-editorAutoScrollFocusSpeedRow');
+  const autoScrollApplyAllBtn = document.getElementById('editorAutoScrollApplyAllBtn');
   const findSettingsBtn = document.getElementById('findSettingsToggleBtn');
   const replaceSettingsBtn = document.getElementById('replaceSettingsToggleBtn');
   const globalFormattingBtn = document.getElementById('applyStylesGloballyContainer');
@@ -1277,6 +1381,10 @@ function updateEditorSettingsUI() {
   const isChapterReviewMode = isChapterReviewModeForEditorSettings();
   const autoScrollActive = isEditorAutoScrollEnabled && !isChapterReviewMode;
   const autoScrollPinned = typeof isEditorQuickSettingPinned === 'function' ? isEditorQuickSettingPinned('autoscroll') : true;
+  const autoScrollParagraphFollowPinned = typeof isEditorQuickSettingPinned === 'function' ? isEditorQuickSettingPinned('autoScrollParagraphFollow') : true;
+  const autoScrollClickRepositionPinned = typeof isEditorQuickSettingPinned === 'function' ? isEditorQuickSettingPinned('autoScrollClickReposition') : true;
+  const autoScrollDurationPinned = typeof isEditorQuickSettingPinned === 'function' ? isEditorQuickSettingPinned('autoScrollDuration') : true;
+  const autoScrollApplyAllPinned = typeof isEditorQuickSettingPinned === 'function' ? isEditorQuickSettingPinned('autoScrollApplyAll') : true;
   const findPinned = typeof isEditorQuickSettingPinned === 'function' ? isEditorQuickSettingPinned('find') : true;
   const replacePinned = typeof isEditorQuickSettingPinned === 'function' ? isEditorQuickSettingPinned('replace') : true;
   const globalFormattingPinned = typeof isEditorQuickSettingPinned === 'function' ? isEditorQuickSettingPinned('globalFormatting') : true;
@@ -1301,6 +1409,12 @@ function updateEditorSettingsUI() {
     autoScrollModeBtn.setAttribute('aria-expanded', String(isEditorAutoScrollModeSelectorOpen));
     autoScrollModeBtn.setAttribute('aria-pressed', String(autoScrollActive));
   }
+  if (autoScrollParagraphFollowBtn) autoScrollParagraphFollowBtn.hidden = !autoScrollParagraphFollowPinned;
+  if (autoScrollClickRepositionBtn) {
+    autoScrollClickRepositionBtn.hidden = !autoScrollClickRepositionPinned || activeAutoScrollMode !== 'depth';
+  }
+  if (autoScrollDurationRow) autoScrollDurationRow.hidden = !autoScrollDurationPinned;
+  if (autoScrollApplyAllBtn) autoScrollApplyAllBtn.hidden = !autoScrollApplyAllPinned;
   if (findSettingsBtn) {
     findSettingsBtn.hidden = isTrashMode || !findPinned;
     findSettingsBtn.setAttribute('aria-expanded', String(isFindSettingsSelectorOpen));
@@ -1350,7 +1464,9 @@ function updateEditorSettingsUI() {
   setText('editorAutoScrollModeDepthLabel', copy.editorAutoScrollModeDepth);
   setText('editorAutoScrollModeBandLabel', copy.editorAutoScrollModeBand);
   setText('editorAutoScrollEmptyOnlyLabel', copy.editorAutoScrollEmptyOnly);
+  setText('editorAutoScrollClickRepositionLabel', copy.editorAutoScrollClickReposition);
   setText('editorAutoScrollFocusSpeedPillLabel', copy.editorAutoScrollFocusSpeed);
+  setText('editorAutoScrollApplyAllBtn', copy.editorAutoScrollApplyAll);
   document.getElementById('editorAutoScrollFocusSpeedRange')?.setAttribute('aria-label', copy.editorAutoScrollFocusSpeed);
   setText('replaceScopeAfterLabel', copy.replaceScopeAfter);
   setText('replaceScopeBeforeLabel', copy.replaceScopeBefore);
@@ -1370,9 +1486,10 @@ function updateEditorSettingsUI() {
   updateFindModeOptionState('safe', 'findModeSafeState');
   updateFindModeOptionState('raw', 'findModeRawState');
   updateFindModeOptionState('deep', 'findModeDeepState');
-  updateEditorAutoScrollModeOptionState('depth', 'editorAutoScrollModeDepthState');
-  updateEditorAutoScrollModeOptionState('band', 'editorAutoScrollModeBandState');
+  updateEditorAutoScrollModeOptionState('depth');
+  updateEditorAutoScrollModeOptionState('band');
   updateEditorAutoScrollEmptyOnlyState();
+  updateEditorAutoScrollClickRepositionState();
   if (typeof syncEditorAutoScrollFocusSpeedControl === 'function') syncEditorAutoScrollFocusSpeedControl();
   updateReplaceScopeOptionState('after', 'replaceScopeAfterState');
   updateReplaceScopeOptionState('before', 'replaceScopeBeforeState');
@@ -1386,6 +1503,7 @@ function updateEditorSettingsUI() {
   // Paste & Copy settings UI
   updatePasteSettingsUI();
   updateCopySettingsUI();
+  syncEditorAutoScrollGlobalOverrideMarkerState();
   if (typeof syncFocusTopControlsState === 'function') syncFocusTopControlsState();
   if (typeof positionFocusTopOpenPanels === 'function') positionFocusTopOpenPanels();
 }

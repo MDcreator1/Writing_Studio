@@ -395,6 +395,7 @@ function setWordEditingQuickPanel(open) {
   if (!panel || !toggle) return;
   const shouldOpen = Boolean(open);
   panel.hidden = !shouldOpen;
+  if (!shouldOpen) setWordEditingCollectMiniPanel(false);
   toggle.setAttribute('aria-expanded', String(shouldOpen));
   toggle.classList.toggle('is-active', shouldOpen);
   if (shouldOpen) {
@@ -402,6 +403,35 @@ function setWordEditingQuickPanel(open) {
     if (isToolDockOpen) setToolDock(false);
     window.lmAdvancedWordEditing?.syncEditorDockPanel?.();
     requestAnimationFrame(positionWordEditingQuickPanel);
+  }
+}
+
+function setWordEditingCollectMiniPanel(open) {
+  const miniPanel = document.getElementById('wordEditingCollectMiniPanel');
+  const button = document.getElementById('wordEditingCollectSettingsBtn');
+  if (!miniPanel || !button) return;
+  const shouldOpen = Boolean(open);
+  miniPanel.hidden = !shouldOpen;
+  button.setAttribute('aria-expanded', String(shouldOpen));
+  if (shouldOpen) requestAnimationFrame(() => {
+    positionWordEditingCollectMiniPanel();
+    positionWordEditingQuickPanel();
+  });
+}
+
+function positionWordEditingCollectMiniPanel() {
+  const miniPanel = document.getElementById('wordEditingCollectMiniPanel');
+  const button = document.getElementById('wordEditingCollectSettingsBtn');
+  if (!miniPanel || miniPanel.hidden || !button) return;
+  miniPanel.classList.remove('opens-left');
+  const buttonRect = button.getBoundingClientRect();
+  const panelRect = miniPanel.getBoundingClientRect();
+  const gap = 10;
+  const viewportPadding = 12;
+  const roomRight = window.innerWidth - buttonRect.right - viewportPadding;
+  const roomLeft = buttonRect.left - viewportPadding;
+  if (roomRight < panelRect.width + gap && roomLeft > roomRight) {
+    miniPanel.classList.add('opens-left');
   }
 }
 
@@ -444,17 +474,60 @@ function toggleWordEditingQuickPanel(event) {
 
 async function openWordEditingTemporaryNames() {
   setWordEditingQuickPanel(false);
-  await window.lmAdvancedWordEditing?.openEditorControlsFromDock?.(true);
+  await window.lmAdvancedWordEditing?.openTemporaryCandidatesFromDock?.();
 }
 
-async function openWordEditingCollectSettings() {
-  setWordEditingQuickPanel(false);
-  await window.lmAdvancedWordEditing?.openEditorControlsFromDock?.(false);
+async function openWordEditingCollectSettings(event) {
+  event?.preventDefault?.();
+  event?.stopPropagation?.();
+  const miniPanel = document.getElementById('wordEditingCollectMiniPanel');
+  if (!miniPanel) return;
+  const shouldOpen = miniPanel.hidden;
+  if (!shouldOpen) {
+    setWordEditingCollectMiniPanel(false);
+    return;
+  }
+  await window.lmAdvancedWordEditing?.getEditorDockPanelState?.();
+  if (typeof syncCustomSelects === 'function') syncCustomSelects(miniPanel);
+  setWordEditingCollectMiniPanel(true);
 }
 
 async function toggleWordEditingKeepSetting() {
+  setWordEditingCollectMiniPanel(false);
   await window.lmAdvancedWordEditing?.toggleKeepEditorReplacementsFromDock?.();
 }
+
+function bindWordEditingCollectMiniPanel() {
+  const panel = document.getElementById('wordEditingCollectMiniPanel');
+  if (!panel || panel.dataset.bound === 'true') return;
+  panel.dataset.bound = 'true';
+  panel.addEventListener('change', async event => {
+    const target = event.target;
+    const api = window.lmAdvancedWordEditing;
+    if (!api?.updateCollectSettingsFromDock) return;
+    if (target.matches('[data-awe-dock-collect-enabled]')) {
+      await api.updateCollectSettingsFromDock({ enabled: target.checked });
+    } else if (target.matches('[data-awe-dock-collect-category]')) {
+      await api.updateCollectSettingsFromDock({ category: target.value });
+    } else if (target.matches('[data-awe-dock-collect-minimum-input]')) {
+      const minimumOccurrences = Math.min(10000, Math.max(1, Math.floor(Number(target.value) || 3)));
+      target.value = String(minimumOccurrences);
+      await api.updateCollectSettingsFromDock({ minimumOccurrences });
+    }
+  });
+}
+
+function adjustWordEditingCollectMinimum(direction) {
+  const input = document.querySelector('[data-awe-dock-collect-minimum-input]');
+  if (!input) return;
+  const delta = Number(direction) || 0;
+  const nextValue = Math.min(10000, Math.max(1, Math.floor(Number(input.value) || 3) + delta));
+  input.value = String(nextValue);
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+bindWordEditingCollectMiniPanel();
+window.addEventListener('resize', positionWordEditingCollectMiniPanel);
 
 document.addEventListener('pointerdown', event => {
   const panel = document.getElementById('wordEditingQuickPanel');
@@ -1442,4 +1515,3 @@ function findMatchIndexAfterEditorSnapshot(snapshot) {
 
   return firstMatchIndex;
 }
-

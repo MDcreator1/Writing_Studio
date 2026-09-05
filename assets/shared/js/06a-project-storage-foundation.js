@@ -195,7 +195,7 @@ function normalizeProjectManifest(manifest = {}) {
   const updatedAt = manifest.updatedAt || manifest.updated_at || manifest.updated || '';
   const createdAt = manifest.createdAt || manifest.created_at || manifest.created || updatedAt || new Date().toISOString();
 
-  return {
+  const normalized = {
     title: manifest.title || projectDirectoryHandle?.name || 'Untitled Story',
     type: manifest.type || 'novel',
     author: manifest.author || '',
@@ -207,6 +207,16 @@ function normalizeProjectManifest(manifest = {}) {
     chapters: topLevelChapters,
     parts
   };
+  if (manifest.autoScroll && typeof manifest.autoScroll === 'object') {
+    normalized.autoScroll = { ...manifest.autoScroll };
+  }
+  if (manifest.globalTextFormatting && typeof manifest.globalTextFormatting === 'object') {
+    normalized.globalTextFormatting = { ...manifest.globalTextFormatting };
+  }
+  if (manifest.smartPaste && typeof manifest.smartPaste === 'object') {
+    normalized.smartPaste = { ...manifest.smartPaste };
+  }
+  return normalized;
 }
 
 function storyTypeLabel(type) {
@@ -587,6 +597,7 @@ function createProjectManifest(folderName = 'Untitled Story') {
     autoScroll: {
       enabled: true,
       emptyOnly: false,
+      clickRepositionEnabled: true,
       mode: 'depth',
       focusTime: 320,
       depth: 72,
@@ -614,6 +625,7 @@ function chapterManifestEntry(chapter, index, chapterNo = index + 1) {
     no: chapterNo,
     title: chapter.title,
     contentHTML: includeContent ? chapter.content || '' : '',
+    richContentHTML: editorDocumentRichContentForStorage(chapter),
     createdAt: chapter.createdAt || new Date().toISOString(),
     content_path: chapter.contentPath || chapterFilePath(index),
     alignment: normalizeEditorAlignment(chapter.alignment),
@@ -622,7 +634,9 @@ function chapterManifestEntry(chapter, index, chapterNo = index + 1) {
     paragraphMargin: normalizeOptionalEditorParagraphMargin(chapter.paragraphMargin),
     fontFamily: normalizeEditorFontFamily(chapter.fontFamily),
     fontSize: normalizeEditorFontSize(chapter.fontSize),
-    editorSettings: normalizeEditorSettings(chapter.editorSettings),
+    editorSettings: chapter.editorSettings
+      ? normalizeEditorSettings(chapter.editorSettings)
+      : mergeProjectAutoScrollSettings(null),
     wordCount: words,
     _wordCount: words
   };
@@ -656,6 +670,7 @@ function chaptersToManifest() {
     autoScroll: baseManifest.autoScroll || {
       enabled: Boolean(typeof isEditorAutoScrollEnabled !== 'undefined' ? isEditorAutoScrollEnabled : true),
       emptyOnly: Boolean(typeof isEditorAutoScrollEmptyParagraphOnly !== 'undefined' ? isEditorAutoScrollEmptyParagraphOnly : false),
+      clickRepositionEnabled: Boolean(typeof isEditorAutoScrollClickRepositionEnabled !== 'undefined' ? isEditorAutoScrollClickRepositionEnabled : true),
       mode: typeof editorAutoScrollMode !== 'undefined' ? editorAutoScrollMode : 'depth',
       focusTime: typeof currentEditorAutoScrollFocusTimeMs === 'function' ? currentEditorAutoScrollFocusTimeMs() : 320,
       depth: typeof advancedStoredPercent === 'function' ? advancedStoredPercent(EDITOR_AUTO_SCROLL_DEPTH_KEY, 72) : 72,
@@ -1092,20 +1107,26 @@ function namingChapterTextForMentionValidation(chapter = {}, textOverride = null
 }
 
 function namingEntryNameFoundInText(entry = {}, textValue = '') {
-  const name = String(entry.name || '').trim();
-  if (!name) return true;
+  const searchNames = [...new Map(
+    [entry.name, ...(Array.isArray(entry.similarNames) ? entry.similarNames : [])]
+      .map(value => String(value || '').trim().replace(/\s+/g, ' '))
+      .filter(Boolean)
+      .map(value => [value.toLocaleLowerCase(), value])
+  ).values()];
+  if (!searchNames.length) return true;
   const documentText = namingMentionValidationText(textValue);
   if (!documentText) return false;
 
   if (typeof countEditorFindMatches === 'function') {
     try {
-      return countEditorFindMatches(documentText, name, 'deep') > 0;
+      return searchNames.some(name => countEditorFindMatches(documentText, name, 'deep') > 0);
     } catch (error) {
       console.warn('Naming entry mention scan failed:', error);
     }
   }
 
-  return documentText.toLocaleLowerCase().includes(name.toLocaleLowerCase());
+  const normalizedText = documentText.toLocaleLowerCase();
+  return searchNames.some(name => normalizedText.includes(name.toLocaleLowerCase()));
 }
 
 function namingLiveStoryTextsForMentionValidation(options = {}) {

@@ -189,6 +189,51 @@ function restoreEditorSelectionFromTextOffsets(snapshot) {
   return true;
 }
 
+function ensureEditorRichFormattingMode(preferredRange = null) {
+  const editor = document.getElementById('editor');
+  if (!editor || !isEditorPlainTextMode(editor)) return preferredRange;
+
+  if (activeVirtualEditorDocument && !activeVirtualEditorDocument.temporarilyMaterialized &&
+      typeof applyTemporaryVirtualEditorFullDOM === 'function') {
+    applyTemporaryVirtualEditorFullDOM(activeVirtualEditorDocument, editor, 'formatting');
+    preferredRange = null;
+  }
+
+  let sourceRange = preferredRange;
+  if (!sourceRange || !isNodeInsideEditor(sourceRange.startContainer) || !isNodeInsideEditor(sourceRange.endContainer)) {
+    const selection = window.getSelection();
+    if (selection?.rangeCount && isNodeInsideEditor(selection.anchorNode) && isNodeInsideEditor(selection.focusNode)) {
+      sourceRange = selection.getRangeAt(0).cloneRange();
+    } else if (savedEditorRange && isNodeInsideEditor(savedEditorRange.startContainer) && isNodeInsideEditor(savedEditorRange.endContainer)) {
+      sourceRange = savedEditorRange.cloneRange();
+    }
+  }
+
+  const selectionSnapshot = sourceRange ? editorRangeToTextOffsets(sourceRange, editor) : null;
+  const sourceText = activeVirtualEditorDocument
+    ? editorHTMLToText(activeEditorHTMLBuffer || activeVirtualEditorDocument.html || '')
+    : cleanPlainTextEditorValue(editor);
+  const richHTML = sourceText.trim() ? textToEditorHTML(sourceText) : '';
+
+  if (activeVirtualEditorDocument && typeof clearVirtualEditorDocument === 'function') clearVirtualEditorDocument();
+  setEditorRenderMode(editor, 'rich');
+  editor.innerHTML = richHTML || '<p><br></p>';
+  normalizeEditorGapMarkers(editor);
+  if (typeof normalizeEditorParagraphBlocks === 'function') normalizeEditorParagraphBlocks(editor);
+  syncEditorPlaceholderState();
+
+  if (!selectionSnapshot || !restoreEditorSelectionFromTextOffsets(selectionSnapshot)) return null;
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) return null;
+  const restoredRange = selection.getRangeAt(0).cloneRange();
+  savedEditorRange = restoredRange.cloneRange();
+  if (!restoredRange.collapsed) {
+    editorFormattingSelectionRange = restoredRange.cloneRange();
+    editorFormattingSelectionCapturedAt = Date.now();
+  }
+  return restoredRange;
+}
+
 function syncSavedEditorRangeFromTextOffsets(snapshot) {
   const editor = document.getElementById('editor');
   if (!editor || !snapshot) return false;
@@ -280,6 +325,7 @@ function queryInlineFormatState(command) {
 function fmt(cmd) {
   if (!(cmd in activeInlineFormats)) return;
   if (!canEditActiveDocument()) return;
+  ensureEditorRichFormattingMode(savedEditorRange);
   restoreEditorSelection();
   const wasActive = activeInlineFormats[cmd] || queryInlineFormatState(cmd);
   document.execCommand(cmd, false, null);
@@ -288,6 +334,7 @@ function fmt(cmd) {
   rememberEditorSelection();
   updateFormattingButtons({ syncFromSelection: false });
   updateStats();
+  saveSelectionScopedEditorFormat(`inline-${cmd}`);
   document.getElementById('editor').focus({ preventScroll: true });
 }
 
@@ -563,7 +610,8 @@ function editorFormattingRange() {
       isValidEditorFormattingRange(editorFormattingSelectionRange) &&
       Date.now() - editorFormattingSelectionCapturedAt <= EDITOR_FORMATTING_SELECTION_GRACE_MS
     ) {
-      const range = editorFormattingSelectionRange.cloneRange();
+      let range = editorFormattingSelectionRange.cloneRange();
+      range = ensureEditorRichFormattingMode(range) || range;
       editor.focus({ preventScroll: true });
       const nextSelection = window.getSelection();
       nextSelection?.removeAllRanges();
@@ -573,7 +621,8 @@ function editorFormattingRange() {
     return null;
   }
 
-  const range = selection.getRangeAt(0).cloneRange();
+  let range = selection.getRangeAt(0).cloneRange();
+  range = ensureEditorRichFormattingMode(range) || range;
   return range.collapsed ? null : range;
 }
 
@@ -605,6 +654,11 @@ function selectedEditorParagraphBlocks(range, editor = document.getElementById('
 function saveSelectionScopedEditorFormat(reason = 'selection-format') {
   const editor = document.getElementById('editor');
   if (!editor) return;
+  if (typeof syncActiveEditorDocumentFromEditor === 'function') syncActiveEditorDocumentFromEditor();
+  const activeDocument = typeof activeEditorDocument === 'function' ? activeEditorDocument() : null;
+  if (activeDocument && typeof editorDocumentRichContentForStorage === 'function') {
+    activeDocument.richContentHTML = editorDocumentRichContentForStorage(activeDocument);
+  }
   syncEditorPlaceholderState();
   rememberEditorSelection();
   updateFormattingButtons({ syncFromSelection: false });
@@ -1034,9 +1088,10 @@ function changeLineSpacing() {
   if (!canEditActiveDocument()) return;
   ensureChapters();
   const editor = document.getElementById('editor');
-  const plainTextMode = typeof isEditorPlainTextMode === 'function' && isEditorPlainTextMode(editor);
+  let plainTextMode = typeof isEditorPlainTextMode === 'function' && isEditorPlainTextMode(editor);
   const safeLineHeight = normalizeEditorLineHeight(document.getElementById('lineSpacingSel')?.value);
-  if (!plainTextMode && applyEditorBlockStylesToSelection({ 'line-height': safeLineHeight }, 'selection-line-height')) return;
+  if (applyEditorBlockStylesToSelection({ 'line-height': safeLineHeight }, 'selection-line-height')) return;
+  plainTextMode = typeof isEditorPlainTextMode === 'function' && isEditorPlainTextMode(editor);
   const currentDocument = activeEditorDocument();
   if (currentDocument && dockSpacingValueKey(currentDocument.lineHeight) === dockSpacingValueKey(safeLineHeight)) {
     const changed = plainTextMode ? false : clearEditorScopedStyleProperties(['line-height']);
@@ -1056,9 +1111,10 @@ function changeParagraphGap() {
   if (!canEditActiveDocument()) return;
   ensureChapters();
   const editor = document.getElementById('editor');
-  const plainTextMode = typeof isEditorPlainTextMode === 'function' && isEditorPlainTextMode(editor);
+  let plainTextMode = typeof isEditorPlainTextMode === 'function' && isEditorPlainTextMode(editor);
   const safeParagraphGap = normalizeEditorParagraphGap(document.getElementById('paragraphGapSel')?.value);
-  if (!plainTextMode && applyEditorParagraphGapToSelection(safeParagraphGap)) return;
+  if (applyEditorParagraphGapToSelection(safeParagraphGap)) return;
+  plainTextMode = typeof isEditorPlainTextMode === 'function' && isEditorPlainTextMode(editor);
   const currentDocument = activeEditorDocument();
   if (currentDocument && dockSpacingValueKey(currentDocument.paragraphGap) === dockSpacingValueKey(safeParagraphGap)) {
     const changed = plainTextMode ? false : clearEditorScopedStyleProperties(['--editor-selection-paragraph-gap']);
@@ -1419,4 +1475,3 @@ function clearDockSpacingPreview() {
   if (typeof syncEditorPlaceholderState === 'function') syncEditorPlaceholderState();
   updateFormattingButtons({ syncFromSelection: false });
 }
-

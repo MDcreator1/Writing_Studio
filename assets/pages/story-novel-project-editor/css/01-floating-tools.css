@@ -762,20 +762,54 @@
 }
 
 .word-editing-quick-control {
-  width: 78px;
-  min-height: 62px;
-  padding: 7px 5px;
+  position: relative;
+  width: 46px;
+  min-height: 46px;
+  padding: 7px;
   border: 0;
   border-radius: var(--radius-xl);
   background: transparent;
   color: var(--ink);
   display: inline-flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 5px;
   cursor: pointer;
   transition: background .16s ease, color .16s ease, transform .16s ease;
+}
+
+.word-editing-quick-control-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.word-editing-quick-control.has-quick-badge {
+  padding-top: 10px;
+}
+
+.word-editing-quick-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border: 1px solid color-mix(in srgb, var(--surface) 76%, transparent);
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--color-on-accent);
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.word-editing-quick-control.is-collection-off .word-editing-quick-badge {
+  background: var(--muted);
+  color: var(--surface);
 }
 
 .word-editing-quick-control:hover,
@@ -809,14 +843,181 @@
   fill: currentColor;
 }
 
-.word-editing-quick-control small {
-  max-width: 68px;
-  overflow: hidden;
-  color: currentColor;
-  font-size: 9px;
+.word-editing-collect-mini-panel {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 10px);
+  right: auto;
+  z-index: 6;
+  width: min(390px, calc(100vw - 24px));
+  min-height: 54px;
+  padding: 7px;
+  border: var(--border-width) solid color-mix(in srgb, var(--accent) 22%, var(--lm-border-cloud-panel-color));
+  border-radius: var(--radius-2xl);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent-soft) 34%, transparent), transparent 52%),
+    var(--lm-floating-panel-glass-bg);
+  box-shadow: 0 5px 16px color-mix(in srgb, var(--ink) 9%, transparent);
+  backdrop-filter: var(--lm-floating-panel-backdrop-filter);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  overflow: visible;
+  transform: translateY(-50%);
+}
+
+.word-editing-collect-mini-panel.opens-left {
+  left: auto;
+  right: calc(100% + 10px);
+}
+
+.word-editing-collect-mini-panel[hidden] {
+  display: none !important;
+}
+
+.word-editing-mini-number {
+  width: 78px;
+  flex: 0 0 78px;
+  padding: 2px;
+  border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-raised) 82%, var(--accent-soft));
+}
+
+.word-editing-mini-number .advanced-number-stepper.dock-fsize-control {
+  width: 100%;
+  height: 34px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.word-editing-mini-number .advanced-number-input {
+  min-width: 0;
+  width: 100%;
+  height: 32px;
+  padding: 0 28px 0 9px;
+  text-align: left;
+}
+
+.word-editing-mini-number .dock-fsize-stepper {
+  width: 24px;
+  min-width: 24px;
+  height: 32px;
+  margin: 0;
+  flex: 0 0 24px;
+}
+
+.word-editing-mini-number .dock-fsize-step {
+  width: 24px;
+  min-width: 24px;
+  min-height: 16px;
+}
+
+.word-editing-mini-number .step-chevron-svg {
+  width: 16px;
+  height: 16px;
+}
+
+.word-editing-mini-category {
+  min-width: 0;
+  flex: 1 1 245px;
+  padding: 2px;
+  border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-raised) 82%, var(--accent-soft));
+}
+
+.word-editing-mini-category > select,
+.word-editing-mini-category > .lm-custom-select {
+  width: 100%;
+  height: 34px;
+}
+
+.word-editing-mini-category .lm-custom-select-trigger {
+  min-height: 34px;
+  padding: 0 10px;
+  border-color: transparent;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 12px;
   font-weight: 800;
-  line-height: 1.2;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.word-editing-mini-category .lm-custom-select-menu {
+  min-width: 100%;
+  max-width: calc(100vw - 24px);
+  overflow-x: hidden !important;
+}
+
+.word-editing-mini-switch {
+  position: relative;
+  width: 42px;
+  height: 38px;
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--surface-raised) 82%, var(--accent-soft));
+  cursor: pointer;
+  transition: border-color .16s ease, background .16s ease;
+}
+
+.word-editing-mini-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.word-editing-mini-switch i {
+  position: absolute;
+  top: 9px;
+  left: 5px;
+  width: 30px;
+  height: 18px;
+  border-radius: var(--radius-pill);
+  background: var(--muted-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--muted) 44%, var(--border));
+  transition: background .16s ease, box-shadow .16s ease;
+}
+
+.word-editing-mini-switch i::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .18);
+  transition: transform .16s ease;
+}
+
+.word-editing-mini-switch input:checked + i {
+  background: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 82%, var(--ink));
+}
+
+.word-editing-mini-switch input:checked + i::after {
+  transform: translateX(12px);
+}
+
+.word-editing-mini-switch:has(input:checked) {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 62%, var(--surface-raised));
+}
+
+.word-editing-mini-switch:hover,
+.word-editing-mini-number:hover,
+.word-editing-mini-category:hover {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+}
+
+.word-editing-mini-switch:focus-within,
+.word-editing-mini-number:focus-within,
+.word-editing-mini-category:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 64%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 58%, var(--surface-raised));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 13%, transparent);
 }

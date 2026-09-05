@@ -257,11 +257,13 @@ const translations = {
     editorAutoScrollSetting: 'Auto scroll',
     editorAutoScrollMode: 'Auto scroll mode',
     editorAutoScrollModeDepth: 'Depth marker',
-    editorAutoScrollModeBand: 'Top / bottom loop',
+    editorAutoScrollModeBand: 'Loop marker',
     editorAutoScrollModeDepthShort: 'Depth',
     editorAutoScrollModeBandShort: 'Loop',
     editorAutoScrollEmptyOnly: 'Paragraph Follow',
+    editorAutoScrollClickReposition: 'Click to reposition marker',
     editorAutoScrollFocusSpeed: 'Scrolling Speed',
+    editorAutoScrollApplyAll: 'Apply to all documents',
     findSettings: 'Find settings',
     replaceSettings: 'Replace settings',
     safeFind: 'Safe find',
@@ -555,6 +557,7 @@ let isReplaceSettingsSelectorOpen = false;
 let isAutoSaveEnabled = true;
 let isEditorAutoScrollEnabled = true;
 let isEditorAutoScrollEmptyParagraphOnly = false;
+let isEditorAutoScrollClickRepositionEnabled = true;
 let editorFindMode = 'safe';
 let editorReplaceScope = 'all';
 let isPasteSettingsEnabled = true;
@@ -629,6 +632,7 @@ const EDITOR_AUTO_SCROLL_ENABLED_KEY = 'lm_editor_auto_scroll_enabled';
 const EDITOR_AUTO_SCROLL_DEPTH_KEY = 'lm_editor_auto_scroll_depth';
 const EDITOR_AUTO_SCROLL_MODE_KEY = 'lm_editor_auto_scroll_mode';
 const EDITOR_AUTO_SCROLL_EMPTY_ONLY_KEY = 'lm_editor_auto_scroll_empty_only';
+const EDITOR_AUTO_SCROLL_CLICK_REPOSITION_KEY = 'lm_editor_auto_scroll_click_reposition_enabled';
 const EDITOR_AUTO_SCROLL_FOCUS_TIME_KEY = 'lm_editor_auto_scroll_focus_time';
 const EDITOR_AUTO_SCROLL_BAND_TOP_KEY = 'lm_editor_auto_scroll_band_top';
 const EDITOR_AUTO_SCROLL_BAND_BOTTOM_KEY = 'lm_editor_auto_scroll_band_bottom';
@@ -887,9 +891,58 @@ function editorGlobalTextFormattingDefaults() {
   };
 }
 
+function hasOwnEditorFormattingValue(source, key, legacyKey = '') {
+  if (!source || typeof source !== 'object') return false;
+  return Object.prototype.hasOwnProperty.call(source, key) ||
+    Boolean(legacyKey && Object.prototype.hasOwnProperty.call(source, legacyKey));
+}
+
+function normalizeEditorDocumentFormatting(source = {}) {
+  const fallback = editorGlobalTextFormattingDefaults();
+  const valueFor = (key, legacyKey = '') => (
+    Object.prototype.hasOwnProperty.call(source, key) ? source[key] : source[legacyKey]
+  );
+
+  return {
+    alignment: hasOwnEditorFormattingValue(source, 'alignment')
+      ? normalizeEditorAlignment(source.alignment)
+      : fallback.alignment,
+    lineHeight: hasOwnEditorFormattingValue(source, 'lineHeight', 'line_height')
+      ? normalizeOptionalEditorLineHeight(valueFor('lineHeight', 'line_height'))
+      : fallback.lineHeight,
+    paragraphGap: hasOwnEditorFormattingValue(source, 'paragraphGap', 'paragraph_gap')
+      ? normalizeOptionalEditorParagraphGap(valueFor('paragraphGap', 'paragraph_gap'))
+      : fallback.paragraphGap,
+    paragraphMargin: hasOwnEditorFormattingValue(source, 'paragraphMargin', 'paragraph_margin')
+      ? normalizeOptionalEditorParagraphMargin(valueFor('paragraphMargin', 'paragraph_margin'))
+      : null,
+    fontFamily: hasOwnEditorFormattingValue(source, 'fontFamily', 'font_family')
+      ? normalizeEditorFontFamily(valueFor('fontFamily', 'font_family'))
+      : fallback.fontFamily,
+    fontSize: hasOwnEditorFormattingValue(source, 'fontSize', 'font_size')
+      ? normalizeEditorFontSize(valueFor('fontSize', 'font_size'))
+      : fallback.fontSize
+  };
+}
+
+function editorContentHasRichFormatting(content = '') {
+  const html = String(content || '');
+  return /<(?:b|strong|i|em|u|s|strike|span|font|mark|sub|sup)\b/i.test(html) ||
+    /<(?:p|div|li|blockquote|h[1-6])\b[^>]*\s(?:style|class|align)=/i.test(html);
+}
+
+function editorDocumentRichContentForStorage(documentItem) {
+  if (!documentItem || typeof documentItem !== 'object') return '';
+  const content = String(documentItem.content || '');
+  if (documentItem._contentLoadState === 'loaded' || content) {
+    return editorContentHasRichFormatting(content) ? content : '';
+  }
+  return String(documentItem.richContentHTML || '');
+}
+
 function applyEditorGlobalTextFormatting(documentItem) {
   if (!documentItem || typeof documentItem !== 'object') return documentItem;
-  Object.assign(documentItem, editorGlobalTextFormattingDefaults());
+  Object.assign(documentItem, normalizeEditorDocumentFormatting(documentItem));
   return documentItem;
 }
 
@@ -1279,7 +1332,8 @@ function normalizeChapter(chapter, index = 0, partIndex = 0, chapterIndex = inde
     partIndex: Number.isInteger(source.partIndex) ? source.partIndex : partIndex,
     chapterNo: source.chapterNo || source.no || chapterIndex + 1,
     createdAt: source.createdAt || source.created_at || source.created || new Date().toISOString(),
-    ...editorGlobalTextFormattingDefaults(),
+    ...normalizeEditorDocumentFormatting(source),
+    richContentHTML: source.richContentHTML || source.rich_content_html || '',
     editorSettings: source.editorSettings && typeof source.editorSettings === 'object'
       ? { ...source.editorSettings }
       : source.editor_settings && typeof source.editor_settings === 'object'
@@ -1314,7 +1368,8 @@ function normalizeDraft(draft, index = 0) {
     _contentPresented: source._contentPresented === true,
     draftNo: source.draftNo || source.no || index + 1,
     createdAt: source.createdAt || source.created_at || source.created || new Date().toISOString(),
-    ...editorGlobalTextFormattingDefaults(),
+    ...normalizeEditorDocumentFormatting(source),
+    richContentHTML: source.richContentHTML || source.rich_content_html || '',
     editorSettings: source.editorSettings && typeof source.editorSettings === 'object'
       ? { ...source.editorSettings }
       : source.editor_settings && typeof source.editor_settings === 'object'
@@ -1372,7 +1427,8 @@ function normalizeChapterEditDraft(draft = {}, fallbackKey = '') {
     contentPath: source.contentPath || source.content_path || chapterEditDraftFilePath(pathIndex),
     contentHandle: source.contentHandle || null,
     draftNo: source.draftNo || source.no || pathIndex + 1,
-    ...editorGlobalTextFormattingDefaults(),
+    ...normalizeEditorDocumentFormatting(source),
+    richContentHTML: source.richContentHTML || source.rich_content_html || '',
     editorSettings: source.editorSettings && typeof source.editorSettings === 'object'
       ? { ...source.editorSettings }
       : source.editor_settings && typeof source.editor_settings === 'object'

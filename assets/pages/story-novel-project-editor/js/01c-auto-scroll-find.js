@@ -396,6 +396,7 @@ function handleEditorCaretPointerPlacementStart(event) {
     event.target.closest?.('#editorAutoScrollDepthMarker, [data-auto-scroll-band-marker]')
   ) return;
   resumeEditorAutoScrollAfterManualPause({ schedule: false });
+  if (isEditorAutoScrollDepthMode() && !isEditorAutoScrollClickRepositionEnabled) return;
   markEditorCaretPointerPlacement();
 }
 
@@ -403,6 +404,7 @@ function handleEditorCaretPointerPlacement(event) {
   const editor = document.getElementById('editor');
   if (!editor || !editor.contains(event.target)) return;
   resumeEditorAutoScrollAfterManualPause({ schedule: false });
+  if (isEditorAutoScrollDepthMode() && !isEditorAutoScrollClickRepositionEnabled) return;
   markEditorCaretPointerPlacement();
   scheduleEditorAutoScrollDepthMarkerCaretSync({
     persist: true,
@@ -869,4 +871,3 @@ function buildHighlightedFragment(value, query, options = {}) {
 
   return fragment;
 }
-

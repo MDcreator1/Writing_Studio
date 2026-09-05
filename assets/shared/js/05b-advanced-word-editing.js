@@ -4,7 +4,8 @@
   const HINDI_MATRA = /[\u093A-\u094D\u0951-\u0957\u0962-\u0963]/u;
   const WORD_CHARACTER = /[\p{L}\p{N}\p{M}_]/u;
   const REPLACEMENT_WORD = /[\p{L}\p{N}]/u;
-  const state = { rules: [], categories: ['General'], search: '', categoryFilter: 'all', sortMode: 'order', customCategoriesFirst: false, activeView: 'dictionary', keepEditorReplacements: true, showEditorQuickAction: false, collectUnmatchedReplacements: false, unmatchedReplacementThreshold: 3, unmatchedCategory: 'General', unmatchedObservations: new Map(), temporaryCandidates: [], namingCategories: new Set(), expandedCategories: new Set(), visibleRules: [], selectedRuleIds: new Set(), selectionAnchorRuleId: '', pendingDeleteRuleIds: [], editingCategory: '', categoryFormOpen: false, categoryAction: null, draftAliases: [], root: null, loaded: false, restorePromise: null, projectHandle: null, persistTimer: 0, categoryScrollTimer: 0, aliasResizeObserver: null, dialogDrag: null, outsideClickHandler: null };
+  const state = { rules: [], categories: ['General'], search: '', categoryFilter: 'all', sortMode: 'order', customCategoriesFirst: false, activeView: 'dictionary', keepEditorReplacements: true, showEditorQuickAction: false, collectUnmatchedReplacements: false, unmatchedReplacementThreshold: 3, unmatchedCategory: 'General', unmatchedObservations: new Map(), temporaryCandidates: [], namingCategories: new Set(), expandedCategories: new Set(), visibleRules: [], selectedRuleIds: new Set(), selectionAnchorRuleId: '', pendingDeleteRuleIds: [], editingCategory: '', categoryFormOpen: false, categoryAction: null, draftAliases: [], root: null, loaded: false, restorePromise: null, projectHandle: null, persistTimer: 0, categoryScrollTimer: 0, aliasResizeObserver: null, dialogDrag: null, temporaryPanelDrag: null, temporaryPanelResize: null, outsideClickHandler: null };
+  const TEMPORARY_PANEL_GEOMETRY_KEY = 'lm-awe-temporary-panel-geometry-v1';
   function escapeHTML(value) { return String(value ?? '').replace(/[&<>"]/gu, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[character]); }
   function escapeAttribute(value) { return escapeHTML(value).replace(/'/gu, '&#39;'); }
   function iconMarkup(name, className, fallback = '') { let markup = typeof window.lmIcon === 'function' ? window.lmIcon(name, className) : '';
@@ -365,6 +366,157 @@
     state.dialogDrag.panel.classList.remove('is-dragging');
     state.dialogDrag = null;
   }
+  function readTemporaryPanelGeometry() {
+    try {
+      const value = JSON.parse(localStorage.getItem(TEMPORARY_PANEL_GEOMETRY_KEY) || 'null');
+      return value && typeof value === 'object' ? value : null;
+    } catch { return null; }
+  }
+  function saveTemporaryPanelGeometry(panel) {
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+    try {
+      localStorage.setItem(TEMPORARY_PANEL_GEOMETRY_KEY, JSON.stringify({
+        left: Math.round(rect.left),
+        top: Math.round(rect.top),
+        height: panel.dataset.aweUserSized === 'true' ? Math.round(rect.height) : 0
+      }));
+    } catch { /* UI geometry persistence is best effort. */ }
+  }
+  function normalizeTemporaryPanelPosition(panel) {
+    const rect = panel.getBoundingClientRect();
+    panel.style.left = `${Math.round(rect.left)}px`;
+    panel.style.top = `${Math.round(rect.top)}px`;
+    panel.style.transform = 'none';
+    return rect;
+  }
+  function clampTemporaryPanelPosition(panel, left, top) {
+    const gap = 10;
+    const rect = panel.getBoundingClientRect();
+    return {
+      left: Math.max(gap, Math.min(window.innerWidth - rect.width - gap, left)),
+      top: Math.max(gap, Math.min(window.innerHeight - rect.height - gap, top))
+    };
+  }
+  function fitStandaloneTemporaryPanelToCandidates(panel) {
+    if (!panel || panel.dataset.aweUserSized === 'true') return;
+    panel.classList.add('is-measuring-default-height');
+    panel.style.height = 'auto';
+    const desiredHeight = Math.min(panel.getBoundingClientRect().height, window.innerHeight - 20);
+    panel.style.height = `${Math.max(150, Math.round(desiredHeight))}px`;
+    panel.classList.remove('is-measuring-default-height');
+    syncTemporaryPanelResizeAvailability(panel);
+  }
+  function syncTemporaryPanelResizeAvailability(panel) {
+    const list = panel?.querySelector('[data-awe-temporary-list]');
+    const handle = panel?.querySelector('[data-awe-temporary-resize-handle]');
+    if (!panel || !list || !handle) return false;
+    const canResize = list.scrollHeight > list.clientHeight + 1;
+    panel.classList.toggle('can-resize-height', canResize);
+    handle.setAttribute('aria-disabled', String(!canResize));
+    handle.title = canResize ? 'Drag to show more names' : 'All temporary names are already visible';
+    return canResize;
+  }
+  function standaloneTemporaryPanelContentHeight(panel) {
+    const list = panel?.querySelector('[data-awe-temporary-list]');
+    if (!panel || !list) return 150;
+    const panelHeight = panel.getBoundingClientRect().height;
+    const visibleListHeight = list.getBoundingClientRect().height;
+    return Math.max(150, Math.ceil(panelHeight - visibleListHeight + list.scrollHeight) + 1);
+  }
+  function clampStandaloneTemporaryPanelHeight(panel) {
+    if (!panel || panel.dataset.aweUserSized !== 'true') return;
+    const rect = panel.getBoundingClientRect();
+    const viewportLimit = Math.max(150, window.innerHeight - rect.top - 10);
+    const contentLimit = standaloneTemporaryPanelContentHeight(panel);
+    const maximumHeight = Math.max(150, Math.min(viewportLimit, contentLimit));
+    if (rect.height > maximumHeight) panel.style.height = `${Math.round(maximumHeight)}px`;
+  }
+  function restoreStandaloneTemporaryPanelGeometry(panel) {
+    const saved = readTemporaryPanelGeometry();
+    if (!saved) {
+      fitStandaloneTemporaryPanelToCandidates(panel);
+      return;
+    }
+    if (Number.isFinite(saved.height) && saved.height > 0) {
+      panel.dataset.aweUserSized = 'true';
+      const contentLimit = standaloneTemporaryPanelContentHeight(panel);
+      panel.style.height = `${Math.max(150, Math.min(saved.height, contentLimit, window.innerHeight - 20))}px`;
+    } else {
+      fitStandaloneTemporaryPanelToCandidates(panel);
+    }
+    if (Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
+      const next = clampTemporaryPanelPosition(panel, saved.left, saved.top);
+      panel.style.left = `${Math.round(next.left)}px`;
+      panel.style.top = `${Math.round(next.top)}px`;
+      panel.style.transform = 'none';
+    }
+    syncTemporaryPanelResizeAvailability(panel);
+  }
+  function beginTemporaryPanelPointerAction(event) {
+    if (event.button !== 0) return;
+    const panel = event.target.closest('.awe-standalone-temporary-backdrop .awe-temporary-candidates-panel');
+    if (!panel) return;
+    const resizeHandle = event.target.closest('[data-awe-temporary-resize-handle]');
+    if (resizeHandle) {
+      if (!syncTemporaryPanelResizeAvailability(panel)) return;
+      const rect = normalizeTemporaryPanelPosition(panel);
+      state.temporaryPanelResize = {
+        panel,
+        pointerId: event.pointerId,
+        startY: event.clientY,
+        startHeight: rect.height,
+        contentHeight: standaloneTemporaryPanelContentHeight(panel)
+      };
+      resizeHandle.setPointerCapture?.(event.pointerId);
+      panel.classList.add('is-resizing');
+      event.preventDefault();
+      return;
+    }
+    if (event.target.closest('button, input, select, textarea, .lm-custom-select')) return;
+    const handle = event.target.closest('[data-awe-temporary-drag-handle]');
+    if (!handle) return;
+    const rect = normalizeTemporaryPanelPosition(panel);
+    state.temporaryPanelDrag = { panel, pointerId: event.pointerId, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top };
+    handle.setPointerCapture?.(event.pointerId);
+    panel.classList.add('is-dragging');
+    event.preventDefault();
+  }
+  function moveTemporaryPanelPointerAction(event) {
+    const resize = state.temporaryPanelResize;
+    if (resize?.pointerId === event.pointerId) {
+      const viewportHeight = window.innerHeight - resize.panel.getBoundingClientRect().top - 10;
+      const maxHeight = Math.max(150, Math.min(viewportHeight, resize.contentHeight));
+      const requestedHeight = resize.startHeight + event.clientY - resize.startY;
+      resize.panel.style.height = `${Math.max(150, Math.min(maxHeight, requestedHeight))}px`;
+      resize.panel.dataset.aweUserSized = 'true';
+      const canResizeFurther = syncTemporaryPanelResizeAvailability(resize.panel);
+      if (!canResizeFurther && requestedHeight >= maxHeight) endTemporaryPanelPointerAction(event);
+      event.preventDefault();
+      return;
+    }
+    const drag = state.temporaryPanelDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const next = clampTemporaryPanelPosition(drag.panel, event.clientX - drag.offsetX, event.clientY - drag.offsetY);
+    drag.panel.style.left = `${Math.round(next.left)}px`;
+    drag.panel.style.top = `${Math.round(next.top)}px`;
+    event.preventDefault();
+  }
+  function endTemporaryPanelPointerAction(event) {
+    const drag = state.temporaryPanelDrag;
+    if (drag && (event?.pointerId == null || drag.pointerId === event.pointerId)) {
+      drag.panel.classList.remove('is-dragging');
+      saveTemporaryPanelGeometry(drag.panel);
+      state.temporaryPanelDrag = null;
+    }
+    const resize = state.temporaryPanelResize;
+    if (resize && (event?.pointerId == null || resize.pointerId === event.pointerId)) {
+      resize.panel.classList.remove('is-resizing');
+      syncTemporaryPanelResizeAvailability(resize.panel);
+      saveTemporaryPanelGeometry(resize.panel);
+      state.temporaryPanelResize = null;
+    }
+  }
   function findRule(id) { return state.rules.find(rule => rule.id === id) || null; }
   function replacementIdentity(value) {
     return String(value || '').normalize('NFKC').trim().replace(/\s+/gu, ' ').toLocaleLowerCase();
@@ -393,7 +545,7 @@
   function renderDraftAliases() {
     const list = state.root?.querySelector('[data-awe-source-word-list]');
     if (!list) return;
-    list.innerHTML = state.draftAliases.map((alias, index) => `<span class="awe-source-word-chip"><span>${escapeHTML(alias)}</span><button type="button" data-awe-action="remove-source-word" data-alias-index="${index}" aria-label="Remove ${escapeAttribute(alias)}">×</button></span>`).join('');
+    list.innerHTML = state.draftAliases.map((alias, index) => `<span class="awe-source-word-chip"><span>${escapeHTML(alias)}</span><button type="button" data-awe-action="remove-source-word" data-alias-index="${index}" aria-label="Remove ${escapeAttribute(alias)}">${iconMarkup('close', 'awe-source-word-remove-icon')}</button></span>`).join('');
   }
   function setSourceWordInputOpen(open, options = {}) {
     const row = state.root?.querySelector('[data-awe-word-input-row]');
@@ -758,12 +910,15 @@
     button.hidden = !state.showEditorQuickAction;
   }
   function editorDockPanelState() {
+    ensureCategories();
     return {
       keepEditorReplacements: state.keepEditorReplacements,
       collectUnmatchedReplacements: state.collectUnmatchedReplacements,
       unmatchedReplacementThreshold: state.unmatchedReplacementThreshold,
+      minimumOccurrences: state.unmatchedReplacementThreshold,
       unmatchedCategory: state.unmatchedCategory || 'General',
-      temporaryCount: state.temporaryCandidates.length
+      temporaryCount: state.temporaryCandidates.length,
+      categories: [...state.categories]
     };
   }
   function syncEditorDockPanel() {
@@ -783,12 +938,59 @@
     document.querySelectorAll('[data-awe-dock-temporary-count]').forEach(node => {
       node.textContent = panelState.temporaryCount.toLocaleString();
     });
-    const policy = document.querySelector('[data-awe-dock-collect-policy]');
-    if (policy) {
-      policy.textContent = panelState.collectUnmatchedReplacements
-        ? `>${panelState.unmatchedReplacementThreshold} / ${panelState.unmatchedCategory}`
-        : 'Collection off';
+    document.querySelectorAll('[data-awe-dock-collect-minimum]').forEach(node => {
+      node.textContent = String(panelState.minimumOccurrences);
+    });
+    const collectButton = document.getElementById('wordEditingCollectSettingsBtn');
+    if (collectButton) {
+      collectButton.classList.toggle('is-active', panelState.collectUnmatchedReplacements);
+      collectButton.classList.toggle('is-collection-off', !panelState.collectUnmatchedReplacements);
+      collectButton.title = panelState.collectUnmatchedReplacements
+        ? `Collect in ${panelState.unmatchedCategory} when occurrences exceed ${panelState.minimumOccurrences}`
+        : `Collection off · saved threshold ${panelState.minimumOccurrences}`;
     }
+    const miniToggle = document.querySelector('[data-awe-dock-collect-enabled]');
+    if (miniToggle) miniToggle.checked = panelState.collectUnmatchedReplacements;
+    const miniMinimum = document.querySelector('[data-awe-dock-collect-minimum-input]');
+    if (miniMinimum && document.activeElement !== miniMinimum) {
+      miniMinimum.value = String(panelState.minimumOccurrences);
+    }
+    const miniCategory = document.querySelector('[data-awe-dock-collect-category]');
+    if (miniCategory) {
+      const optionsKey = panelState.categories.join('\u0000');
+      if (miniCategory.dataset.optionsKey !== optionsKey) {
+        miniCategory.innerHTML = panelState.categories.map(category =>
+          `<option value="${escapeAttribute(category)}">${escapeHTML(category)}</option>`
+        ).join('');
+        miniCategory.dataset.optionsKey = optionsKey;
+      }
+      miniCategory.value = panelState.unmatchedCategory;
+    }
+  }
+  async function getEditorDockPanelState() {
+    await restore();
+    syncEditorDockPanel();
+    return editorDockPanelState();
+  }
+  async function updateCollectSettingsFromDock(changes = {}) {
+    await restore();
+    ensureCategories();
+    if (Object.prototype.hasOwnProperty.call(changes, 'enabled')) {
+      state.collectUnmatchedReplacements = Boolean(changes.enabled);
+    }
+    if (Object.prototype.hasOwnProperty.call(changes, 'minimumOccurrences')) {
+      const minimum = Math.min(10000, Math.max(1, Math.floor(Number(changes.minimumOccurrences) || 3)));
+      state.unmatchedReplacementThreshold = minimum;
+    }
+    if (Object.prototype.hasOwnProperty.call(changes, 'category')) {
+      const category = String(changes.category || '').trim();
+      state.unmatchedCategory = state.categories.includes(category) ? category : 'General';
+    }
+    refreshTemporaryCandidates();
+    renderWorkspaceView();
+    syncEditorDockPanel();
+    persistSoon();
+    return editorDockPanelState();
   }
   async function setKeepEditorReplacementsFromDock(enabled) {
     await restore();
@@ -814,6 +1016,56 @@
     if (openTemporary) window.requestAnimationFrame(() => {
       renderTemporaryCandidates();
       openDialog('temporary-candidates');
+    });
+  }
+  function ensureStandaloneTemporaryCandidatesDialog() {
+    let backdrop = document.getElementById('aweStandaloneTemporaryCandidates');
+    if (backdrop) return backdrop;
+    backdrop = document.createElement('div');
+    backdrop.id = 'aweStandaloneTemporaryCandidates';
+    backdrop.className = 'awe-dialog-backdrop awe-standalone-temporary-backdrop';
+    backdrop.dataset.aweDialog = 'temporary-candidates-standalone';
+    backdrop.hidden = true;
+    backdrop.innerHTML = `<section class="awe-dialog awe-temporary-candidates-panel" role="dialog" aria-modal="true" aria-labelledby="aweStandaloneTemporaryCandidatesTitle"><header data-awe-temporary-drag-handle><div><h4 id="aweStandaloneTemporaryCandidatesTitle">Temporary Names <b data-awe-temporary-count>0</b></h4></div><button class="awe-name-panel-close" type="button" data-awe-action="close-temporary-candidates-standalone" aria-label="Close">${iconMarkup('close', 'awe-name-panel-close-icon')}</button></header><p>These replacements exceeded your occurrence limit but their Replace value did not match a Naming category.</p><div class="awe-temporary-empty" data-awe-temporary-empty>No temporary replacement candidates yet.</div><div class="awe-temporary-list" data-awe-temporary-list></div><div class="awe-temporary-height-resize-handle" data-awe-temporary-resize-handle role="separator" aria-orientation="horizontal" aria-label="Resize Temporary Names panel height"></div></section>`;
+    backdrop.addEventListener('click', event => {
+      const action = event.target.closest('[data-awe-action]')?.dataset.aweAction;
+      if (event.target === backdrop || action === 'close-temporary-candidates-standalone') {
+        endTemporaryPanelPointerAction();
+        backdrop.hidden = true;
+        return;
+      }
+      handleClick(event);
+    });
+    backdrop.addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      endTemporaryPanelPointerAction();
+      backdrop.hidden = true;
+    });
+    backdrop.querySelector('[data-awe-temporary-resize-handle]')?.addEventListener('dblclick', event => {
+      const panel = backdrop.querySelector('.awe-temporary-candidates-panel');
+      if (!panel) return;
+      delete panel.dataset.aweUserSized;
+      fitStandaloneTemporaryPanelToCandidates(panel);
+      saveTemporaryPanelGeometry(panel);
+      event.preventDefault();
+    });
+    backdrop.addEventListener('pointerdown', beginTemporaryPanelPointerAction);
+    backdrop.addEventListener('pointermove', moveTemporaryPanelPointerAction);
+    backdrop.addEventListener('pointerup', endTemporaryPanelPointerAction);
+    backdrop.addEventListener('pointercancel', endTemporaryPanelPointerAction);
+    document.body.appendChild(backdrop);
+    return backdrop;
+  }
+  async function openTemporaryCandidatesFromDock() {
+    await restore();
+    const backdrop = ensureStandaloneTemporaryCandidatesDialog();
+    renderTemporaryCandidates();
+    backdrop.hidden = false;
+    window.requestAnimationFrame(() => {
+      const panel = backdrop.querySelector('.awe-temporary-candidates-panel');
+      restoreStandaloneTemporaryPanelGeometry(panel);
+      backdrop.querySelector('button')?.focus();
     });
   }
   function applyDictionaryToHTMLString(htmlString) {
@@ -1032,31 +1284,60 @@
     return candidate;
   }
   function renderTemporaryCandidates() {
-    if (!state.root) return;
     const count = state.temporaryCandidates.length;
-    state.root.querySelectorAll('[data-awe-temporary-count]').forEach(node => {
+    document.querySelectorAll('[data-awe-temporary-count]').forEach(node => {
       node.textContent = count.toLocaleString();
     });
-    document.querySelectorAll('[data-awe-dock-temporary-count]').forEach(node => {
-      node.textContent = count.toLocaleString();
+    const confirmIcon = iconMarkup('temporaryCandidateConfirm', 'awe-temporary-action-icon', '✓');
+    const dismissIcon = iconMarkup('close', 'awe-temporary-action-icon');
+    const categoryOptions = state.categories.map(category =>
+      `<option value="${escapeAttribute(category)}">${escapeHTML(category)}</option>`
+    ).join('');
+    const rows = state.temporaryCandidates.map(candidate => {
+      const preferredCategory = state.categories.includes(candidate.selectedCategory)
+        ? candidate.selectedCategory
+        : (state.categories.includes(state.unmatchedCategory) ? state.unmatchedCategory : 'General');
+      const selectedOptions = categoryOptions.replace(`value="${escapeAttribute(preferredCategory)}"`, `value="${escapeAttribute(preferredCategory)}" selected`);
+      return `
+      <div class="awe-temporary-candidate-row" data-awe-temporary-candidate-id="${escapeAttribute(candidate.id)}">
+        <div class="awe-temporary-candidate-copy">
+          <strong title="${escapeAttribute(candidate.replacement)}">${escapeHTML(candidate.replacement)}</strong>
+          <span class="awe-temporary-target-arrow" aria-hidden="true">←</span>
+          <span class="awe-temporary-source-word" title="${escapeAttribute(candidate.source)}">${escapeHTML(candidate.source)}</span>
+          <small title="${candidate.count.toLocaleString()} replacements observed">${candidate.count.toLocaleString()}</small>
+        </div>
+        <div class="awe-temporary-candidate-actions">
+          <label class="awe-temporary-category-field"><select data-awe-temporary-category aria-label="Category for ${escapeAttribute(candidate.replacement)}">${selectedOptions}</select></label>
+          <button class="awe-temporary-confirm-button" type="button" data-awe-action="save-temporary-candidate" data-candidate-id="${escapeAttribute(candidate.id)}" title="Add to selected category" aria-label="Add ${escapeAttribute(candidate.replacement)} to selected category">${confirmIcon}</button>
+          <button class="awe-temporary-dismiss-button" type="button" data-awe-action="dismiss-temporary-candidate" data-candidate-id="${escapeAttribute(candidate.id)}" title="Remove temporary candidate" aria-label="Remove ${escapeAttribute(candidate.replacement)} from Temporary Names">${dismissIcon}</button>
+        </div>
+      </div>`;
+    }).join('');
+    document.querySelectorAll('[data-awe-dialog="temporary-candidates"], [data-awe-dialog="temporary-candidates-standalone"]').forEach(dialog => {
+      const empty = dialog.querySelector('[data-awe-temporary-empty]');
+      const list = dialog.querySelector('[data-awe-temporary-list]');
+      if (empty) empty.hidden = count > 0;
+      if (list) list.innerHTML = rows;
+      if (typeof syncCustomSelects === 'function') syncCustomSelects(dialog);
+      if (dialog.dataset.aweDialog === 'temporary-candidates-standalone' && !dialog.hidden) {
+        window.requestAnimationFrame(() => {
+          const panel = dialog.querySelector('.awe-temporary-candidates-panel');
+          if (panel?.dataset.aweUserSized === 'true') clampStandaloneTemporaryPanelHeight(panel);
+          else fitStandaloneTemporaryPanelToCandidates(panel);
+          syncTemporaryPanelResizeAvailability(panel);
+        });
+      }
     });
-    const list = state.root.querySelector('[data-awe-temporary-list]');
-    const empty = state.root.querySelector('[data-awe-temporary-empty]');
-    if (empty) empty.hidden = count > 0;
-    if (!list) return;
-    list.innerHTML = state.temporaryCandidates.map(candidate => `
-      <div class="awe-temporary-candidate-row">
-        <div><strong>${escapeHTML(candidate.replacement)}</strong><span>${escapeHTML(candidate.source)} → ${escapeHTML(candidate.replacement)}</span><small>${candidate.count.toLocaleString()} replacements observed</small></div>
-        <button type="button" data-awe-action="save-temporary-candidate" data-candidate-id="${escapeAttribute(candidate.id)}">Add to Dictionary</button>
-      </div>`).join('');
     syncEditorDockPanel();
   }
-  function saveTemporaryCandidate(candidateId) {
+  function saveTemporaryCandidate(candidateId, selectedCategory = '') {
     const candidate = state.temporaryCandidates.find(item => item.id === candidateId);
     if (!candidate) return;
     const useCollectedCategory = state.collectUnmatchedReplacements &&
       candidate.count > state.unmatchedReplacementThreshold;
-    const category = useCollectedCategory ? (state.unmatchedCategory || 'General') : 'General';
+    const requestedCategory = String(selectedCategory || '').trim();
+    const fallbackCategory = useCollectedCategory ? (state.unmatchedCategory || 'General') : 'General';
+    const category = state.categories.includes(requestedCategory) ? requestedCategory : fallbackCategory;
     let rule = state.rules.find(item => replacementIdentity(item.replace) === replacementIdentity(candidate.replacement));
     let changed = false;
     if (!rule) {
@@ -1065,6 +1346,10 @@
     } else if (!rule.aliases.some(alias => replacementIdentity(alias) === replacementIdentity(candidate.source))) {
       rule.aliases.push(candidate.source);
       rule.find = rule.aliases[0];
+      changed = true;
+    }
+    if (rule && rule.category !== category) {
+      rule.category = category;
       changed = true;
     }
     state.unmatchedObservations.delete(unmatchedObservationKey(candidate.source, candidate.replacement));
@@ -1077,6 +1362,13 @@
     } else {
       toast('This replacement is already present in the main dictionary.');
     }
+  }
+  function dismissTemporaryCandidate(candidateId) {
+    const candidate = state.temporaryCandidates.find(item => item.id === candidateId);
+    if (!candidate) return;
+    state.unmatchedObservations.delete(unmatchedObservationKey(candidate.source, candidate.replacement));
+    refreshTemporaryCandidates();
+    toast('Temporary candidate removed.');
   }
   async function learnFromEditorReplacement({ source, replacement, count = 1 } = {}) {
     await restore();
@@ -1151,7 +1443,12 @@
     else if (action === 'apply-editor-dictionary') applyDictionaryToEditor({ source: 'settings' });
     else if (action === 'open-temporary-candidates') { renderTemporaryCandidates(); openDialog('temporary-candidates'); }
     else if (action === 'close-temporary-candidates') closeDialog('temporary-candidates');
-    else if (action === 'save-temporary-candidate') saveTemporaryCandidate(trigger.dataset.candidateId);
+    else if (action === 'save-temporary-candidate') {
+      const row = trigger.closest('.awe-temporary-candidate-row');
+      const category = row?.querySelector('[data-awe-temporary-category]')?.value || '';
+      saveTemporaryCandidate(trigger.dataset.candidateId, category);
+    }
+    else if (action === 'dismiss-temporary-candidate') dismissTemporaryCandidate(trigger.dataset.candidateId);
     else if (action === 'new-rule') openRuleDialog();
     else if (action === 'new-rule-in-category') openRuleDialog(null, trigger.dataset.category);
     else if (action === 'toggle-category') {
@@ -1392,11 +1689,12 @@
   }
   function markup() {
     const searchIcon = iconMarkup('search', 'awe-search-icon', '⌕');
-    const clearSearchIcon = iconMarkup('close', 'awe-search-clear-icon', '×');
+    const clearSearchIcon = iconMarkup('close', 'awe-search-clear-icon');
     const sortIcon = iconMarkup('sortDirectionBars', 'awe-sort-icon', '≡');
     const customFirstIcon = iconMarkup('moveup', 'awe-custom-first-icon', '↑');
     const importIcon = iconMarkup('import', 'awe-import-icon', '⇩');
     const closeIcon = iconMarkup('close', 'awe-category-close-icon');
+    const panelCloseIcon = iconMarkup('close', 'awe-name-panel-close-icon');
     return `<div class="awe-workspace-switcher" role="tablist" aria-label="Advanced word editing workspace"><button type="button" role="tab" data-awe-action="select-view" data-view="editor" data-awe-view-tab="editor" aria-selected="false">Work on Editor</button><button type="button" role="tab" data-awe-action="select-view" data-view="dictionary" data-awe-view-tab="dictionary" aria-selected="true">Words Dictionary</button></div>
     <div class="awe-workspace" data-awe-root>
       <section class="awe-work-editor-panel" data-awe-editor-settings hidden>
@@ -1411,8 +1709,8 @@
       <div class="awe-category-workspace" data-awe-category-workspace></div>
       <div class="awe-dictionary-actions"><button class="awe-manage-categories-button" type="button" data-awe-action="open-categories">Manage Categories</button><input type="file" data-awe-file-input accept=".json,application/json" hidden><div class="awe-dictionary-actions-right"><button class="is-danger" type="button" data-awe-action="clear-rules">Clear</button><div class="awe-export-wrap"><button type="button" data-awe-action="toggle-export" aria-haspopup="menu">Export</button><div class="awe-export-panel" data-awe-export-panel role="menu" hidden><button type="button" role="menuitem" data-awe-action="export-compatible">Compatible JSON</button><button type="button" role="menuitem" data-awe-action="export-studio">Studio JSON</button></div></div></div></div>
       </div>
-      <div class="awe-dialog-backdrop" data-awe-dialog="rule" hidden><form class="awe-dialog awe-rule-entry-panel" data-awe-rule-form><header class="awe-naming-entry-head" data-awe-rule-drag-handle><div><h4 data-awe-rule-dialog-title>Add Word Replacement</h4></div><button class="awe-name-panel-close" type="button" data-awe-action="close-rule" aria-label="Close">×</button></header><input type="hidden" name="ruleId"><div class="awe-word-entry-field"><div class="awe-word-input-row" data-awe-word-input-row><input name="replacement" type="text" maxlength="500" autocomplete="off" placeholder="Replacement"><input type="text" data-awe-source-word-input maxlength="500" autocomplete="off" placeholder="Word to replace" hidden><button class="awe-source-word-add" type="button" data-awe-action="open-source-word" title="Add word to replace" aria-label="Add word to replace">+</button></div><div class="awe-source-word-list" data-awe-source-word-list aria-live="polite"></div></div><label class="awe-category-select-field"><span>Category</span><select name="category" data-awe-rule-category title="Naming categories and dictionary-only categories are available here."></select></label><div class="awe-rule-options"><label><span>Finder mode</span><select name="finderMode" data-awe-finder-mode title="Finder mode"><option value="saved">Save — exact complete word</option><option value="raw">Raw — case-free Hindi endings</option><option value="deep">Deep — no word boundary</option></select></label></div><div class="awe-rule-form-actions"><button class="awe-delete-rule-button" type="button" data-awe-delete-rule data-awe-action="delete-rule" hidden>Delete rule</button><button class="awe-save-rule-button" data-awe-save-rule type="submit">Add Replacement</button></div></form></div>
-      <div class="awe-dialog-backdrop" data-awe-dialog="temporary-candidates" hidden><section class="awe-dialog awe-temporary-candidates-panel" role="dialog" aria-modal="true" aria-labelledby="aweTemporaryCandidatesTitle"><header><div><h4 id="aweTemporaryCandidatesTitle">Temporary Names <b data-awe-temporary-count>0</b></h4></div><button class="awe-name-panel-close" type="button" data-awe-action="close-temporary-candidates" aria-label="Close">×</button></header><p>These replacements exceeded your occurrence limit but their Replace value did not match a Naming category.</p><div class="awe-temporary-empty" data-awe-temporary-empty>No temporary replacement candidates yet.</div><div class="awe-temporary-list" data-awe-temporary-list></div></section></div>
+      <div class="awe-dialog-backdrop" data-awe-dialog="rule" hidden><form class="awe-dialog awe-rule-entry-panel" data-awe-rule-form><header class="awe-naming-entry-head" data-awe-rule-drag-handle><div><h4 data-awe-rule-dialog-title>Add Word Replacement</h4></div><button class="awe-name-panel-close" type="button" data-awe-action="close-rule" aria-label="Close">${panelCloseIcon}</button></header><input type="hidden" name="ruleId"><div class="awe-word-entry-field"><div class="awe-word-input-row" data-awe-word-input-row><input name="replacement" type="text" maxlength="500" autocomplete="off" placeholder="Replacement"><input type="text" data-awe-source-word-input maxlength="500" autocomplete="off" placeholder="Word to replace" hidden><button class="awe-source-word-add" type="button" data-awe-action="open-source-word" title="Add word to replace" aria-label="Add word to replace">+</button></div><div class="awe-source-word-list" data-awe-source-word-list aria-live="polite"></div></div><label class="awe-category-select-field"><span>Category</span><select name="category" data-awe-rule-category title="Naming categories and dictionary-only categories are available here."></select></label><div class="awe-rule-options"><label><span>Finder mode</span><select name="finderMode" data-awe-finder-mode title="Finder mode"><option value="saved">Save — exact complete word</option><option value="raw">Raw — case-free Hindi endings</option><option value="deep">Deep — no word boundary</option></select></label></div><div class="awe-rule-form-actions"><button class="awe-delete-rule-button" type="button" data-awe-delete-rule data-awe-action="delete-rule" hidden>Delete rule</button><button class="awe-save-rule-button" data-awe-save-rule type="submit">Add Replacement</button></div></form></div>
+      <div class="awe-dialog-backdrop" data-awe-dialog="temporary-candidates" hidden><section class="awe-dialog awe-temporary-candidates-panel" role="dialog" aria-modal="true" aria-labelledby="aweTemporaryCandidatesTitle"><header><div><h4 id="aweTemporaryCandidatesTitle">Temporary Names <b data-awe-temporary-count>0</b></h4></div><button class="awe-name-panel-close" type="button" data-awe-action="close-temporary-candidates" aria-label="Close">${panelCloseIcon}</button></header><p>These replacements exceeded your occurrence limit but their Replace value did not match a Naming category.</p><div class="awe-temporary-empty" data-awe-temporary-empty>No temporary replacement candidates yet.</div><div class="awe-temporary-list" data-awe-temporary-list></div></section></div>
       <div class="awe-dialog-backdrop" data-awe-dialog="categories" hidden><section class="awe-dialog awe-category-dialog" role="dialog" aria-modal="true" aria-labelledby="aweCategoryDialogTitle"><header><div><h4 id="aweCategoryDialogTitle">Manage Categories</h4></div><button class="awe-category-close-btn" type="button" data-awe-action="close-categories" aria-label="Close">${closeIcon}</button></header><div class="awe-category-list" data-awe-category-list tabindex="0"></div><footer class="awe-category-footer" data-awe-category-footer><button class="awe-add-category-trigger-btn" type="button" data-awe-action="show-category-form">+ Add Category</button><form class="awe-category-form awe-inline-category-form" data-awe-category-form hidden><input name="categoryName" type="text" maxlength="80" placeholder="New category name" autocomplete="off"><button class="is-primary" type="submit">Save</button></form></footer></section></div>
       <div class="awe-dialog-backdrop" data-awe-dialog="category-action" hidden><section class="awe-confirm-dialog awe-category-action-dialog" role="alertdialog" aria-modal="true" aria-labelledby="aweCategoryActionTitle" aria-describedby="aweCategoryActionCopy"><div class="awe-confirm-icon" aria-hidden="true">!</div><div class="awe-confirm-copy"><h4 id="aweCategoryActionTitle" data-awe-category-action-title>Manage category rules</h4><p id="aweCategoryActionCopy" data-awe-category-action-copy></p><label class="awe-category-target-field"><span>Destination category</span><select data-awe-category-target aria-label="Destination category" disabled></select></label></div>
       <div class="awe-confirm-actions awe-category-action-buttons" data-awe-category-initial-actions><button type="button" data-awe-action="close-category-action">Cancel</button><button type="button" data-awe-action="start-category-move">Move Words</button><button type="button" data-awe-action="clear-category-rules">Clear</button><button class="is-danger" type="button" data-awe-action="delete-category-and-rules">Delete</button></div><div class="awe-confirm-actions awe-category-action-buttons awe-category-move-actions" data-awe-category-move-actions hidden><button type="button" data-awe-action="cancel-category-move">Cancel</button><button type="button" data-awe-action="move-category-only">Move Only</button><button class="is-danger" type="button" data-awe-action="move-category-and-delete">Move & Delete</button></div></section></div>
@@ -1464,8 +1762,9 @@
   window.lmAdvancedWordEditing = Object.freeze({
     markup, mount, getRules, getActiveRules, runReplacementEngine, normaliseRule, extractImportedDictionary,
     openImport, openCategories, applyDictionaryToAllDrafts, applyDictionaryToEditor, learnFromEditorReplacement, getTemporaryCandidates,
-    syncEditorQuickAction, syncEditorDockPanel, editorDockPanelState,
-    toggleKeepEditorReplacementsFromDock, openEditorControlsFromDock,
+    syncEditorQuickAction, syncEditorDockPanel, editorDockPanelState, getEditorDockPanelState,
+    updateCollectSettingsFromDock,
+    toggleKeepEditorReplacementsFromDock, openEditorControlsFromDock, openTemporaryCandidatesFromDock,
     loadDictionaryPayload, resetProjectData, flush: persist
   });
   const initializeEditorIntegration = () => Promise.resolve().then(() => {

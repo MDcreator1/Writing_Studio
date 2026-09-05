@@ -1541,6 +1541,17 @@
   font-size: var(--font-size-20);
 }
 
+.chapter-boundary-transfer-btn .chapter-boundary-transfer-icon {
+  display: block;
+  width: 23px;
+  height: 23px;
+  transform-origin: 50% 50%;
+}
+
+.chapter-boundary-transfer-icon.is-up {
+  transform: rotate(180deg);
+}
+
 .chapter-menu-btn {
   position: absolute;
   top: 50%;
@@ -2600,6 +2611,89 @@
   background: var(--bg-accent-gradient);
 }
 
+.editor-auto-scroll-mode-switch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+}
+
+.editor-auto-scroll-mode-choice {
+  min-width: 0;
+  min-height: 26px;
+  padding: 3px 9px;
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: var(--font-size-md);
+  font-weight: 820;
+  line-height: 1.2;
+  transition: background .16s ease, box-shadow .16s ease, color .16s ease;
+}
+
+.editor-auto-scroll-mode-choice:hover {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface) 76%, transparent);
+}
+
+.editor-auto-scroll-mode-choice.is-active,
+.editor-auto-scroll-mode-choice[aria-checked="true"] {
+  background: var(--bg-accent-gradient);
+  color: var(--accent-contrast, #fff);
+  box-shadow: 0 3px 9px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.editor-auto-scroll-mode-choice:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 72%, transparent);
+  outline-offset: 1px;
+}
+
+.editor-auto-scroll-mode-switch+.status-option-row {
+  margin-top: 7px;
+}
+
+#editorAutoScrollModeSelectorPanel .status-option-row[hidden],
+#editorAutoScrollModeSelectorPanel .editor-setting-range-row[hidden] {
+  display: none !important;
+}
+
+.editor-auto-scroll-apply-all {
+  width: 100%;
+  min-height: 34px;
+  margin-top: 9px;
+  padding: 7px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 850;
+  cursor: pointer;
+  transition: background .16s ease, border-color .16s ease, color .16s ease, transform .16s ease;
+}
+
+.editor-auto-scroll-apply-all:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  transform: translateY(-1px);
+}
+
+.editor-auto-scroll-apply-all:disabled {
+  opacity: .58;
+  cursor: wait;
+  transform: none;
+}
+
+.editor-auto-scroll-apply-all[hidden] {
+  display: none !important;
+}
+
 .setting-state {
   min-width: 52px;
   height: 26px;
@@ -3147,6 +3241,14 @@
   display: block;
   flex: 0 0 auto;
   fill: var(--accent);
+}
+
+.editor-auto-scroll-depth-marker.has-global-position-override {
+  color: var(--accent2);
+}
+
+.editor-auto-scroll-depth-marker.has-global-position-override .editor-auto-scroll-depth-arrow {
+  fill: var(--accent2);
 }
 
 .editor-scroll-thumb {

@@ -49,6 +49,37 @@ function scheduleSmartPasteAutoApply() {
     : 120000);
 }
 
+function clearDocumentGlobalFormattingOverrides(documentItem) {
+  if (!documentItem || typeof documentItem !== 'object') return;
+  const contentKey = documentItem.content ? 'content' : documentItem.richContentHTML ? 'richContentHTML' : '';
+  if (!contentKey || typeof document === 'undefined') return;
+  const root = document.createElement('div');
+  root.innerHTML = String(documentItem[contentKey] || '');
+  root.querySelectorAll('[style], [align], font').forEach(node => {
+    node.style?.removeProperty('text-align');
+    node.style?.removeProperty('line-height');
+    node.style?.removeProperty('font-family');
+    node.style?.removeProperty('font-size');
+    node.style?.removeProperty('--editor-selection-paragraph-gap');
+    node.removeAttribute?.('align');
+    if (node.tagName === 'FONT') {
+      node.removeAttribute('face');
+      node.removeAttribute('size');
+    }
+    if (node.hasAttribute?.('style') && !node.getAttribute('style')?.trim()) node.removeAttribute('style');
+  });
+  root.querySelectorAll('span.editor-inline-format').forEach(span => {
+    if (!span.getAttribute('style')) span.replaceWith(...Array.from(span.childNodes));
+  });
+  const cleanedHTML = root.innerHTML;
+  documentItem[contentKey] = cleanedHTML;
+  if (contentKey === 'content' || documentItem._contentLoadState === 'loaded') {
+    documentItem.richContentHTML = editorDocumentRichContentForStorage(documentItem);
+  } else {
+    documentItem.richContentHTML = editorContentHasRichFormatting(cleanedHTML) ? cleanedHTML : '';
+  }
+}
+
 async function applySmartPasteStylesGlobally() {
   const globalFormatting = typeof editorGlobalTextFormattingDefaults === 'function'
     ? editorGlobalTextFormattingDefaults()
@@ -56,6 +87,7 @@ async function applySmartPasteStylesGlobally() {
   // Update in-memory drafts
   if (Array.isArray(chapterDrafts)) {
     chapterDrafts.forEach(draft => {
+      clearDocumentGlobalFormattingOverrides(draft);
       Object.assign(draft, globalFormatting);
     });
   }
@@ -63,6 +95,7 @@ async function applySmartPasteStylesGlobally() {
   // Update in-memory chapters
   if (Array.isArray(chapters)) {
     chapters.forEach(chapter => {
+      clearDocumentGlobalFormattingOverrides(chapter);
       Object.assign(chapter, globalFormatting);
     });
   }
@@ -70,6 +103,7 @@ async function applySmartPasteStylesGlobally() {
   // Update in-memory chapter edit drafts
   if (chapterEditDrafts && typeof chapterEditDrafts === 'object') {
     Object.values(chapterEditDrafts).forEach(draft => {
+      clearDocumentGlobalFormattingOverrides(draft);
       Object.assign(draft, globalFormatting);
     });
   }
@@ -287,9 +321,12 @@ function loadAutoScrollSettingsFromManifest() {
   const as = projectManifest.autoScroll;
   if (as.enabled !== undefined) isEditorAutoScrollEnabled = Boolean(as.enabled);
   if (as.emptyOnly !== undefined) isEditorAutoScrollEmptyParagraphOnly = Boolean(as.emptyOnly);
+  isEditorAutoScrollClickRepositionEnabled = as.clickRepositionEnabled === undefined
+    ? true
+    : Boolean(as.clickRepositionEnabled);
   if (as.mode !== undefined && ['depth', 'band'].includes(as.mode)) editorAutoScrollMode = as.mode;
   if (as.focusTime !== undefined && typeof setEditorAutoScrollFocusTime === 'function') {
-    setEditorAutoScrollFocusTime(as.focusTime);
+    setEditorAutoScrollFocusTime(as.focusTime, { persist: false });
   }
   if (as.depth !== undefined) localStorage.setItem(EDITOR_AUTO_SCROLL_DEPTH_KEY, `${as.depth}%`);
   if (as.bandTop !== undefined) localStorage.setItem(EDITOR_AUTO_SCROLL_BAND_TOP_KEY, `${as.bandTop}%`);
@@ -323,15 +360,13 @@ function updateFindModeOptionState(mode, stateId) {
   setText(stateId, isActive ? copy.settingOn : copy.settingOff);
 }
 
-function updateEditorAutoScrollModeOptionState(mode, stateId) {
-  const copy = text();
+function updateEditorAutoScrollModeOptionState(mode) {
   const isActive = currentEditorAutoScrollMode() === mode;
   const optionBtn = document.querySelector(`[data-editor-auto-scroll-mode="${mode}"]`);
   if (optionBtn) {
-    optionBtn.setAttribute('aria-pressed', String(isActive));
+    optionBtn.setAttribute('aria-checked', String(isActive));
     optionBtn.classList.toggle('is-active', isActive);
   }
-  setText(stateId, isActive ? copy.settingOn : copy.settingOff);
 }
 
 function updateEditorAutoScrollEmptyOnlyState() {
@@ -342,6 +377,16 @@ function updateEditorAutoScrollEmptyOnlyState() {
     optionBtn.classList.toggle('is-active', Boolean(isEditorAutoScrollEmptyParagraphOnly));
   }
   setText('editorAutoScrollEmptyOnlyState', isEditorAutoScrollEmptyParagraphOnly ? copy.settingOn : copy.settingOff);
+}
+
+function updateEditorAutoScrollClickRepositionState() {
+  const copy = text();
+  const optionBtn = document.getElementById('editorAutoScrollClickRepositionToggleBtn');
+  if (optionBtn) {
+    optionBtn.setAttribute('aria-pressed', String(Boolean(isEditorAutoScrollClickRepositionEnabled)));
+    optionBtn.classList.toggle('is-active', Boolean(isEditorAutoScrollClickRepositionEnabled));
+  }
+  setText('editorAutoScrollClickRepositionState', isEditorAutoScrollClickRepositionEnabled ? copy.settingOn : copy.settingOff);
 }
 
 function updateReplaceScopeOptionState(scope, stateId) {
@@ -523,6 +568,157 @@ function setEditorAutoScrollMode(mode, options = {}) {
   if (typeof scheduleEditorCaretAutoScroll === 'function') scheduleEditorCaretAutoScroll();
 }
 
+const EDITOR_AUTO_SCROLL_PANEL_APPLY_FIELDS = Object.freeze({
+  // Register future controls shown below the mode switch here so this scoped bulk action remains explicit.
+  shared: Object.freeze([
+    Object.freeze({ field: 'autoScrollEmptyParagraphOnly', pin: 'autoScrollParagraphFollow' }),
+    Object.freeze({ field: 'autoScrollFocusTime', pin: 'autoScrollDuration' })
+  ]),
+  depth: Object.freeze([
+    Object.freeze({ field: 'autoScrollDepth' }),
+    Object.freeze({ field: 'autoScrollClickRepositionEnabled', pin: 'autoScrollClickReposition' })
+  ]),
+  band: Object.freeze([
+    Object.freeze({ field: 'autoScrollBandTop' }),
+    Object.freeze({ field: 'autoScrollBandBottom' })
+  ])
+});
+
+function editorAutoScrollPanelApplyFields(mode = currentEditorAutoScrollMode()) {
+  const safeMode = normalizeEditorAutoScrollMode(mode);
+  return [
+    ...EDITOR_AUTO_SCROLL_PANEL_APPLY_FIELDS.shared,
+    ...EDITOR_AUTO_SCROLL_PANEL_APPLY_FIELDS[safeMode]
+  ]
+    .filter(entry => !entry.pin || isEditorQuickSettingPinned(entry.pin))
+    .map(entry => entry.field);
+}
+
+function overwriteDocumentFromEditorAutoScrollPanel(documentItem, sourceSettings, fields) {
+  if (!documentItem || !sourceSettings || !Array.isArray(fields)) return false;
+  const current = documentItem.editorSettings
+    ? normalizeEditorSettings(documentItem.editorSettings)
+    : mergeProjectAutoScrollSettings(null);
+  documentItem.editorSettings = { ...current };
+  fields.forEach(field => {
+    documentItem.editorSettings[field] = sourceSettings[field];
+  });
+  return true;
+}
+
+function editorAutoScrollTemplateNumber(value, fallbackValue) {
+  const numericValue = Number.parseFloat(value);
+  if (Number.isFinite(numericValue)) return numericValue;
+  const numericFallback = Number.parseFloat(fallbackValue);
+  return Number.isFinite(numericFallback) ? numericFallback : null;
+}
+
+function updateProjectAutoScrollTemplateFromEditorPanel(sourceSettings, fields) {
+  if (!sourceSettings || !Array.isArray(fields) || typeof projectManifest === 'undefined' || !projectManifest) {
+    return false;
+  }
+  const template = projectAutoScrollSettingsTemplate();
+  const currentManifest = projectManifest.autoScroll && typeof projectManifest.autoScroll === 'object'
+    ? projectManifest.autoScroll
+    : {};
+  const nextManifest = {
+    enabled: template.autoScrollEnabled,
+    emptyOnly: template.autoScrollEmptyParagraphOnly,
+    clickRepositionEnabled: template.autoScrollClickRepositionEnabled,
+    mode: template.autoScrollMode,
+    focusTime: template.autoScrollFocusTime,
+    depth: editorAutoScrollTemplateNumber(template.autoScrollDepth, 72),
+    bandTop: editorAutoScrollTemplateNumber(template.autoScrollBandTop, 34),
+    bandBottom: editorAutoScrollTemplateNumber(template.autoScrollBandBottom, 78),
+    bandMinGap: currentManifest.bandMinGap
+  };
+
+  if (fields.includes('autoScrollEmptyParagraphOnly')) {
+    nextManifest.emptyOnly = Boolean(sourceSettings.autoScrollEmptyParagraphOnly);
+  }
+  if (fields.includes('autoScrollClickRepositionEnabled')) {
+    nextManifest.clickRepositionEnabled = Boolean(sourceSettings.autoScrollClickRepositionEnabled);
+  }
+  if (fields.includes('autoScrollFocusTime')) {
+    nextManifest.focusTime = editorAutoScrollTemplateNumber(
+      sourceSettings.autoScrollFocusTime,
+      template.autoScrollFocusTime
+    );
+  }
+  if (fields.includes('autoScrollDepth')) {
+    nextManifest.depth = editorAutoScrollTemplateNumber(sourceSettings.autoScrollDepth, template.autoScrollDepth);
+  }
+  if (fields.includes('autoScrollBandTop')) {
+    nextManifest.bandTop = editorAutoScrollTemplateNumber(sourceSettings.autoScrollBandTop, template.autoScrollBandTop);
+  }
+  if (fields.includes('autoScrollBandBottom')) {
+    nextManifest.bandBottom = editorAutoScrollTemplateNumber(sourceSettings.autoScrollBandBottom, template.autoScrollBandBottom);
+  }
+
+  projectManifest.autoScroll = nextManifest;
+  if (typeof persistProjectManifestSnapshot === 'function') persistProjectManifestSnapshot();
+  return true;
+}
+
+async function applyEditorAutoScrollPanelSettingsToAllDocuments(event) {
+  event?.preventDefault?.();
+  event?.stopPropagation?.();
+  if (isTrashDraftActive() || isChapterReviewModeForEditorSettings()) return;
+
+  const mode = currentEditorAutoScrollMode();
+  const modeLabel = editorAutoScrollModeLabel(mode);
+  const fields = editorAutoScrollPanelApplyFields(mode);
+  const settingLabels = [`${modeLabel} position`];
+  if (fields.includes('autoScrollEmptyParagraphOnly')) settingLabels.push('Paragraph Follow');
+  if (fields.includes('autoScrollClickRepositionEnabled')) settingLabels.push('Depth click reposition');
+  if (fields.includes('autoScrollFocusTime')) settingLabels.push('Scrolling Speed');
+  const settingSummary = settingLabels.join(', ');
+  const confirmed = typeof requestAdvancedSettingsDecision === 'function'
+    ? await requestAdvancedSettingsDecision({
+        title: `Apply ${modeLabel} settings to all documents?`,
+        message: `${settingSummary} will update in every existing chapter, draft and chapter-edit draft, and become the matching Advanced project template values. The other marker position will remain unchanged.`,
+        actions: [{ value: false, label: 'Cancel' }, { value: true, label: 'Apply to All' }]
+      })
+    : window.confirm(`Apply ${settingSummary} to every existing document?`);
+  if (!confirmed) return;
+
+  const button = document.getElementById('editorAutoScrollApplyAllBtn');
+  if (button) button.disabled = true;
+  const sourceSettings = currentEditorSettingsSnapshot();
+  const documents = [
+    ...(Array.isArray(chapters) ? chapters : []),
+    ...(Array.isArray(chapterDrafts) ? chapterDrafts : []),
+    ...Object.values(chapterEditDrafts && typeof chapterEditDrafts === 'object' ? chapterEditDrafts : {})
+  ];
+  documents.forEach(documentItem => {
+    overwriteDocumentFromEditorAutoScrollPanel(documentItem, sourceSettings, fields);
+  });
+  updateProjectAutoScrollTemplateFromEditorPanel(sourceSettings, fields);
+  if (typeof syncEditorAutoScrollGlobalOverrideMarkerState === 'function') {
+    syncEditorAutoScrollGlobalOverrideMarkerState();
+  }
+  if (typeof saveToStorage === 'function') saveToStorage(false);
+
+  try {
+    if (projectDirectoryHandle) {
+      await Promise.all([
+        typeof writeProjectManifest === 'function' ? writeProjectManifest() : Promise.resolve(),
+        typeof writeDraftsDataToProject === 'function' ? writeDraftsDataToProject() : Promise.resolve(),
+        typeof writeChapterEditDraftsToProject === 'function' ? writeChapterEditDraftsToProject() : Promise.resolve()
+      ]);
+    }
+    const message = `${settingSummary} applied to ${documents.length} documents.`;
+    if (typeof showEditorToast === 'function') showEditorToast(message, 'success');
+    else if (typeof showMiniReminder === 'function') showMiniReminder(message);
+  } catch (error) {
+    console.error('Document-level Auto-scroll apply failed:', error);
+    if (typeof showEditorToast === 'function') showEditorToast('Auto-scroll settings could not be saved to every project file.', 'error');
+    else if (typeof showMiniReminder === 'function') showMiniReminder('Auto-scroll settings could not be saved to every project file.');
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 function toggleEditorAutoScrollEmptyParagraphOnly() {
   if (isChapterReviewModeForEditorSettings()) {
     isEditorAutoScrollModeSelectorOpen = false;
@@ -538,6 +734,13 @@ function toggleEditorAutoScrollEmptyParagraphOnly() {
   } else if (typeof cancelEditorCaretAutoScroll === 'function') {
     cancelEditorCaretAutoScroll();
   }
+}
+
+function toggleEditorAutoScrollClickReposition() {
+  if (isChapterReviewModeForEditorSettings() || currentEditorAutoScrollMode() !== 'depth') return;
+  isEditorAutoScrollClickRepositionEnabled = !isEditorAutoScrollClickRepositionEnabled;
+  saveEditorSettings();
+  updateEditorSettingsUI();
 }
 
 function setEditorReplaceScope(scope, options = {}) {
@@ -783,7 +986,50 @@ function updateCustomSelectMenuHeight(select, shell, trigger, menu) {
     return;
   }
 
-  const isInAdvancedSettings = Boolean(select.closest('.advanced-editor-settings-modal') || select.closest('.advanced-editor-settings-card'));
+  const isInWordEditingCollectMiniPanel = Boolean(select.closest('.word-editing-collect-mini-panel'));
+  if (isInWordEditingCollectMiniPanel) {
+    const maxVisibleOptions = 5;
+    const visibleRows = Math.min(maxVisibleOptions, visibleOptionCount);
+    const requestedHeight = heightForCount(visibleRows);
+    const shellRect = shell.getBoundingClientRect();
+    const menuGap = 7;
+    const viewportGap = 12;
+    const availableBelow = Math.max(48, Math.floor(window.innerHeight - shellRect.bottom - menuGap - viewportGap));
+    const availableAbove = Math.max(48, Math.floor(shellRect.top - menuGap - viewportGap));
+    const openUpwards = availableBelow < requestedHeight && availableAbove > availableBelow;
+    const directionalSpace = openUpwards ? availableAbove : availableBelow;
+    const usedHeight = Math.min(requestedHeight, directionalSpace);
+    const needsScroll = visibleOptionCount > maxVisibleOptions || requestedHeight > directionalSpace;
+    const widestButton = optionButtons.reduce((width, button) => Math.max(width, Math.ceil(button.scrollWidth)), 0);
+    const desiredWidth = Math.max(shellRect.width, widestButton + 18);
+    const usedWidth = Math.min(desiredWidth, Math.max(shellRect.width, window.innerWidth - (viewportGap * 2)));
+    const viewportLeft = centeredCustomSelectLeft(shellRect, usedWidth, viewportGap, true);
+    const relativeLeft = viewportLeft - shellRect.left;
+
+    menu.classList.toggle('opens-upward', openUpwards);
+    // The mini panel is transformed, so keep its menu relative to the trigger instead of using fixed positioning.
+    menu.style.setProperty('position', 'absolute', 'important');
+    menu.style.setProperty('top', openUpwards ? 'auto' : `calc(100% + ${menuGap}px)`, 'important');
+    menu.style.setProperty('bottom', openUpwards ? `calc(100% + ${menuGap}px)` : 'auto', 'important');
+    menu.style.setProperty('left', `${relativeLeft}px`, 'important');
+    menu.style.setProperty('right', 'auto', 'important');
+    menu.style.setProperty('width', `${usedWidth}px`, 'important');
+    menu.style.setProperty('min-width', `${shellRect.width}px`, 'important');
+    menu.style.setProperty('max-width', `calc(100vw - ${viewportGap * 2}px)`, 'important');
+    menu.style.setProperty('height', `${usedHeight}px`, 'important');
+    menu.style.setProperty('max-height', `${usedHeight}px`, 'important');
+    menu.style.setProperty('overflow', 'hidden', 'important');
+    menu.style.setProperty('overflow-y', needsScroll ? 'auto' : 'hidden', 'important');
+    menu.style.setProperty('z-index', '99999', 'important');
+    menu.style.setProperty('--lm-custom-select-menu-max-height', `${usedHeight}px`);
+    return;
+  }
+
+  const isInAdvancedSettings = Boolean(
+    select.closest('.advanced-editor-settings-modal') ||
+    select.closest('.advanced-editor-settings-card') ||
+    select.closest('.awe-temporary-candidate-row')
+  );
   if (isInAdvancedSettings) {
     const maxVisibleOptions = 5;
     const visibleRows = Math.min(maxVisibleOptions, visibleOptionCount);
