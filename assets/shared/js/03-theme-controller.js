@@ -1,13 +1,8 @@
 (function () {
   const ID_ALIAS_PREFIX = 'lm-id-';
-  const THEME_LIGHT_CLASS = 'lm-theme-light';
-  const THEME_DARK_CLASS = 'lm-theme-dark';
-  const THEME_GREY_CLASS = 'lm-theme-grey';
-  const THEME_PURPLE_CLASS = 'lm-theme-purple';
-  const THEME_SUNSET_CLASS = 'lm-theme-sunset';
-  const THEME_FOREST_CLASS = 'lm-theme-forest';
-  const THEME_MODES = ['light', 'dark', 'grey', 'purple', 'sunset', 'forest'];
-  const EXTRA_THEME_MODES = ['dark', 'purple', 'sunset', 'forest'];
+  const DEFAULT_THEME_MODES = ['light', 'dark', 'grey', 'purple', 'sunset', 'forest'];
+  let themeModes = [...DEFAULT_THEME_MODES];
+  let themeFamilies = [];
   let activeThemeMode = null;
   let moreThemesExpanded = false;
   const SPECIAL_ID_CLASSES = {
@@ -33,7 +28,7 @@
   function normalizeThemeMode(mode) {
     const value = String(mode || '').toLowerCase();
     if (value === 'colorful') return 'purple';
-    if (THEME_MODES.includes(value)) return value;
+    if (themeModes.includes(value)) return value;
     if (mode === true || value === 'true') return 'dark';
     if (document.body?.classList.contains('forest-mode')) return 'forest';
     if (document.body?.classList.contains('sunset-mode')) return 'sunset';
@@ -51,13 +46,9 @@
   }
 
   function getCurrentThemeMode() {
-    if (THEME_MODES.includes(activeThemeMode)) return activeThemeMode;
-    if (document.body?.classList.contains('forest-mode')) return 'forest';
-    if (document.body?.classList.contains('sunset-mode')) return 'sunset';
-    if (document.body?.classList.contains('purple-mode') || document.body?.classList.contains('colorful-mode')) return 'purple';
-    if (document.body?.classList.contains('grey-mode')) return 'grey';
-    if (document.body?.classList.contains('dark-mode')) return 'dark';
-    if (document.body?.classList.contains('light-mode')) return 'light';
+    if (themeModes.includes(activeThemeMode)) return activeThemeMode;
+    const classMode = themeModes.find(mode => document.body?.classList.contains(`lm-theme-${mode}`) || document.body?.classList.contains(`${mode}-mode`));
+    if (classMode) return classMode;
     return getStoredThemeMode();
   }
 
@@ -72,23 +63,14 @@
   function syncThemeClass(element, mode) {
     if (!element?.classList) return;
     const nextMode = normalizeThemeMode(mode);
-    element.classList.toggle(THEME_DARK_CLASS, nextMode === 'dark');
-    element.classList.toggle(THEME_GREY_CLASS, nextMode === 'grey');
-    element.classList.toggle(THEME_PURPLE_CLASS, nextMode === 'purple');
-    element.classList.toggle(THEME_SUNSET_CLASS, nextMode === 'sunset');
-    element.classList.toggle(THEME_FOREST_CLASS, nextMode === 'forest');
-    element.classList.toggle(THEME_LIGHT_CLASS, nextMode === 'light');
+    [...element.classList].filter(className => className.startsWith('lm-theme-')).forEach(className => element.classList.remove(className));
+    element.classList.add(`lm-theme-${nextMode}`);
   }
 
   function applyLekhakThemeClasses(mode = getCurrentThemeMode()) {
     const nextMode = normalizeThemeMode(mode);
     activeThemeMode = nextMode;
-    document.body?.classList.toggle('light-mode', nextMode === 'light');
-    document.body?.classList.toggle('dark-mode', nextMode === 'dark');
-    document.body?.classList.toggle('grey-mode', nextMode === 'grey');
-    document.body?.classList.toggle('purple-mode', nextMode === 'purple');
-    document.body?.classList.toggle('sunset-mode', nextMode === 'sunset');
-    document.body?.classList.toggle('forest-mode', nextMode === 'forest');
+    themeModes.forEach(theme => document.body?.classList.toggle(`${theme}-mode`, nextMode === theme));
     document.body?.classList.toggle('colorful-mode', false);
     syncThemeClass(document.documentElement, nextMode);
     syncThemeClass(document.body, nextMode);
@@ -113,15 +95,144 @@
     return {
       button: useFocusButton ? focusButton : defaultButton,
       panel: document.getElementById('themeModePanel'),
-      lightButton: document.getElementById('themeLightBtn'),
-      darkButton: document.getElementById('themeDarkBtn'),
-      greyButton: document.getElementById('themeGreyBtn'),
-      purpleButton: document.getElementById('themePurpleBtn'),
-      sunsetButton: document.getElementById('themeSunsetBtn'),
-      forestButton: document.getElementById('themeForestBtn'),
       moreButton: document.getElementById('themeMoreBtn'),
       moreOptions: document.getElementById('themeMoreOptions')
     };
+  }
+
+  function discoverThemeModes() {
+    const discovered = new Set(DEFAULT_THEME_MODES);
+    const canonicalMode = mode => ({ gray: 'grey', colorful: 'purple' })[mode] || mode;
+    const visitRules = rules => {
+      [...(rules || [])].forEach(rule => {
+        const selector = String(rule.selectorText || '');
+        for (const match of selector.matchAll(/\.lm-theme-([a-z0-9-]+)/gi)) discovered.add(canonicalMode(match[1].toLowerCase()));
+        try { if (rule.cssRules) visitRules(rule.cssRules); } catch (error) {}
+      });
+    };
+    [...document.styleSheets].forEach(sheet => { try { visitRules(sheet.cssRules); } catch (error) {} });
+    themeModes = [...DEFAULT_THEME_MODES, ...[...discovered].filter(mode => !DEFAULT_THEME_MODES.includes(mode)).sort()];
+    return themeModes;
+  }
+
+  function themeModeLabel(mode) {
+    return String(mode).split('-').filter(Boolean).map(word => word[0].toUpperCase() + word.slice(1)).join(' ');
+  }
+
+  function themeButtonId(mode) {
+    return `theme${String(mode).split('-').map(part => part[0]?.toUpperCase() + part.slice(1)).join('')}Btn`;
+  }
+
+  function buildThemeFamilies() {
+    const families = new Map();
+    themeModes.forEach((mode, order) => {
+      const match = mode.match(/^(.+)-(light|dark)$/);
+      const name = match?.[1] || mode;
+      const family = families.get(name) || { name, order, base: null, light: null, dark: null };
+      if (match) family[match[2]] = mode;
+      else family.base = mode;
+      families.set(name, family);
+    });
+    themeFamilies = [...families.values()].sort((a, b) => a.order - b.order).map(family => {
+      const hasExplicitPair = Boolean(family.light && family.dark);
+      if (!hasExplicitPair && family.base && family.light && !family.dark) family.dark = family.base;
+      else if (!hasExplicitPair && family.base && family.dark && !family.light) family.light = family.base;
+      family.hasVariants = Boolean(family.light && family.dark && family.light !== family.dark);
+      family.mode = family.base || family.light || family.dark;
+      return family;
+    });
+    return themeFamilies;
+  }
+
+  function applyThemeButtonPreview(button, mode) {
+    const probe = document.createElement('span');
+    probe.className = `lm-theme-${mode}`;
+    probe.hidden = true;
+    document.body.appendChild(probe);
+    const style = getComputedStyle(probe);
+    const value = name => style.getPropertyValue(name).trim();
+    const paper = value('--paper') || value('--surface') || '#fff';
+    const surface = value('--surface-soft') || value('--surface') || paper;
+    const accent = value('--accent') || '#777';
+    const border = value('--border') || accent;
+    const ink = value('--ink') || '#111';
+    probe.remove();
+    button.style.setProperty('--theme-option-preview-bg', `linear-gradient(135deg, ${paper}, ${surface})`);
+    button.style.setProperty('--theme-option-preview-border', border);
+    button.style.setProperty('--theme-option-preview-color', ink);
+    button.style.setProperty('--theme-option-preview-accent', accent);
+    button.style.setProperty('--theme-option-preview-shadow', `0 9px 20px color-mix(in srgb, ${accent} 20%, transparent)`);
+  }
+
+  function createThemeButton(mode, label = themeModeLabel(mode)) {
+    const button = document.createElement('button');
+    button.className = `theme-mode-option lm-id-${themeButtonId(mode)}`;
+    button.id = themeButtonId(mode);
+    button.type = 'button';
+    button.dataset.themeMode = mode;
+    button.textContent = label;
+    button.addEventListener('click', () => selectThemeMode(mode));
+    applyThemeButtonPreview(button, mode);
+    return button;
+  }
+
+  function createThemeFamilyControl(family) {
+    if (!family.hasVariants) return createThemeButton(family.mode, themeModeLabel(family.name));
+    const control = document.createElement('div');
+    control.className = 'theme-mode-family';
+    control.dataset.themeFamily = family.name;
+    const currentMode = getCurrentThemeMode();
+    const preferredMode = [family.light, family.dark].includes(currentMode) ? currentMode : family.light;
+    const mainButton = createThemeButton(preferredMode, themeModeLabel(family.name));
+    mainButton.classList.add('theme-mode-family-main');
+    mainButton.dataset.themeFamilyMain = family.name;
+    const switcher = document.createElement('div');
+    switcher.className = 'theme-mode-variant-switch';
+    switcher.setAttribute('role', 'group');
+    switcher.setAttribute('aria-label', `${themeModeLabel(family.name)} variant`);
+    [['light', family.light, '☀'], ['dark', family.dark, '☾']].forEach(([variant, mode, icon]) => {
+      const button = document.createElement('button');
+      button.className = 'theme-mode-variant-btn';
+      button.type = 'button';
+      button.dataset.themeMode = mode;
+      button.dataset.themeVariant = variant;
+      button.title = themeModeLabel(variant);
+      button.setAttribute('aria-label', `${themeModeLabel(family.name)} ${themeModeLabel(variant)}`);
+      button.textContent = icon;
+      button.addEventListener('click', event => {
+        event.stopPropagation();
+        selectThemeMode(mode);
+      });
+      switcher.append(button);
+    });
+    applyThemeButtonPreview(control, preferredMode);
+    control.append(mainButton, switcher);
+    return control;
+  }
+
+  function renderThemeModePanel() {
+    const panel = document.getElementById('themeModePanel');
+    if (!panel) return;
+    buildThemeFamilies();
+    const primaryNames = ['light', 'grey'];
+    const primaryFamilies = themeFamilies.filter(family => primaryNames.includes(family.name));
+    const extraFamilies = themeFamilies.filter(family => !primaryNames.includes(family.name));
+    panel.replaceChildren(...primaryFamilies.map(createThemeFamilyControl));
+    if (!extraFamilies.length) return;
+    const moreButton = document.createElement('button');
+    moreButton.className = 'theme-mode-option theme-mode-more-btn lm-id-themeMoreBtn';
+    moreButton.id = 'themeMoreBtn';
+    moreButton.type = 'button';
+    moreButton.setAttribute('aria-expanded', 'false');
+    moreButton.setAttribute('aria-controls', 'themeMoreOptions');
+    moreButton.innerHTML = '<span>More themes</span><span class="theme-mode-more-arrow" aria-hidden="true">›</span>';
+    moreButton.addEventListener('click', toggleMoreThemeOptions);
+    const moreOptions = document.createElement('div');
+    moreOptions.className = 'theme-mode-more-options lm-id-themeMoreOptions';
+    moreOptions.id = 'themeMoreOptions';
+    moreOptions.hidden = true;
+    moreOptions.append(...extraFamilies.map(createThemeFamilyControl));
+    panel.append(moreButton, moreOptions);
   }
 
   function positionThemePanel() {
@@ -155,17 +266,21 @@
   }
 
   function syncThemePanelState() {
-    const { button, panel, lightButton, darkButton, greyButton, purpleButton, sunsetButton, forestButton, moreButton, moreOptions } = getThemePanelElements();
+    const { button, panel, moreButton, moreOptions } = getThemePanelElements();
     const mode = getCurrentThemeMode();
-    const extraThemeActive = EXTRA_THEME_MODES.includes(mode);
+    const extraThemeActive = !['light', 'grey'].includes(mode);
     button?.classList.toggle('is-open', Boolean(panel && !panel.hidden));
     button?.setAttribute('aria-expanded', String(Boolean(panel && !panel.hidden)));
-    lightButton?.classList.toggle('is-active', mode === 'light');
-    darkButton?.classList.toggle('is-active', mode === 'dark');
-    greyButton?.classList.toggle('is-active', mode === 'grey');
-    purpleButton?.classList.toggle('is-active', mode === 'purple');
-    sunsetButton?.classList.toggle('is-active', mode === 'sunset');
-    forestButton?.classList.toggle('is-active', mode === 'forest');
+    panel?.querySelectorAll?.('[data-theme-mode]').forEach(themeButton => themeButton.classList.toggle('is-active', themeButton.dataset.themeMode === mode));
+    panel?.querySelectorAll?.('[data-theme-family]').forEach(familyControl => {
+      const active = [...familyControl.querySelectorAll('[data-theme-mode]')].some(button => button.dataset.themeMode === mode);
+      familyControl.classList.toggle('is-active', active);
+      const mainButton = familyControl.querySelector('[data-theme-family-main]');
+      if (mainButton && active) {
+        mainButton.dataset.themeMode = mode;
+        applyThemeButtonPreview(familyControl, mode);
+      }
+    });
     if (moreOptions) moreOptions.hidden = !moreThemesExpanded;
     moreButton?.classList.toggle('is-expanded', moreThemesExpanded);
     moreButton?.classList.toggle('has-active-extra', extraThemeActive);
@@ -175,6 +290,10 @@
   }
 
   function setThemePanel(open) {
+    if (open) {
+      discoverThemeModes();
+      renderThemeModePanel();
+    }
     const { panel } = getThemePanelElements();
     if (!panel) return;
     if (!open) moreThemesExpanded = false;
@@ -232,6 +351,8 @@
   }
 
   function initLekhakThemeClasses() {
+    discoverThemeModes();
+    renderThemeModePanel();
     syncIdClasses(document);
     applyLekhakThemeClasses();
     syncThemePanelState();

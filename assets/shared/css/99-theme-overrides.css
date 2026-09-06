@@ -36,7 +36,32 @@
     --lm-theme-option-forest-color: #eef8f0;
     --lm-theme-option-forest-accent: #34d35c;
     --lm-theme-option-forest-shadow: 0 9px 20px rgba(52, 211, 92, .19);
+
+    --lm-theme-option-sunset-light-bg: linear-gradient(135deg, #f0e1d6 0%, #e5d0c1 54%, #d7ad95 100%);
+    --lm-theme-option-sunset-light-border: #c39a7d;
+    --lm-theme-option-sunset-light-color: #43291f;
+    --lm-theme-option-sunset-light-accent: #a85f06;
+    --lm-theme-option-sunset-light-shadow: 0 9px 20px rgba(168, 95, 6, .18);
+
+    --lm-theme-option-forest-light-bg: linear-gradient(135deg, #e0ead9 0%, #d1dfc8 54%, #bfd5a8 100%);
+    --lm-theme-option-forest-light-border: #99af86;
+    --lm-theme-option-forest-light-color: #26361f;
+    --lm-theme-option-forest-light-accent: #537f0d;
+    --lm-theme-option-forest-light-shadow: 0 9px 20px rgba(83, 127, 13, .18);
+
+    --lm-theme-option-lagoon-bg: linear-gradient(135deg, #071c27 0%, #10485b 52%, #147967 100%);
+    --lm-theme-option-lagoon-border: #3ea9b4;
+    --lm-theme-option-lagoon-color: #edfcff;
+    --lm-theme-option-lagoon-accent: #59ddff;
+    --lm-theme-option-lagoon-shadow: 0 9px 20px rgba(61, 221, 196, .22);
+
+    --lm-theme-option-purple-light-bg: linear-gradient(135deg, #e7e5ef 0%, #d7d5e8 54%, #decbdc 100%);
+    --lm-theme-option-purple-light-border: #a5a2bd;
+    --lm-theme-option-purple-light-color: #292c42;
+    --lm-theme-option-purple-light-accent: #625bc5;
+    --lm-theme-option-purple-light-shadow: 0 9px 20px rgba(98, 91, 197, .18);
 }
+
 
 :root.lm-theme-light,
 html.lm-theme-light,
@@ -67,7 +92,6 @@ body.lm-theme-light,
     --warning: #d97706;
     --success: #16a34a;
     --tag-char: #6d28d9;
-    --color-on-accent: #fff;
     --topbar: rgba(255, 255, 255, .9);
     --surface-raised: rgba(255, 255, 255, .92);
     --color-backdrop: rgba(17, 24, 39, .38);
@@ -340,4 +364,414 @@ body.lm-theme-forest,
     --color-on-accent: #fff;
     --color-backdrop: rgba(0, 0, 0, .48);
     --trash-ai-border: rgba(52, 211, 153, .70);
+}
+
+
+:root.lm-theme-lagoon,
+html.lm-theme-lagoon,
+body.lm-theme-lagoon,
+.lm-theme-lagoon {
+
+    /* Typography */
+
+    --ink: #edfcff;
+    --soft-ink: rgba(220, 246, 247, .58);
+
+    --lm-color-ink-rgb: 237, 252, 255;
+    --lm-color-white-rgb: 255, 255, 255;
+    --lm-color-black-rgb: 0, 0, 0;
+
+
+    /* Primary Color Family */
+
+    --accent: #59ddff;       /* Sky Blue */
+    --accent2: #38e2af;      /* Water Green */
+    --accent3: #b8fff0;      /* Aqua Glow */
+
+    --accent-light: rgba(89, 221, 255, .40);
+    --accent-soft: rgba(56, 226, 175, .13);
+
+    --lm-color-accent-rgb: 89, 221, 255;
+
+
+    /* Utility RGB Colors */
+
+    --lm-color-trash-ai-blue-rgb: 89, 221, 255;
+    --lm-color-trash-ai-teal-rgb: 56, 226, 175;
+    --lm-color-backdrop-rgb: 0, 12, 18;
+
+
+    /* Main Surfaces */
+
+    --paper: #071820;
+    --surface: #0d242d;
+    --surface-soft: #14343c;
+    --surface-raised: rgba(13, 36, 45, .94);
+
+    --sidebar: #091e27;
+    --topbar: rgba(9, 30, 39, .93);
+
+
+    /* Borders */
+
+    --border: #285866;
+
+
+    /* Muted Content */
+
+    --muted: #9bc5ca;
+    --muted-soft: rgba(155, 197, 202, .25);
+
+
+    /* Semantic Colors */
+
+    --danger: #ff718c;
+    --info: #70d9ff;
+    --warning: #ffd166;
+    --success: #42e28f;
+
+
+    /* Special Elements */
+
+    --tag-char: #9ff7e6;
+
+    /*
+     * Sky-blue accent पर dark text ज्यादा साफ
+     * और readable दिखाई देगा।
+     */
+    --color-on-accent: #032631;
+
+    --color-backdrop: rgba(0, 10, 16, .52);
+
+    --trash-ai-border:
+        rgba(89, 221, 255, .72);
+}
+
+
+:root.lm-theme-lagoon-light,
+html.lm-theme-lagoon-light,
+body.lm-theme-lagoon-light,
+.lm-theme-lagoon-light {
+    /* Core Colors */
+
+    --ink: #17343e;
+    --accent: #087f99;
+    --paper: #d2e5e7;
+    --surface: #e0edef;
+    --surface-soft: #c5dcdd;
+    --border: #91b6b9;
+
+
+    /* Typography */
+
+    --soft-ink: rgba(23, 52, 62, .60);
+    --muted: #587078;
+    --muted-soft: rgba(88, 112, 120, .28);
+
+    --lm-color-ink-rgb: 23, 52, 62;
+    --lm-color-white-rgb: 255, 255, 255;
+    --lm-color-black-rgb: 0, 0, 0;
+
+
+    /* Accent Family */
+
+    --accent2: #0a9875;
+    --accent3: #075c6b;
+    --accent-light: rgba(8, 127, 153, .30);
+    --accent-soft: rgba(10, 152, 117, .16);
+
+    --lm-color-accent-rgb: 8, 127, 153;
+
+
+    /* Additional Surfaces */
+
+    --surface-raised: rgba(224, 237, 239, .94);
+    --sidebar: #c9dfe1;
+    --topbar: rgba(210, 229, 231, .93);
+
+
+    /* Utility Colors */
+
+    --lm-color-trash-ai-blue-rgb: 25, 139, 180;
+    --lm-color-trash-ai-teal-rgb: 20, 157, 127;
+    --lm-color-backdrop-rgb: 15, 43, 52;
+
+    --color-backdrop: rgba(15, 43, 52, .42);
+    --trash-ai-border: rgba(25, 139, 180, .68);
+
+
+    /* Semantic Colors */
+
+    --danger: #bd3654;
+    --info: #176fa5;
+    --warning: #ad650d;
+    --success: #12805d;
+
+
+    /* Special Colors */
+
+    --tag-char: #146f83;
+    --color-on-accent: #ffffff;
+
+
+    /* Status Colors */
+
+    --lm-status-success-rgb: 18, 128, 93;
+    --lm-status-neutral-rgb: 70, 91, 98;
+    --lm-status-info-rgb: 23, 111, 165;
+    --lm-status-warning-rgb: 173, 101, 13;
+    --lm-status-orphan-rgb: 38, 53, 57;
+
+    --lm-status-success-color: #12805d;
+    --lm-status-neutral-color: #465b62;
+    --lm-status-info-color: #176fa5;
+    --lm-status-warning-color: #ad650d;
+    --lm-status-orphan-color: #263539;
+}
+
+
+
+:root.lm-theme-purple-light,
+html.lm-theme-purple-light,
+body.lm-theme-purple-light,
+.lm-theme-purple-light {
+    /* Core Colors */
+
+    --ink: #292c42;
+    --accent: #625bc5;
+    --paper: #d9d8e8;
+    --surface: #e7e5ef;
+    --surface-soft: #ceccdf;
+    --border: #a5a2bd;
+
+
+    /* Typography */
+
+    --soft-ink: rgba(41, 44, 66, .60);
+    --muted: #68687e;
+    --muted-soft: rgba(104, 104, 126, .27);
+
+    --lm-color-ink-rgb: 41, 44, 66;
+    --lm-color-white-rgb: 255, 255, 255;
+    --lm-color-black-rgb: 0, 0, 0;
+
+
+    /* Accent Family */
+
+    --accent2: #bb467e;
+    --accent3: #514887;
+    --accent-light: rgba(98, 91, 197, .29);
+    --accent-soft: rgba(187, 70, 126, .14);
+
+    --lm-color-accent-rgb: 98, 91, 197;
+
+
+    /* Additional Surfaces */
+
+    --surface-raised: rgba(231, 229, 239, .94);
+    --sidebar: #d1d0e1;
+    --topbar: rgba(217, 216, 232, .93);
+
+
+    /* Utility Colors */
+
+    --lm-color-trash-ai-blue-rgb: 82, 120, 190;
+    --lm-color-trash-ai-teal-rgb: 120, 88, 183;
+    --lm-color-backdrop-rgb: 31, 29, 53;
+
+    --color-backdrop: rgba(31, 29, 53, .42);
+    --trash-ai-border: rgba(82, 120, 190, .68);
+
+
+    /* Semantic Colors */
+
+    --danger: #b63b60;
+    --info: #3e6eae;
+    --warning: #a56712;
+    --success: #347e5c;
+
+
+    /* Special Colors */
+
+    --tag-char: #69469b;
+    --color-on-accent: #ffffff;
+
+
+    /* Status Colors */
+
+    --lm-status-success-rgb: 52, 126, 92;
+    --lm-status-neutral-rgb: 79, 79, 99;
+    --lm-status-info-rgb: 62, 110, 174;
+    --lm-status-warning-rgb: 165, 103, 18;
+    --lm-status-orphan-rgb: 49, 47, 62;
+
+    --lm-status-success-color: #347e5c;
+    --lm-status-neutral-color: #4f4f63;
+    --lm-status-info-color: #3e6eae;
+    --lm-status-warning-color: #a56712;
+    --lm-status-orphan-color: #312f3e;
+}
+
+
+:root.lm-theme-sunset-light,
+html.lm-theme-sunset-light,
+body.lm-theme-sunset-light,
+.lm-theme-sunset-light {
+    /* Core Colors */
+
+    --ink: #43291f;
+    --accent: #a85f06;
+    --paper: #ead7ca;
+    --surface: #f0e1d6;
+    --surface-soft: #ddc3b3;
+    --border: #c39a7d;
+
+
+    /* Typography */
+
+    --soft-ink: rgba(67, 41, 31, .60);
+    --muted: #7a6257;
+    --muted-soft: rgba(122, 98, 87, .27);
+
+    --lm-color-ink-rgb: 67, 41, 31;
+    --lm-color-white-rgb: 255, 255, 255;
+    --lm-color-black-rgb: 0, 0, 0;
+
+
+    /* Accent Family */
+
+    --accent2: #b93832;
+    --accent3: #8d4b2a;
+    --accent-light: rgba(168, 95, 6, .29);
+    --accent-soft: rgba(185, 56, 50, .14);
+
+    --lm-color-accent-rgb: 168, 95, 6;
+
+
+    /* Additional Surfaces */
+
+    --surface-raised: rgba(240, 225, 214, .94);
+    --sidebar: #e3cec0;
+    --topbar: rgba(234, 215, 202, .93);
+
+
+    /* Utility Colors */
+
+    --lm-color-trash-ai-blue-rgb: 181, 110, 60;
+    --lm-color-trash-ai-teal-rgb: 193, 70, 66;
+    --lm-color-backdrop-rgb: 67, 38, 29;
+
+    --color-backdrop: rgba(67, 38, 29, .42);
+    --trash-ai-border: rgba(181, 110, 60, .68);
+
+
+    /* Semantic Colors */
+
+    --danger: #b52f39;
+    --info: #8b546c;
+    --warning: #9c6208;
+    --success: #5e793d;
+
+
+    /* Special Colors */
+
+    --tag-char: #93452d;
+    --color-on-accent: #ffffff;
+
+
+    /* Status Colors */
+
+    --lm-status-success-rgb: 94, 121, 61;
+    --lm-status-neutral-rgb: 112, 95, 87;
+    --lm-status-info-rgb: 139, 84, 108;
+    --lm-status-warning-rgb: 156, 98, 8;
+    --lm-status-orphan-rgb: 80, 58, 50;
+
+    --lm-status-success-color: #5e793d;
+    --lm-status-neutral-color: #705f57;
+    --lm-status-info-color: #8b546c;
+    --lm-status-warning-color: #9c6208;
+    --lm-status-orphan-color: #503a32;
+}
+
+
+:root.lm-theme-forest-light,
+html.lm-theme-forest-light,
+body.lm-theme-forest-light,
+.lm-theme-forest-light {
+    /* Core Colors */
+
+    --ink: #26361f;
+    --accent: #537f0d;
+    --paper: #d3e1ca;
+    --surface: #e0ead9;
+    --surface-soft: #c5d5bb;
+    --border: #99af86;
+
+
+    /* Typography */
+
+    --soft-ink: rgba(38, 54, 31, .60);
+    --muted: #64725e;
+    --muted-soft: rgba(100, 114, 94, .27);
+
+    --lm-color-ink-rgb: 38, 54, 31;
+    --lm-color-white-rgb: 255, 255, 255;
+    --lm-color-black-rgb: 0, 0, 0;
+
+
+    /* Accent Family */
+
+    --accent2: #2f8038;
+    --accent3: #496d1b;
+    --accent-light: rgba(83, 127, 13, .29);
+    --accent-soft: rgba(47, 128, 56, .15);
+
+    --lm-color-accent-rgb: 83, 127, 13;
+
+
+    /* Additional Surfaces */
+
+    --surface-raised: rgba(224, 234, 217, .94);
+    --sidebar: #cad9c1;
+    --topbar: rgba(211, 225, 202, .93);
+
+
+    /* Utility Colors */
+
+    --lm-color-trash-ai-blue-rgb: 83, 137, 70;
+    --lm-color-trash-ai-teal-rgb: 80, 151, 47;
+    --lm-color-backdrop-rgb: 26, 45, 21;
+
+    --color-backdrop: rgba(26, 45, 21, .42);
+    --trash-ai-border: rgba(83, 137, 70, .68);
+
+
+    /* Semantic Colors */
+
+    --danger: #b43c43;
+    --info: #356f8c;
+    --warning: #9a6a0f;
+    --success: #347a2f;
+
+
+    /* Special Colors */
+
+    --tag-char: #4e7416;
+    --color-on-accent: #102218;
+
+
+    /* Status Colors */
+
+    --lm-status-success-rgb: 52, 122, 47;
+    --lm-status-neutral-rgb: 83, 99, 78;
+    --lm-status-info-rgb: 53, 111, 140;
+    --lm-status-warning-rgb: 154, 106, 15;
+    --lm-status-orphan-rgb: 62, 76, 58;
+
+    --lm-status-success-color: #347a2f;
+    --lm-status-neutral-color: #53634e;
+    --lm-status-info-color: #356f8c;
+    --lm-status-warning-color: #9a6a0f;
+    --lm-status-orphan-color: #3e4c3a;
 }

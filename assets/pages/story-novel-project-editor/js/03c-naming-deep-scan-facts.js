@@ -1,3 +1,229 @@
+let namingDuplicateResolverState = null;
+
+function namingDuplicateStableValue(value) {
+  if (Array.isArray(value)) return value.map(namingDuplicateStableValue);
+  if (!value || typeof value !== 'object') return value ?? null;
+  return Object.keys(value).sort().reduce((result, key) => {
+    if (key !== 'id') result[key] = namingDuplicateStableValue(value[key]);
+    return result;
+  }, {});
+}
+
+function namingDuplicateValueKey(value) {
+  return JSON.stringify(namingDuplicateStableValue(value));
+}
+
+function namingDuplicateFieldValue(entry, field) {
+  if (field === 'title') {
+    const excluded = new Set(['id', 'createdAt', 'similarNames', 'aliases', 'description', 'descriptionMeta', 'descriptionHistory', 'descriptionCreatedAt', 'updatedAt']);
+    return Object.fromEntries(Object.entries(entry).filter(([key]) => !excluded.has(key)));
+  }
+  if (field === 'createdAt') return entry.createdAt || '';
+  if (field === 'aliases') return normalizeNamingAliases(entry.similarNames || [], entry.name).map(value => value.toLocaleLowerCase()).sort();
+  if (field === 'description') return {
+    description: entry.description || '', descriptionMeta: entry.descriptionMeta || null,
+    descriptionHistory: entry.descriptionHistory || [], updatedAt: entry.updatedAt || entry.createdAt || ''
+  };
+  if (field === 'descriptionCreatedAt') return entry.descriptionCreatedAt || entry.createdAt || '';
+  return null;
+}
+
+function preferredNamingDuplicateEntry(items = []) {
+  return [...items].sort((left, right) => {
+    const leftTime = Date.parse(left.createdAt || 0) || Number.MAX_SAFE_INTEGER;
+    const rightTime = Date.parse(right.createdAt || 0) || Number.MAX_SAFE_INTEGER;
+    if (leftTime !== rightTime) return leftTime - rightTime;
+    const leftId = String(left.id || '');
+    const rightId = String(right.id || '');
+    const leftGenerated = /^name-\d+(?:-\d+)?$/i.test(leftId) ? 1 : 0;
+    const rightGenerated = /^name-\d+(?:-\d+)?$/i.test(rightId) ? 1 : 0;
+    return leftGenerated - rightGenerated || leftId.length - rightId.length || leftId.localeCompare(rightId);
+  })[0];
+}
+
+function namingDuplicateTitleGroups(entries = []) {
+  const groups = new Map();
+  entries.forEach(entry => {
+    const key = namingEntryNameKey(entry?.name || '');
+    if (!key) return;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(entry);
+  });
+  return [...groups.entries()].filter(([, items]) => items.length > 1).map(([key, items], index) => {
+    const preferred = preferredNamingDuplicateEntry(items);
+    const fields = ['title', 'createdAt', 'aliases', 'description', 'descriptionCreatedAt'];
+    const mismatches = Object.fromEntries(fields.map(field => [field,
+      new Set(items.map(entry => namingDuplicateValueKey(namingDuplicateFieldValue(entry, field)))).size > 1
+    ]));
+    const exactDuplicate = new Set(items.map(entry => namingDuplicateValueKey(entry))).size === 1;
+    const choices = Object.fromEntries(fields.map(field => [field, mismatches[field] ? '' : preferred.id]));
+    choices.aliases = [];
+    const aliasEntries = items.filter(entry => normalizeNamingAliases(entry.similarNames || [], entry.name).length);
+    const aliasVariants = new Set(aliasEntries.map(entry => namingDuplicateValueKey(namingDuplicateFieldValue(entry, 'aliases'))));
+    if (!mismatches.aliases) choices.aliases = [preferred.id];
+    else if (aliasEntries.length === 1 || aliasVariants.size === 1) {
+      choices.aliases = [aliasEntries[0]?.id || items[0].id];
+      mismatches.aliases = false;
+    }
+    return { id: `duplicate-${index}`, key, entries: items, choices, mismatches, exactDuplicate };
+  });
+}
+
+function namingDuplicateTime(value) {
+  if (!value) return 'Time not recorded';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+}
+
+function namingDuplicateCategory(entry) {
+  return namingData.categories.find(category => category.id === entry.categoryId)?.title || 'Uncategorized';
+}
+
+function namingDuplicateResolverComplete() {
+  return Boolean(namingDuplicateResolverState && [...(namingDuplicateResolverState.autoGroups || []), ...namingDuplicateResolverState.groups].every(namingDuplicateGroupComplete));
+}
+
+function namingDuplicateGroupComplete(group) {
+  return ['title', 'createdAt', 'description', 'descriptionCreatedAt'].every(field => !group.mismatches[field] || Boolean(group.choices[field])) &&
+    (!group.mismatches.aliases || group.choices.aliases.length > 0);
+}
+
+function renderNamingDuplicateResolver() {
+  const state = namingDuplicateResolverState;
+  if (!state) return;
+  let panel = document.getElementById('namingDuplicateResolverPanel');
+  if (!panel) {
+    panel = document.createElement('section');
+    panel.id = 'namingDuplicateResolverPanel';
+    panel.className = 'naming-duplicate-resolver lm-id-namingDuplicateResolverPanel';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+    panel.setAttribute('aria-labelledby', 'namingDuplicateResolverTitle');
+    document.body.appendChild(panel);
+  }
+  const group = state.groups[state.currentIndex];
+  const visibleFields = Object.entries(group.mismatches).filter(([, mismatch]) => mismatch).map(([field]) => field);
+  panel.innerHTML = `
+    <header><div><span>Deep Scan check</span><h3 id="namingDuplicateResolverTitle">Same title names detected</h3></div><button type="button" onclick="cancelNamingDuplicateResolution()" aria-label="Cancel duplicate resolution">×</button></header>
+    <div class="naming-duplicate-resolver-intro">केवल अलग data दिखाया गया है। किसी card का title चुनकर उसका पूरा data लें, या fields अलग-अलग चुनें।</div>
+    <div class="naming-duplicate-groups">
+      <section class="naming-duplicate-group" data-group-id="${escapeHtml(group.id)}">
+        <div class="naming-duplicate-group-head"><div><b>${escapeHtml(group.entries[0].name)}</b><span>Group ${state.currentIndex + 1} of ${state.groups.length} · ${visibleFields.length} differing field(s)</span></div></div>
+        <div class="naming-duplicate-records">${group.entries.map(entry => {
+          const id = escapeHtml(entry.id);
+          const aliases = normalizeNamingAliases(entry.similarNames || [], entry.name);
+          const wholeSelected = visibleFields.every(field => field === 'aliases' ? group.choices.aliases.length === 1 && group.choices.aliases[0] === entry.id : group.choices[field] === entry.id);
+          const choiceClass = (field, selected) => `${selected ? 'is-selected' : ''} ${group.choices[field] && !selected ? 'is-other-selected' : ''}`;
+          return `<article class="naming-duplicate-record ${wholeSelected ? 'is-whole-selected' : ''}">
+            <div class="naming-duplicate-record-head"><button class="naming-duplicate-title ${choiceClass('title', group.choices.title === entry.id)} ${group.mismatches.title ? '' : 'is-matched'}" type="button" onclick="selectNamingDuplicateWhole('${escapeHtml(group.id)}','${id}')"><span>${escapeHtml(entry.name)} <small>${escapeHtml(namingDuplicateCategory(entry))}</small></span></button>${group.mismatches.createdAt ? `<button class="naming-duplicate-created ${choiceClass('createdAt', group.choices.createdAt === entry.id)}" type="button" onclick="selectNamingDuplicateField('${escapeHtml(group.id)}','createdAt','${id}')" aria-label="Use creation time ${escapeHtml(namingDuplicateTime(entry.createdAt))}"><time>${escapeHtml(namingDuplicateTime(entry.createdAt))}</time></button>` : ''}</div>
+            ${group.mismatches.aliases ? `<button class="naming-duplicate-aliases ${group.choices.aliases.includes(entry.id) ? 'is-selected' : ''}" type="button" onclick="toggleNamingDuplicateAlias('${escapeHtml(group.id)}','${id}')">${aliases.length ? aliases.map(alias => `<span>${escapeHtml(alias)}</span>`).join('') : '<em>No aliases</em>'}</button>` : ''}
+            ${group.mismatches.description ? `<button class="naming-duplicate-description ${choiceClass('description', group.choices.description === entry.id)}" type="button" onclick="selectNamingDuplicateField('${escapeHtml(group.id)}','description','${id}')"><span>${escapeHtml(entry.description || 'No description')}</span><time>Edited ${escapeHtml(namingDuplicateTime(entry.updatedAt || entry.createdAt))}</time><small>${(entry.descriptionHistory || []).length} history item(s)</small></button>` : ''}
+            ${group.mismatches.descriptionCreatedAt ? `<button class="naming-duplicate-description-created ${choiceClass('descriptionCreatedAt', group.choices.descriptionCreatedAt === entry.id)}" type="button" onclick="selectNamingDuplicateField('${escapeHtml(group.id)}','descriptionCreatedAt','${id}')">Description created ${escapeHtml(namingDuplicateTime(entry.descriptionCreatedAt || entry.createdAt))}</button>` : ''}
+          </article>`;
+        }).join('')}</div>
+      </section></div>
+    <footer><span>${state.currentIndex + 1}/${state.groups.length} duplicate groups</span><button type="button" onclick="moveNamingDuplicateGroup(-1)" ${state.currentIndex === 0 ? 'disabled' : ''}>Back</button><button class="is-primary" type="button" onclick="${state.currentIndex === state.groups.length - 1 ? 'finishNamingDuplicateResolution()' : 'moveNamingDuplicateGroup(1)'}" ${namingDuplicateGroupComplete(group) ? '' : 'disabled'}>${state.currentIndex === state.groups.length - 1 ? 'Done' : 'Next'}</button></footer>`;
+  panel.hidden = false;
+  document.body.classList.add('is-resolving-naming-duplicates');
+}
+
+function selectNamingDuplicateWhole(groupId, entryId) {
+  const group = namingDuplicateResolverState?.groups.find(item => item.id === groupId);
+  if (!group) return;
+  Object.keys(group.choices).forEach(field => {
+    if (!group.mismatches[field]) return;
+    group.choices[field] = field === 'aliases' ? [entryId] : entryId;
+  });
+  renderNamingDuplicateResolver();
+}
+
+function selectNamingDuplicateField(groupId, field, entryId) {
+  const group = namingDuplicateResolverState?.groups.find(item => item.id === groupId);
+  if (!group || !Object.hasOwn(group.choices, field)) return;
+  group.choices[field] = entryId;
+  renderNamingDuplicateResolver();
+}
+
+function toggleNamingDuplicateAlias(groupId, entryId) {
+  const group = namingDuplicateResolverState?.groups.find(item => item.id === groupId);
+  if (!group) return;
+  const selected = new Set(group.choices.aliases);
+  if (selected.has(entryId)) selected.delete(entryId); else selected.add(entryId);
+  group.choices.aliases = [...selected];
+  renderNamingDuplicateResolver();
+}
+
+function moveNamingDuplicateGroup(direction) {
+  const state = namingDuplicateResolverState;
+  if (!state) return;
+  if (direction > 0 && !namingDuplicateGroupComplete(state.groups[state.currentIndex])) return;
+  state.currentIndex = Math.max(0, Math.min(state.groups.length - 1, state.currentIndex + direction));
+  renderNamingDuplicateResolver();
+}
+
+function cancelNamingDuplicateResolution() {
+  const state = namingDuplicateResolverState;
+  if (!state) return;
+  document.getElementById('namingDuplicateResolverPanel')?.remove();
+  document.body.classList.remove('is-resolving-naming-duplicates');
+  namingDuplicateResolverState = null;
+  state.resolve(false);
+}
+
+function namingDuplicateHistory(items = []) {
+  const seen = new Set();
+  return items.flat().filter(item => {
+    if (!item) return false;
+    const key = JSON.stringify(item);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(-50);
+}
+
+function finishNamingDuplicateResolution() {
+  const state = namingDuplicateResolverState;
+  if (!state || !namingDuplicateResolverComplete()) return;
+  const removedIds = new Set();
+  [...(state.autoGroups || []), ...state.groups].forEach(group => {
+    const byId = id => group.entries.find(entry => entry.id === id);
+    const titleEntry = byId(group.choices.title);
+    const createdEntry = byId(group.choices.createdAt);
+    const descriptionEntry = byId(group.choices.description);
+    const descriptionCreatedEntry = byId(group.choices.descriptionCreatedAt);
+    const survivor = titleEntry;
+    const aliases = group.choices.aliases.flatMap(id => byId(id)?.similarNames || []);
+    Object.assign(survivor, {
+      name: titleEntry.name,
+      categoryId: titleEntry.categoryId,
+      source: titleEntry.source || null,
+      createdAt: createdEntry.createdAt,
+      similarNames: normalizeNamingAliases(aliases, titleEntry.name),
+      description: descriptionEntry.description || '',
+      descriptionMeta: descriptionEntry.descriptionMeta || null,
+      descriptionCreatedAt: descriptionCreatedEntry.descriptionCreatedAt || descriptionCreatedEntry.createdAt,
+      descriptionHistory: [...(descriptionEntry.descriptionHistory || [])],
+      updatedAt: descriptionEntry.updatedAt || descriptionEntry.createdAt || survivor.updatedAt
+    });
+    group.entries.forEach(entry => { if (entry.id !== survivor.id) removedIds.add(entry.id); });
+  });
+  namingData = normalizeNamingData({ ...namingData, entries: namingData.entries.filter(entry => !removedIds.has(entry.id)) });
+  localStorage.setItem(NAMING_STORAGE_KEY, JSON.stringify(namingData));
+  document.getElementById('namingDuplicateResolverPanel')?.remove();
+  document.body.classList.remove('is-resolving-naming-duplicates');
+  namingDuplicateResolverState = null;
+  state.resolve(true);
+}
+
+function resolveDuplicateNamingTitles(groups) {
+  return new Promise(resolve => {
+    const autoGroups = groups.filter(group => group.exactDuplicate);
+    const reviewGroups = groups.filter(group => !group.exactDuplicate);
+    namingDuplicateResolverState = { groups: reviewGroups, autoGroups, resolve, currentIndex: 0 };
+    if (!reviewGroups.length) finishNamingDuplicateResolution(); else renderNamingDuplicateResolver();
+  });
+}
+
 async function deepScanAllNamingEntries(buttonElement = null, options = {}) {
   const btn = buttonElement || document.getElementById('namingDeepScanBtn');
   const createDeepScanSavedNameMatcher = searchNames => {
@@ -25,13 +251,28 @@ async function deepScanAllNamingEntries(buttonElement = null, options = {}) {
   setTimeout(async () => {
     try {
     const scanProject = projectDirectoryHandle;
-    const sourceIndex = await window.LmNamingDeepScanSource.buildTextIndex({
-      onProgress: ({ loaded, total }) => setProgress(`Reading source documents ${loaded}/${total}…`, total ? loaded / total * 12 : 12)
-    });
     // Snapshot loading can replace the global namingData with a document-only
     // projection while the source files are being read. Re-hydrate here, after
     // the asynchronous read, and keep this authoritative object for the whole
     // scan so a document switch cannot make us save an incomplete projection.
+    const preflightNamingData = normalizeNamingData(
+      await window.LmInitialRendering?.ensureFullNamingData?.({ forceSource: true }) || namingData
+    );
+    namingData = preflightNamingData;
+    if (scanProject !== projectDirectoryHandle) throw new Error('Project changed during Naming scan.');
+    const duplicateGroups = namingDuplicateTitleGroups(namingData.entries);
+    if (duplicateGroups.length) {
+      setProgress(`${duplicateGroups.length} duplicate title group(s) need review…`, 2);
+      const resolved = await resolveDuplicateNamingTitles(duplicateGroups);
+      if (!resolved) {
+        options.onComplete?.({ error: false, cancelled: true, message: 'Deep Scan cancelled before duplicate titles were changed.' });
+        return;
+      }
+      await writeNamingDataToProject({ authoritativeData: namingData, deduplicateDescriptionHistory: true, allowEntryRemoval: true });
+    }
+    const sourceIndex = await window.LmNamingDeepScanSource.buildTextIndex({
+      onProgress: ({ loaded, total }) => setProgress(`Reading source documents ${loaded}/${total}…`, total ? loaded / total * 12 : 12)
+    });
     const authoritativeNamingData = normalizeNamingData(
       await window.LmInitialRendering?.ensureFullNamingData?.({ forceSource: true }) || namingData
     );
@@ -67,7 +308,8 @@ async function deepScanAllNamingEntries(buttonElement = null, options = {}) {
         // Run cleanup on the latest durable history inside the serialized writer,
         // even when every source is already null or unchanged.
         await writeNamingDataToProject({
-          sourcePatches: Object.fromEntries(entries.map(entry => [entry.id, entry.source])),
+          authoritativeData: namingData,
+          allowEntryRemoval: true,
           deduplicateDescriptionHistory: true
         });
       }

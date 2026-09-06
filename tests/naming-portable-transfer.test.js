@@ -87,10 +87,76 @@ assert.strictEqual(analyzed[0].kind, 'compatible');
 assert.strictEqual(analyzed[0].needsReview, false);
 assert.strictEqual(analyzed[1].kind, 'field-conflict');
 assert.strictEqual(analyzed[1].needsReview, true);
-assert.strictEqual(analyzed[1].descriptionChoice, 'existing');
+assert.strictEqual(analyzed[1].descriptionChoice, '');
+assert.strictEqual(analyzed[1].categoryChoice, '');
+assert.strictEqual(analyzed[1].conflicts.description, true);
+assert.strictEqual(analyzed[1].conflicts.category, true);
 assert.strictEqual(analyzed[2].kind, 'alias-collision');
-assert.strictEqual(analyzed[2].action, 'skip');
+assert.strictEqual(analyzed[2].action, 'merge');
+assert.strictEqual(analyzed[2].titleChoice, '');
 assert.strictEqual(analyzed[3].kind, 'new');
 assert.strictEqual(analyzed[3].action, 'add');
 
-console.log('naming-portable-transfer: migration, export minimization and conflict analysis passed');
+const pendingMatches = context.analyzePortableNamingImport({ names: [
+  { name: 'Ravi', aliases: ['Rav'], category: 'Characters', description: '' },
+  { name: 'Rav', aliases: [], category: 'Characters', description: '' }
+] }, { categories: [], entries: [] });
+assert.strictEqual(pendingMatches[0].kind, 'new');
+assert.strictEqual(pendingMatches[1].kind, 'alias-collision');
+assert.strictEqual(pendingMatches[1].matches[0].pendingRowId, pendingMatches[0].id);
+assert.strictEqual(pendingMatches[1].targetId, `pending-${pendingMatches[0].id}`);
+
+const resolution = context.namingPortableResolution({ rows: analyzed });
+assert.ok(resolution.total >= 3);
+assert.ok(resolution.unresolved >= 3);
+
+const revisionA = context.namingPortableDatasetRevision({
+  schemaVersion: 2,
+  categories: [{ id: 'people', title: 'People' }],
+  entries: [
+    { id: '2', name: 'Mira', categoryId: 'people', description: 'Lead', similarNames: ['Mi', 'M'], updatedAt: 'old' },
+    { id: '1', name: 'Ravi', categoryId: 'people', description: '', similarNames: [] }
+  ]
+});
+const revisionB = context.namingPortableDatasetRevision({
+  schemaVersion: 2,
+  categories: [{ id: 'people', title: 'People' }],
+  entries: [
+    { id: '1', name: 'Ravi', categoryId: 'people', description: '', similarNames: [] },
+    { id: '2', name: 'Mira', categoryId: 'people', description: 'Lead', similarNames: ['M', 'Mi'], updatedAt: 'new' }
+  ]
+});
+assert.strictEqual(revisionA, revisionB, 'revision must ignore hydration timestamps and collection ordering');
+assert.notStrictEqual(revisionA, context.namingPortableDatasetRevision({
+  schemaVersion: 2,
+  categories: [{ id: 'people', title: 'People' }],
+  entries: [{ id: '2', name: 'Mira', categoryId: 'people', description: 'Changed', similarNames: ['M', 'Mi'] }]
+}), 'revision must still detect real Naming content changes');
+
+const reviewedRows = context.analyzePortableNamingImport({ names: [
+  { name: 'Mira', aliases: [], category: 'People', description: 'Imported' },
+  { name: 'New name', aliases: [], category: 'People', description: '' }
+] }, {
+  categories: [{ id: 'people', title: 'People' }],
+  entries: [{ id: 'mira', name: 'Mira', similarNames: [], categoryId: 'people', description: 'Old' }]
+});
+assert.strictEqual(context.validatePortableNamingImportTargets(reviewedRows, {
+  categories: [{ id: 'people', title: 'Renamed People' }],
+  entries: [
+    { id: 'mira', name: 'Mira', similarNames: [], categoryId: 'people', description: 'Background update' },
+    { id: 'unrelated', name: 'Other', similarNames: [], categoryId: 'people', description: '' }
+  ]
+}).valid, true, 'unrelated and non-identity background changes must not invalidate review');
+assert.strictEqual(context.validatePortableNamingImportTargets(reviewedRows, {
+  categories: [{ id: 'people', title: 'People' }],
+  entries: [
+    { id: 'mira', name: 'Mira', similarNames: [], categoryId: 'people', description: 'Old' },
+    { id: 'new-collision', name: 'New name', similarNames: [], categoryId: 'people', description: '' }
+  ]
+}).valid, false, 'a newly introduced collision must invalidate review');
+
+assert.ok(source.includes("if (namingPortableTransferState.rows.some(row => row.needsReview)) renderPortableNamingTransferPanel();"));
+assert.ok(source.includes('else await applyPortableNamingImport();'), 'zero-conflict imports must skip review and start import automatically');
+assert.ok(source.includes("title: 'Resolve Naming conflicts'") && source.includes("title: 'Scanning imported names'") && source.includes("title: 'Saving verified Naming data'") && source.includes("title: 'Rebuilding Naming snapshots'") && source.includes("title: 'Naming data is ready'"));
+
+console.log('naming-portable-transfer: migration, auto-import and conflict analysis passed');
