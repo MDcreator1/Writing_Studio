@@ -374,7 +374,7 @@ body.lm-theme-lagoon,
 
     /* Typography */
 
-    --ink: #edfcff;
+    --ink: #ffeded;
     --soft-ink: rgba(220, 246, 247, .58);
 
     --lm-color-ink-rgb: 237, 252, 255;
@@ -384,9 +384,12 @@ body.lm-theme-lagoon,
 
     /* Primary Color Family */
 
-    --accent: #59ddff;       /* Sky Blue */
-    --accent2: #38e2af;      /* Water Green */
-    --accent3: #b8fff0;      /* Aqua Glow */
+    --accent: #59ddff;
+    /* Sky Blue */
+    --accent2: #38e2af;
+    /* Water Green */
+    --accent3: #b8fff0;
+    /* Aqua Glow */
 
     --accent-light: rgba(89, 221, 255, .40);
     --accent-soft: rgba(56, 226, 175, .13);
@@ -439,7 +442,7 @@ body.lm-theme-lagoon,
      * Sky-blue accent पर dark text ज्यादा साफ
      * और readable दिखाई देगा।
      */
-    --color-on-accent: #032631;
+    --color-on-accent: #90d6eb;
 
     --color-backdrop: rgba(0, 10, 16, .52);
 
@@ -454,7 +457,7 @@ body.lm-theme-lagoon-light,
 .lm-theme-lagoon-light {
     /* Core Colors */
 
-    --ink: #17343e;
+    --ink: #3e1717;
     --accent: #087f99;
     --paper: #d2e5e7;
     --surface: #e0edef;
@@ -475,8 +478,8 @@ body.lm-theme-lagoon-light,
 
     /* Accent Family */
 
-    --accent2: #0a9875;
-    --accent3: #075c6b;
+    --accent2: #019b67;
+    --accent3: #006172;
     --accent-light: rgba(8, 127, 153, .30);
     --accent-soft: rgba(10, 152, 117, .16);
 
@@ -511,22 +514,36 @@ body.lm-theme-lagoon-light,
     /* Special Colors */
 
     --tag-char: #146f83;
-    --color-on-accent: #ffffff;
+    --color-on-accent: #0a3b2f;
 
 
     /* Status Colors */
-
-    --lm-status-success-rgb: 18, 128, 93;
+    /*
+    --lm-status-success-rgb: 23, 111, 165;
     --lm-status-neutral-rgb: 70, 91, 98;
-    --lm-status-info-rgb: 23, 111, 165;
+    --lm-status-info-rgb: 18, 128, 93;
     --lm-status-warning-rgb: 173, 101, 13;
     --lm-status-orphan-rgb: 38, 53, 57;
 
-    --lm-status-success-color: #12805d;
+    --lm-status-success-color: #176fa5;
     --lm-status-neutral-color: #465b62;
-    --lm-status-info-color: #176fa5;
+    --lm-status-info-color: #12805d;
     --lm-status-warning-color: #ad650d;
     --lm-status-orphan-color: #263539;
+
+
+     */
+    --lm-status-success-rgb: 0, 81, 255;
+    --lm-status-neutral-rgb: 85, 104, 112;
+    --lm-status-info-rgb: 20, 146, 26;
+    --lm-status-warning-rgb: 201, 105, 3;
+    --lm-status-orphan-rgb: 21, 36, 41;
+
+    --lm-status-success-color: #0051ff;
+    --lm-status-neutral-color: #556870;
+    --lm-status-info-color: #14921a;
+    --lm-status-warning-color: #c96903;
+    --lm-status-orphan-color: #152429;
 }
 
 
@@ -594,11 +611,11 @@ body.lm-theme-purple-light,
     /* Special Colors */
 
     --tag-char: #69469b;
-    --color-on-accent: #ffffff;
+    --color-on-accent: #140929;
 
 
     /* Status Colors */
-
+    /*
     --lm-status-success-rgb: 52, 126, 92;
     --lm-status-neutral-rgb: 79, 79, 99;
     --lm-status-info-rgb: 62, 110, 174;
@@ -609,7 +626,20 @@ body.lm-theme-purple-light,
     --lm-status-neutral-color: #4f4f63;
     --lm-status-info-color: #3e6eae;
     --lm-status-warning-color: #a56712;
-    --lm-status-orphan-color: #312f3e;
+    --lm-status-orphan-color: #312f3e; */
+
+
+    --lm-status-success-rgb: 0, 81, 255;
+    --lm-status-neutral-rgb: 85, 104, 112;
+    --lm-status-info-rgb: 20, 146, 26;
+    --lm-status-warning-rgb: 201, 105, 3;
+    --lm-status-orphan-rgb: 21, 36, 41;
+
+    --lm-status-success-color: #0051ff;
+    --lm-status-neutral-color: #556870;
+    --lm-status-info-color: #14921a;
+    --lm-status-warning-color: #c96903;
+    --lm-status-orphan-color: #152429;
 }
 
 
@@ -640,8 +670,8 @@ body.lm-theme-sunset-light,
 
     /* Accent Family */
 
-    --accent2: #b93832;
-    --accent3: #8d4b2a;
+    --accent2: #f83126;
+    --accent3: #af8c41;
     --accent-light: rgba(168, 95, 6, .29);
     --accent-soft: rgba(185, 56, 50, .14);
 
@@ -676,11 +706,11 @@ body.lm-theme-sunset-light,
     /* Special Colors */
 
     --tag-char: #93452d;
-    --color-on-accent: #ffffff;
+    --color-on-accent: #3a2610;
 
 
     /* Status Colors */
-
+    /*
     --lm-status-success-rgb: 94, 121, 61;
     --lm-status-neutral-rgb: 112, 95, 87;
     --lm-status-info-rgb: 139, 84, 108;
@@ -691,7 +721,19 @@ body.lm-theme-sunset-light,
     --lm-status-neutral-color: #705f57;
     --lm-status-info-color: #8b546c;
     --lm-status-warning-color: #9c6208;
-    --lm-status-orphan-color: #503a32;
+    --lm-status-orphan-color: #503a32; */
+
+    --lm-status-success-rgb: 0, 81, 255;
+    --lm-status-neutral-rgb: 85, 104, 112;
+    --lm-status-info-rgb: 20, 146, 26;
+    --lm-status-warning-rgb: 201, 105, 3;
+    --lm-status-orphan-rgb: 21, 36, 41;
+
+    --lm-status-success-color: #0051ff;
+    --lm-status-neutral-color: #556870;
+    --lm-status-info-color: #14921a;
+    --lm-status-warning-color: #c96903;
+    --lm-status-orphan-color: #152429;
 }
 
 
@@ -722,8 +764,8 @@ body.lm-theme-forest-light,
 
     /* Accent Family */
 
-    --accent2: #2f8038;
-    --accent3: #496d1b;
+    --accent2: #29ca7a;
+    --accent3: #506d1b;
     --accent-light: rgba(83, 127, 13, .29);
     --accent-soft: rgba(47, 128, 56, .15);
 
@@ -763,15 +805,31 @@ body.lm-theme-forest-light,
 
     /* Status Colors */
 
-    --lm-status-success-rgb: 52, 122, 47;
+    /*
+    --lm-status-success-rgb: 53, 111, 140;
     --lm-status-neutral-rgb: 83, 99, 78;
-    --lm-status-info-rgb: 53, 111, 140;
+    --lm-status-info-rgb: 52, 122, 47;
     --lm-status-warning-rgb: 154, 106, 15;
     --lm-status-orphan-rgb: 62, 76, 58;
 
-    --lm-status-success-color: #347a2f;
+    --lm-status-success-color: #356f8c;
     --lm-status-neutral-color: #53634e;
-    --lm-status-info-color: #356f8c;
+    --lm-status-info-color: #347a2f;
     --lm-status-warning-color: #9a6a0f;
     --lm-status-orphan-color: #3e4c3a;
+
+     */
+
+
+    --lm-status-success-rgb: 0, 81, 255;
+    --lm-status-neutral-rgb: 85, 104, 112;
+    --lm-status-info-rgb: 20, 146, 26;
+    --lm-status-warning-rgb: 201, 105, 3;
+    --lm-status-orphan-rgb: 21, 36, 41;
+
+    --lm-status-success-color: #0051ff;
+    --lm-status-neutral-color: #556870;
+    --lm-status-info-color: #14921a;
+    --lm-status-warning-color: #c96903;
+    --lm-status-orphan-color: #152429;
 }

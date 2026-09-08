@@ -873,7 +873,8 @@
   fill: currentColor;
 }
 
-.draft-box-title:hover .draft-title-delete-btn,
+.draft-box-title.has-active-draft:hover .draft-title-delete-btn,
+.draft-box-title.trash-box-title:hover .draft-title-delete-btn,
 .draft-box-title.has-draft-selection .draft-title-delete-btn,
 .draft-title-delete-btn:focus-visible {
   width: 27px;

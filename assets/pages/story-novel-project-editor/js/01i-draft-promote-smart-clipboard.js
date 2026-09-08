@@ -1,3 +1,114 @@
+let pendingDraftMerge = null;
+
+function openDraftMergePanel(anchor = null) {
+  normalizeDraftSelection();
+  const indexes = Array.from(selectedDraftIndexes).sort((a, b) => a - b);
+  const panel = document.getElementById('draftDetailsPanel');
+  if (!panel || indexes.length < 2) return;
+  closePartDetailsPanel();
+  closeChapterDetailsPanel();
+  closeDraftActionsPanel();
+  pendingDraftMerge = {
+    project: projectDirectoryHandle,
+    sources: indexes.map(index => createNamingSource(chapterDrafts[index], 'draft', index))
+  };
+  activeDraftDetailsIndex = 'merge:selected';
+  activeFloatingAnchor = anchor;
+  panel.classList.add('draft-actions-panel', 'draft-delete-confirm-panel');
+  panel.innerHTML = `
+    <div class="part-details-head"><strong>Merge ${indexes.length} drafts</strong>
+      <button class="name-panel-close" type="button" onclick="closeDraftActionsPanel()">${CROSS_CLOSE_SVG}</button></div>
+    <p class="draft-delete-confirm-copy">ड्राफ्ट्स इंडेक्स के क्रम में जुड़ेंगे और बीच में खाली लाइन रहेगी। Copy &amp; Merge मूल ड्राफ्ट्स रखकर नया ड्राफ्ट सबसे ऊपर बनाएगा। Merge मूल ड्राफ्ट्स को हटाकर नया ड्राफ्ट सबसे कम चयनित इंडेक्स पर रखेगा।</p>
+    <div class="draft-panel-actions">
+      <button class="part-save-btn" type="button" onclick="confirmDraftMerge(true)">Copy &amp; Merge</button>
+      <button class="part-save-btn" type="button" onclick="confirmDraftMerge(false)">Merge</button>
+    </div>`;
+  panel.hidden = false;
+  positionFloatingPanel(panel, anchor);
+}
+
+function buildDraftMerge(drafts, indexes, copy, contentPath) {
+  const ordered = [...new Set(indexes)].sort((a, b) => a - b);
+  if (ordered.length < 2 || ordered.some(index => !drafts[index])) throw new Error('Select at least two valid drafts.');
+  const sources = ordered.map(index => drafts[index]);
+  const mergedText = sources.map(draft => editorHTMLToText(draft.content || '').replace(/\r\n?/g, '\n').trim()).join('\n\n');
+  const index = copy ? 0 : ordered[0];
+  const merged = normalizeDraft({
+    ...createDefaultDraft(index),
+    id: `merged-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    title: `${sources[0].title || text().draftPrefix} — Merged`,
+    content: textToEditorHTML(mergedText),
+    contentPath,
+    _contentLoadState: 'loaded',
+    notes: sources.flatMap(draft => draft.notes || []),
+    ...normalizeEditorDocumentFormatting(sources[0]),
+    _wordCount: countWordsFromText(mergedText)
+  }, index);
+  const selected = new Set(ordered);
+  const result = copy ? [...drafts] : drafts.filter((_, i) => !selected.has(i));
+  result.splice(index, 0, merged);
+  return { drafts: normalizeDrafts(result), merged, index, mergedText, sources };
+}
+
+async function confirmDraftMerge(copy = false) {
+  if (activeDraftDetailsIndex !== 'merge:selected' || !pendingDraftMerge) return;
+  const request = pendingDraftMerge;
+  await runNamingPromotion(async () => {
+    if (request.project !== projectDirectoryHandle) return;
+    showAppLoader('Merging drafts…');
+    let snapshot = null;
+    let committed = false;
+    try {
+      syncActiveEditorDocumentFromEditor();
+      const indexes = request.sources.map(source => chapterDrafts.findIndex((draft, index) =>
+        sourcesIdentifySameDocument(source, createNamingSource(draft, 'draft', index))));
+      if (indexes.some(index => index < 0)) throw new Error('Selected drafts changed. Select them again.');
+      for (const index of indexes) {
+        if (!(await ensureDraftContentLoaded(index))) throw new Error('Draft content could not be loaded.');
+      }
+      await window.LmInitialRendering?.ensureFullNamingData?.();
+      if (request.project !== projectDirectoryHandle) return;
+      snapshot = captureNamingPromotionState();
+      const result = buildDraftMerge(chapterDrafts, indexes, copy, nextDraftFilePath());
+      chapterDrafts = result.drafts;
+      if (!copy) {
+        for (const entry of namingData.entries) {
+          if (request.sources.some(source => namingEntryBelongsToDraft(entry, source))) {
+            entry.source = createNamingSource(result.merged, 'draft', result.index);
+          }
+        }
+      }
+      await window.LmNamingFileSafety.commitPromotion(projectDirectoryHandle, {
+        promotionId: result.merged.id,
+        documents: [{ path: result.merged.contentPath, text: result.mergedText }],
+        removePaths: copy ? [] : result.sources.map(draft => draft.contentPath).filter(Boolean)
+      });
+      committed = true;
+      clearSidebarSelections(false);
+      activeEditorMode = 'draft';
+      isChapterEditUnlocked = false;
+      activeChapterEditKey = null;
+      curDraft = result.index;
+      pendingDraftMerge = null;
+      closeDraftActionsPanel();
+      persistProjectManifestSnapshot();
+      saveToStorage(false);
+      await loadEditor();
+      renderChapters();
+      renderActiveWorkspaceSidePanel();
+      updateChapterStatus();
+      setDraftBoxSaveIndicator('saved');
+      showMiniReminder(copy ? 'Copied and merged drafts.' : 'Drafts merged.');
+    } catch (error) {
+      if (snapshot && !committed) restoreNamingPromotionState(snapshot);
+      console.warn('Draft merge failed:', error);
+      showMiniReminder(committed ? 'Merge saved; reload to refresh the editor.' : 'Merge नहीं हुआ; मूल ड्राफ्ट सुरक्षित हैं।');
+    } finally {
+      hideAppLoader();
+    }
+  });
+}
+
 function openSelectedDraftsPromoteDestinationPanel(anchor = null) {
   chapterDrafts = normalizeDrafts(chapterDrafts);
   normalizeDraftSelection();
@@ -246,7 +357,7 @@ async function performDraftToChapterPromotion(draftIndex, destination = 'part') 
     title: promotedTitle,
     content: draft.content || '',
     notes: draft.notes || [],
-    contentPath: chapterFilePath(nextIndex),
+    contentPath: window.LmChapterProperties?.newChapterPath?.(nextIndex) || chapterFilePath(nextIndex),
     partIndex: targetPartIndex,
     chapterNo: partChapterCount + 1,
     createdAt: promotedAt,
@@ -290,6 +401,13 @@ async function performDraftToChapterPromotion(draftIndex, destination = 'part') 
       removePaths: draftPath ? [draftPath] : []
     });
     promotionCommitted = true;
+    const repairedSources = await window.LmNamingDeepScanSource?.repairDraftSourcesSeenInChapters?.({
+      entries: promotedNamingData.entries,
+      triggerTexts: [chapterText]
+    });
+    if (repairedSources?.updatedCount) {
+      await writeNamingDataToProject({ authoritativeData: promotedNamingData });
+    }
     persistProjectManifestSnapshot();
     saveToStorage(false);
     closeDraftActionsPanel();
@@ -906,7 +1024,7 @@ async function addChapterToPart() {
     title: defaultTitle,
     content: '',
     notes: [],
-    contentPath: chapterFilePath(nextIndex),
+    contentPath: window.LmChapterProperties?.newChapterPath?.(nextIndex) || chapterFilePath(nextIndex),
     partIndex: curPart,
     chapterNo: partChapterCount + 1,
     createdAt: new Date().toISOString(),
@@ -1195,6 +1313,12 @@ function updateStats(options = {}) {
 }
 
 function handleEditorContentInput(event = null) {
+  // Record intent before the asynchronous HTML bridge runs. This lets a
+  // deliberate delete-all save an empty document without weakening the
+  // protection for documents whose body was never loaded into the editor.
+  if (typeof markActiveDocumentExplicitEditorEdit === 'function') {
+    markActiveDocumentExplicitEditorEdit();
+  }
   if (event?.inputType === 'historyUndo' || event?.inputType === 'historyRedo') {
     syncEditorPlaceholderState();
     return;

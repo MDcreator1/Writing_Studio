@@ -455,6 +455,7 @@ function splitProjectPath(path) {
 }
 
 async function getProjectFileHandle(path, options = {}) {
+  if (options.create && projectDirectoryHandle) await window.LmChapterProperties?.beforeChapterWrite?.(projectDirectoryHandle, String(path).replace(/\\/g, '/'));
   const parts = splitProjectPath(path);
   const fileName = parts.pop();
   let directory = projectDirectoryHandle;
@@ -485,9 +486,11 @@ async function readFileText(fileHandle) {
 }
 
 async function writeFileText(fileHandle, value) {
+  await window.LmChapterProperties?.beforeFileWrite?.(fileHandle, value);
   const writable = await fileHandle.createWritable();
   await writable.write(value);
   await writable.close();
+  window.LmChapterProperties?.noteWrite?.(fileHandle, value);
 }
 
 async function removeProjectFileIfExists(path) {
@@ -759,6 +762,7 @@ function cacheProjectManifest(manifest = projectManifest) {
 
 async function writeProjectManifest(manifest = chaptersToManifest(), options = {}) {
   if (!projectDirectoryHandle) return;
+  await window.LmChapterProperties?.beforeManifestSave?.(projectDirectoryHandle, manifest);
   const includedFacts = Object.prototype.hasOwnProperty.call(manifest, 'facts')
     ? normalizeStoryFacts(manifest.facts)
     : null;
@@ -785,6 +789,7 @@ async function writeProjectManifest(manifest = chaptersToManifest(), options = {
   if (await readFileText(manifestHandle) !== manifestPayload) throw new Error('Project manifest verification failed.');
   cacheProjectManifest(projectManifest);
   await window.LmInitialRendering?.syncLeftPanelData?.();
+  await window.LmChapterProperties?.afterManifestSaved?.(projectDirectoryHandle, manifestPayload);
 }
 
 function isNewsProjectType(type) {

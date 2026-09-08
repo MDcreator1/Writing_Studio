@@ -58,6 +58,7 @@
         <div class="advanced-runtime-setting-row" data-render-snapshot-condition="recent-chapters" ${scope.mode === 'recent-chapters' ? '' : 'hidden'}><span><strong>Latest chapter window</strong><p>Write Naming snapshots for only the last N chapters by global index. The active document is always included.</p></span><label class="render-snapshot-number"><input id="renderSnapshotChapters" type="number" min="1" max="10000" step="1" value="${scope.chapters}" onchange="LmRenderingSnapshotTools.saveScopeFromControls()"><em>chapters</em></label></div>
       </div>
       <div class="render-snapshot-actions">
+        ${actionRow('chapter-properties', 'Chapter file properties', 'Windows helper saves chapter identity and order with each TXT file. Start tools/start-chapter-properties.cmd and select this project.', 'Check Properties Status')}
         ${actionRow('left', 'Left Panel rendering data', 'Refresh Left_Panel.json from chapter, part, draft, and trash metadata without loading document bodies.', 'Build Left Snapshot')}
         ${actionRow('facts', 'Facts Panel rendering data', 'Refresh Facts_Panel.json from authoritative Story_Facts.json using the selected snapshot scope.', 'Build Facts Snapshot')}
         ${actionRow('naming-snapshots', 'All Document Naming snapshots', 'Build initial-render snapshots for every chapter and draft from stored document text. Created/detected categories and six-category fallback state are included without changing first-appearance metadata.', 'Build All Naming Snapshots')}
@@ -86,6 +87,11 @@
   }
 
   async function run(kind, button) {
+    if (kind === 'chapter-properties') {
+      try { await window.LmChapterProperties?.showStatus?.(); }
+      catch (error) { setStatus(`Chapter properties: ${error.message}`, 'error'); }
+      return;
+    }
     if (!projectDirectoryHandle) {
       setStatus('Open a project before building snapshots.', 'error');
       showMiniReminder('पहले कोई project खोलें।');

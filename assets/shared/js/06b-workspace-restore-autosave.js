@@ -872,6 +872,23 @@ async function addPart() {
   });
 }
 
+const explicitlyEditedEditorDocuments = new WeakSet();
+
+function markActiveDocumentExplicitEditorEdit() {
+  const documentItem = typeof activeEditorDocument === 'function' ? activeEditorDocument() : null;
+  if (!documentItem || (typeof isTrashDraftActive === 'function' && isTrashDraftActive())) return;
+  if (typeof canEditActiveDocument === 'function' && !canEditActiveDocument()) return;
+  explicitlyEditedEditorDocuments.add(documentItem);
+}
+
+function hasExplicitEditorDocumentEdit(documentItem) {
+  return Boolean(documentItem && explicitlyEditedEditorDocuments.has(documentItem));
+}
+
+function clearExplicitEditorDocumentEdit(documentItem) {
+  if (documentItem) explicitlyEditedEditorDocuments.delete(documentItem);
+}
+
 async function writeChapterToLocalFile(chapterIndex, textValue) {
   if (!projectDirectoryHandle || !chapters[chapterIndex]) return;
 
@@ -883,6 +900,7 @@ async function writeChapterToLocalFile(chapterIndex, textValue) {
   chapter.contentHandle = fileHandle;
   await writeFileText(fileHandle, textValue);
   await writeProjectManifest();
+  clearExplicitEditorDocumentEdit(chapter);
 }
 
 async function writeCurrentChapterToLocalFile() {
@@ -901,11 +919,16 @@ async function writeDraftToLocalFile(draftIndex, textValue) {
   draft.contentHandle = fileHandle;
   await writeFileText(fileHandle, textValue);
   await writeDraftsDataToProject();
+  clearExplicitEditorDocumentEdit(draft);
 }
 
 function documentTextWriteIsSafe(documentItem, textValue) {
   if (String(textValue || '').trim()) return true;
   if (documentItem?._contentLoadState === 'loaded' && documentItem?._contentPresented === true) return true;
+  // A real editor mutation is sufficient proof that an empty value is an
+  // intentional deletion. Untouched lazy/unloaded documents still fall
+  // through to the existing word-count safety check below.
+  if (hasExplicitEditorDocumentEdit(documentItem)) return true;
   const knownWords = Number(documentItem?._wordCount ?? documentItem?.wordCount);
   return !(knownWords > 0 || String(documentItem?._wordCountVerifiedSignature || '').length > 0);
 }

@@ -428,9 +428,7 @@ function namingShortcutMatches() {
 
 function isNamingCategoryShortcutContextActive() {
   const editor = document.getElementById('editor');
-  if (!editor || !canEditActiveDocument() || isTrashDraftActive()) return false;
-  const activeElement = document.activeElement;
-  return activeElement === editor || editor.contains(activeElement);
+  return Boolean(editor && canEditActiveDocument() && !isTrashDraftActive());
 }
 
 function ensureFocusNamingCategoryPanel() {

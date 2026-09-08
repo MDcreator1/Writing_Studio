@@ -311,7 +311,31 @@ function advancedPromoteSourceTextForDraft(draftIndex) {
     : editorHTMLToText(draft.content || '');
 }
 
-function openDraftPromoteModePanel(draftIndex, anchor = null) {
+function requestSidebarDraftPromote(anchor = null) {
+  normalizeDraftSelection();
+  if (selectedDraftIndexes.size > 1) return requestPromoteSelectedDrafts(anchor);
+  const draftIndex = selectedDraftIndexes.size === 1
+    ? Array.from(selectedDraftIndexes)[0]
+    : isDraftActive() ? curDraft : -1;
+  if (draftIndex < 0) return;
+  openSidebarDraftPromoteModePanel(draftIndex, anchor);
+}
+
+function openSidebarDraftPromoteModePanel(draftIndex, anchor = null) {
+  const panel = document.getElementById('draftDetailsPanel');
+  if (!panel || !chapterDrafts[draftIndex]) return;
+  if (anchor?.closest?.('#draftDetailsPanel')) {
+    openDraftPromoteModePanel(draftIndex, anchor, panel.getBoundingClientRect());
+    return;
+  }
+  openDraftActionsPanel(draftIndex, anchor);
+  requestAnimationFrame(() => {
+    if (panel.hidden || activeDraftDetailsIndex !== draftIndex) return;
+    openDraftPromoteModePanel(draftIndex, anchor, panel.getBoundingClientRect());
+  });
+}
+
+function openDraftPromoteModePanel(draftIndex, anchor = null, aboveActionPanelRect = null) {
   chapterDrafts = normalizeDrafts(chapterDrafts);
   const panel = document.getElementById('draftDetailsPanel');
   const draft = chapterDrafts[draftIndex];
@@ -349,6 +373,19 @@ function openDraftPromoteModePanel(draftIndex, anchor = null) {
 
   panel.hidden = false;
   positionFloatingPanel(panel, positionAnchor);
+  if (aboveActionPanelRect) {
+    requestAnimationFrame(() => {
+      if (panel.hidden || activeDraftDetailsIndex !== `promote-mode:${draftIndex}`) return;
+      const position = clampFloatingPanelPosition(
+        panel,
+        aboveActionPanelRect.left,
+        aboveActionPanelRect.top - panel.getBoundingClientRect().height + 115
+      );
+      panel.style.left = `${position.left}px`;
+      panel.style.top = `${position.top}px`;
+      panel.style.visibility = '';
+    });
+  }
 }
 
 async function requestRawPromoteDraftToChapter(draftIndex, anchor = null) {
@@ -1302,7 +1339,7 @@ async function performAdvancedDraftPromote() {
       title,
       content: textToEditorHTML(item.text),
       notes: draft.notes || [],
-      contentPath: chapterFilePath(chapterIndex),
+      contentPath: window.LmChapterProperties?.newChapterPath?.(chapterIndex) || chapterFilePath(chapterIndex),
       partIndex: targetPartIndex,
       chapterNo: basePartChapterCount + offset + 1,
       createdAt: promotedAt,
@@ -1399,6 +1436,13 @@ async function performAdvancedDraftPromote() {
       removePaths: draftPath ? [draftPath] : []
     });
     promotionCommitted = true;
+    const repairedSources = await window.LmNamingDeepScanSource?.repairDraftSourcesSeenInChapters?.({
+      entries: promotedNamingData.entries,
+      triggerTexts: proposedChapters.map(item => item.text)
+    });
+    if (repairedSources?.updatedCount) {
+      await writeNamingDataToProject({ authoritativeData: promotedNamingData });
+    }
     persistProjectManifestSnapshot();
     saveToStorage(false);
     closeAdvancedDraftPromotePanel();
