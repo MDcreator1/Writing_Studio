@@ -111,6 +111,10 @@ function testPromotionAndRefresh() {
   equal(entries, once);
 
   const documents = context.namingDocumentRegistry(stamp).map(item => ({ ...item, text: 'Alice' }));
+  const draftCreated = fresh('Alice', source(draft, 'draft'));
+  context.refreshNamingEntrySource(draftCreated, documents, '2026-09-06T09:00:00.000Z');
+  equal(draftCreated.source.documentId, 'c1');
+  equal(draftCreated.source.documentType, 'chapter');
   const entry = fresh('Alice', source(later, 'chapter', 1));
   entry.custom = { retained: true };
   const content = withoutSource(entry);

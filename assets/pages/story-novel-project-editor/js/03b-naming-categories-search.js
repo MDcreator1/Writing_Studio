@@ -520,7 +520,7 @@ function categoryManagerScrollMetrics() {
     maxScroll,
     maxThumbTop,
     top: Math.round(listRect.top - panelRect.top + thumbTop),
-    right: Math.max(7, Math.round(panelRect.right - listRect.right - 5)),
+    right: Math.max(4, Math.round(panelRect.right - listRect.right - 15)),
     height: thumbHeight
   };
 }

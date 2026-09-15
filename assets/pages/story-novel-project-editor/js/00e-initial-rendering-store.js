@@ -465,6 +465,7 @@
     if (!namingIndex?.entries) return false;
     const identity = namingDocumentIdentity();
     const textValue = typeof activeNamingPanelText === 'function' ? activeNamingPanelText() : '';
+    await repairActiveChapterDraftSources(identity, textValue);
     const entries = namingIndex.entries.filter(entry => nameOccursInText(entry, textValue));
     const projectedData = await writeNamingSnapshot(identity, textValue, entries);
     namingData = projectedData;
@@ -487,6 +488,29 @@
     loadedNamingCategoryIds = new Set();
     namingMode = 'projection';
     return true;
+  }
+
+  async function repairActiveChapterDraftSources(identity = namingDocumentIdentity(), textValue = '') {
+    if (identity.kind !== 'chapter' || !String(textValue || '').trim()) return 0;
+    const visibleDraftSourceIds = (namingIndex?.entries || []).filter(entry =>
+      entry?.source?.documentType === 'draft' && nameOccursInText(entry, textValue)
+    ).map(entry => entry.id);
+    if (!visibleDraftSourceIds.length || !window.LmNamingDeepScanSource?.repairDraftSourcesSeenInChapters) return 0;
+
+    await ensureFullNamingData();
+    const repaired = await window.LmNamingDeepScanSource.repairDraftSourcesSeenInChapters({
+      entries: namingData.entries,
+      entryIds: visibleDraftSourceIds,
+      triggerTexts: [textValue]
+    });
+    if (!repaired.updatedCount) return 0;
+
+    namingData = normalizeNamingData(namingData);
+    fullNamingData = namingData;
+    namingIndex = createNamingIndex(namingData, { isFull: true });
+    namingMode = 'full';
+    await writeNamingDataToProject({ authoritativeData: namingData });
+    return repaired.updatedCount;
   }
 
   async function loadNamingSnapshot(identity = namingDocumentIdentity()) {
@@ -577,6 +601,18 @@
     const sourceIndex = options.sourceIndex || await window.LmNamingDeepScanSource.buildTextIndex({
       onProgress: ({ loaded, total }) => options.onProgress?.({ phase: 'reading', loaded, total })
     });
+    const repairedSources = await window.LmNamingDeepScanSource?.repairDraftSourcesSeenInChapters?.({
+      entries: namingData.entries,
+      sourceIndex,
+      triggerTexts: sourceIndex.chapterTexts
+    });
+    if (repairedSources?.updatedCount) {
+      namingData = normalizeNamingData(namingData);
+      fullNamingData = namingData;
+      namingIndex = createNamingIndex(namingData, { isFull: true });
+      namingMode = 'full';
+      await writeNamingDataToProject({ authoritativeData: namingData });
+    }
     const documentStates = {};
     const storyMentionCounts = {};
     const projections = documents.map(({ item, index, kind }) => {
@@ -624,8 +660,16 @@
 
   async function loadNamingForActiveDocument() {
     const identity = namingDocumentIdentity();
-    if (await loadNamingSnapshot(identity)) return true;
-    if (await migrateLegacyActiveNamingSnapshot(identity)) return true;
+    if (await loadNamingSnapshot(identity)) {
+      const activeText = typeof activeNamingPanelText === 'function' ? activeNamingPanelText() : '';
+      if (await repairActiveChapterDraftSources(identity, activeText)) await writeActiveNamingProjection();
+      return true;
+    }
+    if (await migrateLegacyActiveNamingSnapshot(identity)) {
+      const activeText = typeof activeNamingPanelText === 'function' ? activeNamingPanelText() : '';
+      if (await repairActiveChapterDraftSources(identity, activeText)) await writeActiveNamingProjection();
+      return true;
+    }
     if (fullNamingData) {
       namingData = normalizeNamingData(fullNamingData);
       namingIndex = createNamingIndex(namingData, { isFull: true });

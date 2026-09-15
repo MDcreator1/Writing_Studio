@@ -1406,7 +1406,14 @@ function deduplicateNamingDescriptionHistory(entry) {
 function refreshNamingEntrySource(entry, documents, checkedAt = new Date().toISOString(), matcher = null) {
   const used = item => matcher ? matcher(item.text || '') : isNamingEntryUsedInText(entry, item.text || '');
   const current = documents.find(item => sourcesIdentifySameDocument(entry.source, item.source));
-  const match = current && used(current) ? current : documents.find(used);
+  // A draft is a future-story workspace, so it cannot remain the creation
+  // source after the same name has appeared in a saved chapter. Preserve an
+  // already-valid chapter source, but promote draft sources to the first
+  // matching chapter in story order.
+  const firstChapterMatch = entry.source?.documentType === 'draft'
+    ? documents.find(item => item.source?.documentType === 'chapter' && used(item))
+    : null;
+  const match = firstChapterMatch || (current && used(current) ? current : documents.find(used));
   const previous = entry.source;
   entry.source = match ? { ...match.source, checkedAt,
     attachedAt: sourcesIdentifySameDocument(previous, match.source) ? previous.attachedAt || checkedAt : checkedAt } : null;

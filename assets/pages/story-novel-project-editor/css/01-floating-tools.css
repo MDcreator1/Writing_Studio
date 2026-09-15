@@ -30,7 +30,7 @@
 .tool-dock-actions {
   min-height: 46px;
   padding: 4px;
-  border: var(--border-width) solid var(--lm-border-cloud-panel-color);
+  /* border: var(--border-width) solid var(--lm-border-cloud-panel-color); */
   border-radius: var(--radius-3xl);
   display: flex;
   align-items: center;
@@ -40,7 +40,7 @@
     var(--lm-bg-cloud-panel-tint),
     color-mix(in srgb, var(--surface-raised) 78%, transparent);
   box-shadow: var(--lm-shadow-cloud-panel);
-  -webkit-backdrop-filter: blur(3px) saturate(1.03);
+  --webkit-backdrop-filter: blur(3px) saturate(1.03);
   backdrop-filter: blur(3px) saturate(1.03);
   transition: opacity .22s ease, box-shadow .22s ease;
   user-select: none;
@@ -217,7 +217,7 @@
 }
 
 .lm-id-floating-tools.is-collapsed .tool-dock-actions {
-  opacity: .82;
+  opacity: .95;
   box-shadow: var(--tool-dock-shadow);
 }
 

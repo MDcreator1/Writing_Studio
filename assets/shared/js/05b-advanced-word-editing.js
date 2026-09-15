@@ -378,8 +378,7 @@
     try {
       localStorage.setItem(TEMPORARY_PANEL_GEOMETRY_KEY, JSON.stringify({
         left: Math.round(rect.left),
-        top: Math.round(rect.top),
-        height: panel.dataset.aweUserSized === 'true' ? Math.round(rect.height) : 0
+        top: Math.round(rect.top)
       }));
     } catch { /* UI geometry persistence is best effort. */ }
   }
@@ -402,19 +401,38 @@
     if (!panel || panel.dataset.aweUserSized === 'true') return;
     panel.classList.add('is-measuring-default-height');
     panel.style.height = 'auto';
-    const desiredHeight = Math.min(panel.getBoundingClientRect().height, window.innerHeight - 20);
-    panel.style.height = `${Math.max(150, Math.round(desiredHeight))}px`;
+    const desiredHeight = Math.min(standaloneTemporaryPanelDefaultHeight(panel), window.innerHeight - 20);
+    panel.style.height = `${Math.round(desiredHeight)}px`;
     panel.classList.remove('is-measuring-default-height');
     syncTemporaryPanelResizeAvailability(panel);
+  }
+  function temporaryPanelBaseMinimumHeight(panel) {
+    return panel?.querySelector('.awe-temporary-candidate-row') ? 0 : 150;
+  }
+  function standaloneTemporaryPanelDefaultHeight(panel) {
+    const list = panel?.querySelector('[data-awe-temporary-list]');
+    const rows = list ? [...list.querySelectorAll('.awe-temporary-candidate-row')] : [];
+    if (!panel || !list || !rows.length) return 150;
+    const panelHeight = panel.getBoundingClientRect().height;
+    const listHeight = list.getBoundingClientRect().height;
+    const rowHeight = rows[0].getBoundingClientRect().height || (window.innerWidth <= 720 ? 88 : 52);
+    const rowGap = Number.parseFloat(getComputedStyle(list).rowGap) || 8;
+    const visibleRows = Math.min(5, rows.length);
+    const defaultListHeight = (rowHeight * visibleRows) + (rowGap * Math.max(0, visibleRows - 1));
+    return Math.max(temporaryPanelBaseMinimumHeight(panel), Math.ceil(panelHeight - listHeight + defaultListHeight));
   }
   function syncTemporaryPanelResizeAvailability(panel) {
     const list = panel?.querySelector('[data-awe-temporary-list]');
     const handle = panel?.querySelector('[data-awe-temporary-resize-handle]');
     if (!panel || !list || !handle) return false;
-    const canResize = list.scrollHeight > list.clientHeight + 1;
+    const hasMoreThanDefaultRows = list.querySelectorAll('.awe-temporary-candidate-row').length > 5;
+    const hasOverflow = list.scrollHeight > list.clientHeight + 1;
+    const canResize = hasMoreThanDefaultRows || hasOverflow;
     panel.classList.toggle('can-resize-height', canResize);
     handle.setAttribute('aria-disabled', String(!canResize));
-    handle.title = canResize ? 'Drag to show more names' : 'All temporary names are already visible';
+    handle.title = canResize
+      ? (hasOverflow ? 'Drag to show more names' : 'Drag to adjust panel height')
+      : 'All temporary names are already visible';
     return canResize;
   }
   function standaloneTemporaryPanelContentHeight(panel) {
@@ -422,30 +440,34 @@
     if (!panel || !list) return 150;
     const panelHeight = panel.getBoundingClientRect().height;
     const visibleListHeight = list.getBoundingClientRect().height;
-    return Math.max(150, Math.ceil(panelHeight - visibleListHeight + list.scrollHeight) + 1);
+    return Math.max(temporaryPanelBaseMinimumHeight(panel), Math.ceil(panelHeight - visibleListHeight + list.scrollHeight) + 1);
   }
   function clampStandaloneTemporaryPanelHeight(panel) {
     if (!panel || panel.dataset.aweUserSized !== 'true') return;
     const rect = panel.getBoundingClientRect();
-    const viewportLimit = Math.max(150, window.innerHeight - rect.top - 10);
+    const baseMinimum = temporaryPanelBaseMinimumHeight(panel);
+    const viewportLimit = Math.max(baseMinimum, window.innerHeight - rect.top - 10);
     const contentLimit = standaloneTemporaryPanelContentHeight(panel);
-    const maximumHeight = Math.max(150, Math.min(viewportLimit, contentLimit));
+    const maximumHeight = Math.max(baseMinimum, Math.min(viewportLimit, contentLimit));
     if (rect.height > maximumHeight) panel.style.height = `${Math.round(maximumHeight)}px`;
   }
-  function restoreStandaloneTemporaryPanelGeometry(panel) {
-    const saved = readTemporaryPanelGeometry();
-    if (!saved) {
+  function reconcileStandaloneTemporaryPanelHeight(panel) {
+    if (!panel) return;
+    const itemCount = panel.querySelectorAll('.awe-temporary-candidate-row').length;
+    if (itemCount <= 5) {
+      delete panel.dataset.aweUserSized;
       fitStandaloneTemporaryPanelToCandidates(panel);
       return;
     }
-    if (Number.isFinite(saved.height) && saved.height > 0) {
-      panel.dataset.aweUserSized = 'true';
-      const contentLimit = standaloneTemporaryPanelContentHeight(panel);
-      panel.style.height = `${Math.max(150, Math.min(saved.height, contentLimit, window.innerHeight - 20))}px`;
-    } else {
-      fitStandaloneTemporaryPanelToCandidates(panel);
-    }
-    if (Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
+    if (panel.dataset.aweUserSized === 'true') clampStandaloneTemporaryPanelHeight(panel);
+    else fitStandaloneTemporaryPanelToCandidates(panel);
+    syncTemporaryPanelResizeAvailability(panel);
+  }
+  function restoreStandaloneTemporaryPanelGeometry(panel) {
+    const saved = readTemporaryPanelGeometry();
+    delete panel.dataset.aweUserSized;
+    fitStandaloneTemporaryPanelToCandidates(panel);
+    if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
       const next = clampTemporaryPanelPosition(panel, saved.left, saved.top);
       panel.style.left = `${Math.round(next.left)}px`;
       panel.style.top = `${Math.round(next.top)}px`;
@@ -466,6 +488,7 @@
         pointerId: event.pointerId,
         startY: event.clientY,
         startHeight: rect.height,
+        minimumHeight: standaloneTemporaryPanelDefaultHeight(panel),
         contentHeight: standaloneTemporaryPanelContentHeight(panel)
       };
       resizeHandle.setPointerCapture?.(event.pointerId);
@@ -488,7 +511,8 @@
       const viewportHeight = window.innerHeight - resize.panel.getBoundingClientRect().top - 10;
       const maxHeight = Math.max(150, Math.min(viewportHeight, resize.contentHeight));
       const requestedHeight = resize.startHeight + event.clientY - resize.startY;
-      resize.panel.style.height = `${Math.max(150, Math.min(maxHeight, requestedHeight))}px`;
+      const minimumHeight = Math.min(maxHeight, Math.max(150, resize.minimumHeight || 150));
+      resize.panel.style.height = `${Math.max(minimumHeight, Math.min(maxHeight, requestedHeight))}px`;
       resize.panel.dataset.aweUserSized = 'true';
       const canResizeFurther = syncTemporaryPanelResizeAvailability(resize.panel);
       if (!canResizeFurther && requestedHeight >= maxHeight) endTemporaryPanelPointerAction(event);
@@ -1322,9 +1346,7 @@
       if (dialog.dataset.aweDialog === 'temporary-candidates-standalone' && !dialog.hidden) {
         window.requestAnimationFrame(() => {
           const panel = dialog.querySelector('.awe-temporary-candidates-panel');
-          if (panel?.dataset.aweUserSized === 'true') clampStandaloneTemporaryPanelHeight(panel);
-          else fitStandaloneTemporaryPanelToCandidates(panel);
-          syncTemporaryPanelResizeAvailability(panel);
+          reconcileStandaloneTemporaryPanelHeight(panel);
         });
       }
     });
@@ -1419,6 +1441,9 @@
   }
   function handleClick(event) {
     const trigger = event.target.closest('[data-awe-action]');
+    const isStandaloneTemporaryAction = Boolean(
+      trigger?.closest('[data-awe-dialog="temporary-candidates-standalone"]')
+    );
     const exportPanel = state.root?.querySelector('[data-awe-export-panel]');
     if (exportPanel && !event.target.closest('.awe-export-wrap')) exportPanel.hidden = true;
     const backdrop = event.target.matches?.('[data-awe-dialog]') ? event.target : null;
@@ -1432,7 +1457,7 @@
       persistSoon();
       return;
     }
-    if (!trigger || !state.root?.contains(trigger)) {
+    if (!trigger || (!state.root?.contains(trigger) && !isStandaloneTemporaryAction)) {
       const row = event.target.closest('[data-awe-rule-id]');
       if (row && state.root?.contains(row)) selectRuleRow(row, event);
       else if (event.target.closest('[data-awe-category-workspace]')) clearRuleSelection();

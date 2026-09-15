@@ -89,7 +89,7 @@
 .note-mode-btn:hover,
 .note-mode-btn.active {
   transform: translateY(-1px);
-  color: var(--color-on-accent);
+  color: var(--paper);
   border: none;
   background: var(--note-mode-hover-bg);
 }
@@ -456,8 +456,8 @@
 }
 
 .tag-refresh-btn svg {
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
 }
 
 .tag-item:hover .tag-find-meta,
@@ -1260,7 +1260,6 @@ body.focus-mode .naming-entry-panel.is-focus-center-panel.is-panel-dragging .nam
 
 .category-shortcut-list {
   overflow-y: auto;
-  padding-right: 5px;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -2273,12 +2272,12 @@ body.focus-mode .naming-entry-panel.is-focus-center-panel.is-panel-dragging .nam
   align-items: center;
   text-align: left;
   width: 100%;
-  padding: 8px 10px;
+  padding: 4px 5px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface-soft);
   color: var(--color-on-accent);
-  font-size: var(--font-size-2xs);
+  font-size: var(--font-size-sm);
   font-weight: 750;
   cursor: pointer;
   overflow: hidden;
@@ -2553,7 +2552,6 @@ body.focus-mode .naming-entry-panel.is-focus-center-panel.is-panel-dragging .nam
   flex-direction: column;
   gap: 8px;
   overflow-y: auto;
-  padding-right: 5px;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -2566,6 +2564,7 @@ body.focus-mode .naming-entry-panel.is-focus-center-panel.is-panel-dragging .nam
 
 .category-manager-scroll-thumb {
   position: absolute;
+  right: 0;
   z-index: 2;
   width: 6px;
   min-height: 30px;

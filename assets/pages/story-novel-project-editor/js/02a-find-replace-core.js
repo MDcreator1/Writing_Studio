@@ -390,6 +390,32 @@ function isEditorShortcutActive() {
     (isFindOpen && Boolean(findBar?.contains(activeElement)));
 }
 
+function isMainEditorFocused() {
+  const editor = document.getElementById('editor');
+  const activeElement = document.activeElement;
+  return Boolean(editor && (activeElement === editor || editor.contains(activeElement)));
+}
+
+function hasRetainedMainEditorSelection() {
+  const selection = window.getSelection();
+  if (
+    selection?.rangeCount &&
+    !selection.isCollapsed &&
+    isNodeInsideEditor(selection.anchorNode) &&
+    isNodeInsideEditor(selection.focusNode)
+  ) return true;
+  return Boolean(
+    savedEditorRange &&
+    !savedEditorRange.collapsed &&
+    isNodeInsideEditor(savedEditorRange.startContainer) &&
+    isNodeInsideEditor(savedEditorRange.endContainer)
+  );
+}
+
+function isEditorEditingShortcutActive() {
+  return Boolean(canEditActiveDocument() && (isMainEditorFocused() || hasRetainedMainEditorSelection()));
+}
+
 function shortcutKey(event) {
   const key = (event.key || '').toLowerCase();
   if (key && key.length === 1 && /^[a-z]$/.test(key)) return key;
@@ -511,19 +537,19 @@ function handleEditorShortcutGuard(event) {
     return true;
   }
 
-  if (isCommandKey && !event.altKey && isFindOpen && (key === 'f' || key === 'h')) {
+  // Finding always targets the main editor, but its keyboard entry point is
+  // page-global so the editor does not need to own focus first.
+  if (isCommandKey && key === 'f' && !event.altKey) {
     event.preventDefault();
     event.stopImmediatePropagation();
     if (isTrashDraftActive()) return true;
-    if (key === 'f' || isReplaceOpen) {
+    if (isFindOpen) {
       setFindPanel(false);
     } else {
-      openFindReplacePanel({ allowSavedRange: false });
+      openFindPanel();
     }
     return true;
   }
-
-  if (!isEditorShortcutActive()) return false;
 
   if (
     event.altKey &&
@@ -534,22 +560,10 @@ function handleEditorShortcutGuard(event) {
     return true;
   }
 
-  if (isCommandKey && key === 'f' && !event.altKey) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    if (isTrashDraftActive()) return true;
-    if (isFindOpen) {
-      setFindPanel(false);
-      return true;
-    }
-    openFindPanel();
-    return true;
-  }
-
   if (isCommandKey && key === 'h' && !event.altKey) {
+    if (!isEditorEditingShortcutActive()) return false;
     event.preventDefault();
     event.stopImmediatePropagation();
-    if (isTrashDraftActive()) return true;
     if (isFindOpen && isReplaceOpen) {
       setFindPanel(false);
       return true;
@@ -559,22 +573,19 @@ function handleEditorShortcutGuard(event) {
   }
 
   if (isCommandKey && key === 's' && !event.altKey) {
+    if (!isEditorShortcutActive()) return false;
     event.preventDefault();
     event.stopImmediatePropagation();
     manualSave();
     return true;
   }
 
-  if (isCommandKey && formatCommandByKey[key] && !event.altKey) {
+  if (isCommandKey && formatCommandByKey[key] && !event.altKey && isEditorEditingShortcutActive()) {
     event.preventDefault();
     event.stopImmediatePropagation();
-    if (!canEditActiveDocument()) return true;
     fmt(formatCommandByKey[key]);
     return true;
   }
-
-  const nativeEditorKeys = new Set(['a', 'c', 'v', 'x', 'z', 'y']);
-  if (isCommandKey && nativeEditorKeys.has(key) && !event.altKey) return false;
 
   if (!isCommandKey && !event.altKey && key === 'f10') {
     event.preventDefault();
@@ -583,6 +594,11 @@ function handleEditorShortcutGuard(event) {
     toggleFocus();
     return true;
   }
+
+  if (!isEditorShortcutActive()) return false;
+
+  const nativeEditorKeys = new Set(['a', 'c', 'v', 'x', 'z', 'y']);
+  if (isCommandKey && nativeEditorKeys.has(key) && !event.altKey) return false;
 
   const isBrowserFunctionKey = ['f1', 'f3', 'f5', 'f6', 'f7', 'f10', 'f11', 'f12'].includes(key);
   const isBrowserAltNav = event.altKey && ['arrowleft', 'arrowright', 'home'].includes(key);

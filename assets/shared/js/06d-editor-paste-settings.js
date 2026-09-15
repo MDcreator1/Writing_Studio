@@ -993,10 +993,13 @@ function updateCustomSelectMenuHeight(select, shell, trigger, menu) {
     const visibleRows = Math.min(maxVisibleOptions, visibleOptionCount);
     const requestedHeight = heightForCount(visibleRows);
     const shellRect = shell.getBoundingClientRect();
+    const listRect = select.closest('.awe-temporary-list')?.getBoundingClientRect();
     const menuGap = 7;
     const viewportGap = 12;
-    const availableBelow = Math.max(48, Math.floor(window.innerHeight - shellRect.bottom - menuGap - viewportGap));
-    const availableAbove = Math.max(48, Math.floor(shellRect.top - menuGap - viewportGap));
+    const lowerBoundary = Math.min(window.innerHeight - viewportGap, listRect?.bottom || window.innerHeight - viewportGap);
+    const upperBoundary = Math.max(viewportGap, listRect?.top || viewportGap);
+    const availableBelow = Math.max(48, Math.floor(lowerBoundary - shellRect.bottom - menuGap));
+    const availableAbove = Math.max(48, Math.floor(shellRect.top - menuGap - upperBoundary));
     const openUpwards = availableBelow < requestedHeight && availableAbove > availableBelow;
     const directionalSpace = openUpwards ? availableAbove : availableBelow;
     const usedHeight = Math.min(requestedHeight, directionalSpace);
@@ -1022,6 +1025,46 @@ function updateCustomSelectMenuHeight(select, shell, trigger, menu) {
     menu.style.setProperty('overflow', 'hidden', 'important');
     menu.style.setProperty('overflow-y', needsScroll ? 'auto' : 'hidden', 'important');
     menu.style.setProperty('z-index', '99999', 'important');
+    menu.style.setProperty('--lm-custom-select-menu-max-height', `${usedHeight}px`);
+    return;
+  }
+
+  const isInTemporaryCandidate = Boolean(select.closest('.awe-temporary-candidate-row'));
+  if (isInTemporaryCandidate) {
+    const maxVisibleOptions = 5;
+    const visibleRows = Math.min(maxVisibleOptions, visibleOptionCount);
+    const requestedHeight = heightForCount(visibleRows);
+    const shellRect = shell.getBoundingClientRect();
+    const menuGap = 7;
+    const viewportGap = 12;
+    const availableBelow = Math.max(48, Math.floor(window.innerHeight - shellRect.bottom - menuGap - viewportGap));
+    const availableAbove = Math.max(48, Math.floor(shellRect.top - menuGap - viewportGap));
+    const openUpwards = availableBelow < requestedHeight && availableAbove > availableBelow;
+    const directionalSpace = openUpwards ? availableAbove : availableBelow;
+    const usedHeight = Math.min(requestedHeight, directionalSpace);
+    const needsScroll = visibleOptionCount > maxVisibleOptions || requestedHeight > directionalSpace;
+    const widestButton = optionButtons.reduce((width, button) => Math.max(width, Math.ceil(button.scrollWidth)), 0);
+    const desiredWidth = Math.max(shellRect.width, widestButton + 18);
+    const usedWidth = Math.min(desiredWidth, Math.max(shellRect.width, window.innerWidth - (viewportGap * 2)));
+    const viewportLeft = centeredCustomSelectLeft(shellRect, usedWidth, viewportGap, true);
+    const relativeLeft = viewportLeft - shellRect.left;
+
+    menu.classList.toggle('opens-upward', openUpwards);
+    // The standalone Temporary Names panel can be transformed or dragged. Keeping
+    // the menu relative to its trigger avoids fixed-position coordinate drift.
+    menu.style.setProperty('position', 'absolute', 'important');
+    menu.style.setProperty('top', openUpwards ? 'auto' : `calc(100% + ${menuGap}px)`, 'important');
+    menu.style.setProperty('bottom', openUpwards ? `calc(100% + ${menuGap}px)` : 'auto', 'important');
+    menu.style.setProperty('left', `${relativeLeft}px`, 'important');
+    menu.style.setProperty('right', 'auto', 'important');
+    menu.style.setProperty('width', `${usedWidth}px`, 'important');
+    menu.style.setProperty('min-width', `${shellRect.width}px`, 'important');
+    menu.style.setProperty('max-width', `calc(100vw - ${viewportGap * 2}px)`, 'important');
+    menu.style.setProperty('height', `${usedHeight}px`, 'important');
+    menu.style.setProperty('max-height', `${usedHeight}px`, 'important');
+    menu.style.setProperty('overflow', 'hidden', 'important');
+    menu.style.setProperty('overflow-y', needsScroll ? 'auto' : 'hidden', 'important');
+    menu.style.setProperty('z-index', '100001', 'important');
     menu.style.setProperty('--lm-custom-select-menu-max-height', `${usedHeight}px`);
     return;
   }
@@ -1061,8 +1104,7 @@ function updateCustomSelectMenuHeight(select, shell, trigger, menu) {
   const isInAdvancedSettings = Boolean(
     select.closest('.advanced-editor-settings-modal') ||
     select.closest('.advanced-editor-settings-card') ||
-    select.closest('.naming-transfer-modal') ||
-    select.closest('.awe-temporary-candidate-row')
+    select.closest('.naming-transfer-modal')
   );
   if (isInAdvancedSettings) {
     const maxVisibleOptions = 5;

@@ -203,7 +203,7 @@ function openDraftActionsPanel(draftIndex, anchor = null) {
       <button class="name-panel-close" type="button" onclick="closeDraftActionsPanel()">${CROSS_CLOSE_SVG}</button>
     </div>
     <div class="draft-panel-actions">
-      <button class="part-save-btn" type="button" onclick="requestPromoteDraftToChapter(${draftIndex}, this)">${escapeHtml(text().saveDraftAsChapter)}</button>
+      <button class="part-save-btn" type="button" onclick="openSidebarDraftPromoteModePanel(${draftIndex}, this)">${escapeHtml(text().saveDraftAsChapter)}</button>
       <button class="part-delete-btn" type="button" ${canDeleteDraft ? `onclick="deleteDraftWithConfirm(${draftIndex})"` : 'disabled'}
         title="${escapeHtml(deleteTitle)}" aria-label="${escapeHtml(deleteTitle)}">${escapeHtml(text().deleteDraft)}</button>
     </div>`;
@@ -1414,11 +1414,16 @@ function renderDrafts() {
   const canDeleteDraftBatch = canDeleteDraftIndexes(draftDeleteIndexes);
   const draftDeleteTitle = canDeleteDraftBatch ? deleteDraftsLabel : text().draftDeleteLastDocumentBlocked;
   draftBox.innerHTML = `
-    <div class="draft-box-title ${selectedDraftCount ? 'has-draft-selection' : ''}" id="draftBoxTitle">
+    <div class="draft-box-title ${isDraftActive() ? 'has-active-draft' : ''} ${selectedDraftCount ? 'has-draft-selection' : ''}" id="draftBoxTitle">
       <span class="draft-title-label"><span class="draft-save-dot" aria-hidden="true"></span>${escapeHtml(text().drafts)}</span>
       <span class="draft-title-actions">
-        <button class="draft-title-delete-btn draft-title-promote-btn" type="button" ${selectedDraftCount ? '' : 'disabled'}
-          onclick="event.stopPropagation(); requestPromoteSelectedDrafts(this)"
+        <button class="draft-title-delete-btn draft-title-promote-btn draft-title-merge-btn" type="button" ${selectedDraftCount >= 2 ? '' : 'disabled'}
+          onclick="event.stopPropagation(); openDraftMergePanel(this)"
+          title="Merge selected drafts" aria-label="Merge selected drafts">
+          ${lmIcon('mergeDrafts')}
+        </button>
+        <button class="draft-title-delete-btn draft-title-promote-btn" type="button" ${selectedDraftCount || isDraftActive() ? '' : 'disabled'}
+          onclick="event.stopPropagation(); requestSidebarDraftPromote(this)"
           title="${escapeHtml(text().promoteSelectedDrafts)}" aria-label="${escapeHtml(text().promoteSelectedDrafts)}">
           ${DRAFT_PROMOTE_SVG}
         </button>

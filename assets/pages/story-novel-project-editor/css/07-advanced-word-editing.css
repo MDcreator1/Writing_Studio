@@ -1283,6 +1283,10 @@
   box-shadow: 0 5px 16px color-mix(in srgb, #000 14%, transparent);
 }
 
+.awe-standalone-temporary-backdrop .awe-temporary-candidates-panel:has(.awe-temporary-candidate-row) {
+  min-height: 0;
+}
+
 .awe-standalone-temporary-backdrop .awe-temporary-candidates-panel>header {
   cursor: grab;
   user-select: none;
@@ -1415,7 +1419,7 @@
 .awe-temporary-list {
   max-height: min(292px, 55vh);
   display: grid;
-  grid-auto-rows: minmax(52px, auto);
+  grid-auto-rows: 52px;
   gap: 8px;
   overflow-x: hidden;
   overflow-y: auto;
@@ -1470,6 +1474,8 @@
 }
 
 .awe-temporary-candidate-row {
+  height: 52px;
+  box-sizing: border-box;
   min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) max-content;
@@ -1480,6 +1486,16 @@
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface-raised);
+}
+
+.awe-temporary-candidate-row:has(.lm-custom-select.is-open) {
+  position: relative;
+  z-index: 20;
+  overflow: visible;
+}
+
+.awe-temporary-list:not(:has(> .awe-temporary-candidate-row:nth-child(6))):has(.lm-custom-select.is-open) {
+  overflow: visible;
 }
 
 .awe-temporary-candidate-copy {
@@ -1624,7 +1640,14 @@
 }
 
 @media (max-width: 720px) {
+  .awe-temporary-list,
+  .awe-standalone-temporary-backdrop .awe-temporary-candidates-panel.is-measuring-default-height .awe-temporary-list {
+    max-height: min(472px, 55vh);
+    grid-auto-rows: 88px;
+  }
+
   .awe-temporary-candidate-row {
+    height: 88px;
     grid-template-columns: minmax(0, 1fr);
     gap: 9px;
   }

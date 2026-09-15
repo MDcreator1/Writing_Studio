@@ -210,7 +210,7 @@ body.is-chapter-edit-recovery-open .lm-id-editor-area {
   width: 100%;
   max-height: min(720px, calc(100vh - 24px));
   overflow-y: auto;
-  padding: 18px;
+  padding: 4px 18px 12px;
   border: 1px solid var(--lm-border-cloud-panel-color);
   border-radius: var(--radius-3xl);
   background-color: var(--surface-raised);
@@ -227,7 +227,7 @@ body.is-chapter-edit-recovery-open .lm-id-editor-area {
   justify-content: space-between;
   gap: 14px;
   align-items: center;
-  margin-bottom: 14px;
+  margin-bottom: 8px;
 }
 
 .story-info-title-row {
@@ -321,7 +321,8 @@ body.is-chapter-edit-recovery-open .lm-id-editor-area {
 
 .story-info-time {
   max-width: 150px;
-  padding: 6px 9px;
+  padding: 3px 9px;
+  margin-right: 25px;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: var(--lm-bg-info-soft);
@@ -343,8 +344,10 @@ body.is-chapter-edit-recovery-open .lm-id-editor-area {
 }
 
 .story-info-close {
+  position: absolute;
   width: 36px;
   height: 36px;
+  right: 8px;
   border: none;
   border: none;
   background: transparent;
@@ -460,7 +463,6 @@ body.is-chapter-edit-recovery-open .lm-id-editor-area {
 .story-info-actions {
   display: flex;
   justify-content: flex-end;
-  margin-top: 16px;
 }
 
 .story-info-primary {
@@ -468,6 +470,7 @@ body.is-chapter-edit-recovery-open .lm-id-editor-area {
   height: 40px;
   border-radius: var(--radius-lg);
   padding: 0 16px;
+  margin-top: 16px;
   cursor: pointer;
   font-size: var(--font-size-base);
   font-weight: 850;
@@ -905,7 +908,7 @@ select.lm-native-select:not(.dock-native-select) {
 }
 
 .close-find-btn:hover {
-  background: var(--accent);
+  background: var(--accent-soft);
   color: var(--accent2);
   border-color: var(--accent);
 }
