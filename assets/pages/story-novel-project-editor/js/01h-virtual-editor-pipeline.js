@@ -2,6 +2,10 @@ function queueVirtualEditorPatchBatch(editor, state, inputSequence, documentSequ
   const patch = virtualEditorPatchPayload(editor, state);
   if (Array.isArray(state.sessionParagraphs)) {
     state.sessionParagraphs.splice(patch.start, patch.end - patch.start, ...patch.paragraphs);
+    state.total = state.sessionParagraphs.length;
+    state.end = state.temporarilyMaterialized
+      ? state.total
+      : state.start + virtualEditorLogicalParagraphs(editor.textContent || '').length;
   }
   if (
     !virtualEditorPendingPatchBatch ||
@@ -21,11 +25,15 @@ function queueVirtualEditorPatchBatch(editor, state, inputSequence, documentSequ
   if (
     previousPatch &&
     previousPatch.start === patch.start &&
-    previousPatch.end === patch.end &&
+    previousPatch.start + previousPatch.paragraphs.length === patch.end &&
     previousPatch.windowStart === patch.windowStart
   ) {
-    // Repeated keystrokes in the same paragraph only need the newest paragraph snapshot.
-    virtualEditorPendingPatchBatch.patches[virtualEditorPendingPatchBatch.patches.length - 1] = patch;
+    // The new patch addresses the previous replacement, not its original range.
+    // Keep the original end when composing paragraph splits/joins.
+    virtualEditorPendingPatchBatch.patches[virtualEditorPendingPatchBatch.patches.length - 1] = {
+      ...patch,
+      end: previousPatch.end
+    };
   } else {
     virtualEditorPendingPatchBatch.patches.push(patch);
   }
@@ -299,9 +307,9 @@ function updateActiveDocumentWordCountLabel(words) {
 function applyVirtualEditorDeltaResult(result) {
   const state = activeVirtualEditorDocument;
   if (!state || !result || result.documentKey !== state.key) return false;
-  state.start = result.start;
-  state.end = result.end;
-  state.total = result.total;
+  // A patch acknowledgement does not repaint the DOM. Its clamped Worker
+  // window must not change the paragraph base of the still-visible text.
+  state.total = Array.isArray(state.sessionParagraphs) ? state.sessionParagraphs.length : result.total;
   state.revision = result.revision;
   state.dirty = true;
   setEditorStatValues(result.stats || {});
@@ -399,11 +407,11 @@ function applyVirtualEditorWindow(result, options = {}) {
       });
     });
   };
-  // A virtual window is only the content source. Render it through the same
-  // HTML -> plain text -> editor.textContent path used by the legacy editor;
-  // the Worker remains responsible only for the full-document backing state.
+  // Keep the live editing coordinates lossless: the HTML export converter
+  // trims paragraph-end spaces and skips leading empty paragraphs.
   const windowText = windowParagraphs.join(virtualEditorParagraphSeparator(activeVirtualEditorDocument));
-  renderEditorDocumentContent(editor, { content: textToEditorHTML(windowText) }, { virtualWindow: true });
+  setEditorRenderMode(editor, 'plain');
+  setPlainTextEditorValue(editor, windowText);
   if (options.caretAnchor && Number.isFinite(options.caretAnchor.paragraph)) {
     const localCaretParagraph = Math.max(0, options.caretAnchor.paragraph - safeStart);
     const localParagraphStart = virtualEditorParagraphStartOffset(editor.textContent || '', localCaretParagraph);
@@ -504,7 +512,7 @@ function startVirtualEditorDocument(documentItem, sequence, sourceHTML = documen
     }
     const verifiedWords = Math.max(0, Number(result.stats?.words) || 0);
     activeVirtualEditorDocument.workerReady = true;
-    activeVirtualEditorDocument.total = Math.max(0, Number(result.total) || 0);
+    activeVirtualEditorDocument.total = activeVirtualEditorDocument.sessionParagraphs.length;
     activeVirtualEditorDocument.revision = Number(result.revision) || 0;
     documentItem._wordCount = verifiedWords;
     documentItem.wordCount = verifiedWords;
@@ -712,13 +720,23 @@ function restoreVirtualEditorWindowAroundViewport(options = {}) {
   }
   state.windowPending = true;
   const requestId = ++virtualEditorWindowRequest;
+  const requestedInputSequence = editorInputBridgeSequence;
+  const requestedCloseSequence = restrictedInputCloseSequence;
   editorHTMLBridgeWorkerLane.run({
     documentKey: state.key,
     start,
     windowSize
   }, 'render-virtual-window').then(result => {
-    if (requestId !== virtualEditorWindowRequest || activeVirtualEditorDocument?.key !== state.key) return;
-    const latestAnchor = viewportAnchor;
+    if (requestId !== virtualEditorWindowRequest || activeVirtualEditorDocument !== state) return;
+    // Do not replace newer edits or revive a window after the input session
+    // ended while the Worker was rendering it.
+    if (requestedInputSequence !== editorInputBridgeSequence ||
+        requestedCloseSequence !== restrictedInputCloseSequence) return;
+    const liveSelection = currentEditorHistorySelection(editor);
+    if (options.preferCaret && !liveSelection?.collapsed) return;
+    const latestAnchor = options.preferCaret
+      ? temporaryVirtualEditorViewportAnchor(editor, state, true)
+      : viewportAnchor;
     const resultStart = Math.max(0, Number(result.start) || 0);
     const resultEnd = Math.max(resultStart, Number(result.end) || resultStart);
     if (
@@ -726,9 +744,7 @@ function restoreVirtualEditorWindowAroundViewport(options = {}) {
       latestAnchor?.caretAnchor &&
       (latestAnchor.paragraph < resultStart || latestAnchor.paragraph >= resultEnd)
     ) {
-      // This result belongs to an older caret position. Leave the live anchor
-      // queued; the single post-response reconciliation below will request the
-      // correct window after this request has completely released its lock.
+      // The user moved outside the requested window. Keep the live DOM.
       return;
     }
     applyVirtualEditorWindow(result, { viewportAnchor: latestAnchor, caretAnchor: latestAnchor.caretAnchor, windowSize });

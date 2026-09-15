@@ -636,10 +636,11 @@ function insertPlainTextAtEditorSelection(editor, value) {
   return true;
 }
 
-function commitPlainTextEditorManualInput() {
+function commitPlainTextEditorManualInput(inputType = 'insertFromPaste') {
+  editorHistoryAfterInput();
   syncEditorPlaceholderState();
   scheduleEditorCaretAutoScroll();
-  handleEditorContentInput();
+  handleEditorContentInput({ inputType });
   updateFormattingButtons({ syncFromSelection: false });
 }
 
@@ -651,7 +652,7 @@ function handlePlainTextEditorBeforeInput(event) {
 
   event.preventDefault();
   if (insertPlainTextAtEditorSelection(editor, '\n')) {
-    commitPlainTextEditorManualInput();
+    commitPlainTextEditorManualInput(event.inputType);
   }
 }
 
