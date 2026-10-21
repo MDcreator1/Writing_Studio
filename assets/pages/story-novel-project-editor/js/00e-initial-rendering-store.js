@@ -24,6 +24,64 @@
   let activeWriteSignature = '';
   let activeWriteTask = null;
   const namingWriteTasks = new WeakMap();
+  const chapterNamingOccurrences = new Map();
+  let chapterOccurrenceWarmTask = null;
+
+  function occurrenceNameSignature(entry) {
+    return JSON.stringify(namingSearchNames(entry).slice().sort());
+  }
+
+  function rememberChapterNamingOccurrences(snapshot) {
+    if (snapshot?.schemaVersion !== NAMING_SCHEMA_VERSION || snapshot.document?.kind !== 'chapter' ||
+        !Array.isArray(snapshot.namingData?.entries)) return;
+    const matchedNames = new Map((snapshot.categoryStates || []).flatMap(category =>
+      (category.words || []).map(word => [word.id, word.matchedName])));
+    chapterNamingOccurrences.set(snapshot.document.key, new Map(snapshot.namingData.entries.map(entry =>
+      [entry.id, { signature: occurrenceNameSignature(entry), matchedName: matchedNames.get(entry.id) }])));
+  }
+
+  function namingChapterOccurrenceScores(entries) {
+    const scores = new Map(entries.map(entry => [entry.id, -1]));
+    const signatures = new Map(entries.map(entry => [entry.id, occurrenceNameSignature(entry)]));
+    const currentNames = new Map(entries.map(entry => [entry.id, new Set(namingSearchNames(entry))]));
+    const chapterList = typeof chapters === 'undefined' ? [] : chapters;
+    chapterList.forEach((item, index) => {
+      const identity = namingDocumentIdentity(item, 'chapter', index);
+      const names = chapterNamingOccurrences.get(identity.key);
+      if (!names) return;
+      for (const [id, evidence] of names) {
+        if (currentNames.get(id)?.has(evidence.matchedName) || signatures.get(id) === evidence.signature) scores.set(id, index);
+      }
+    });
+    return scores;
+  }
+
+  function warmNamingChapterOccurrences() {
+    if (!projectDirectoryHandle) return Promise.resolve();
+    if (chapterOccurrenceWarmTask) return chapterOccurrenceWarmTask;
+    const generation = namingGeneration;
+    const project = projectDirectoryHandle;
+    const chapterList = typeof chapters === 'undefined' ? [] : chapters;
+    const identities = chapterList.map((item, index) => namingDocumentIdentity(item, 'chapter', index));
+    const task = (async () => {
+      // Read lightweight naming snapshots, never chapter bodies, off the click path.
+      for (let offset = 0; offset < identities.length; offset += 6) {
+        if (generation !== namingGeneration || project !== projectDirectoryHandle) return;
+        await Promise.all(identities.slice(offset, offset + 6).map(async identity => {
+          if (chapterNamingOccurrences.has(identity.key)) return;
+          const snapshot = await readJson(namingSnapshotPath(identity));
+          if (generation !== namingGeneration || project !== projectDirectoryHandle) return;
+          // A live snapshot write may have populated a newer record while reading.
+          if (chapterNamingOccurrences.has(identity.key)) return;
+          if (snapshot?.document?.key === identity.key) rememberChapterNamingOccurrences(snapshot);
+          if (!chapterNamingOccurrences.has(identity.key)) chapterNamingOccurrences.set(identity.key, null);
+        }));
+      }
+    })();
+    chapterOccurrenceWarmTask = task;
+    task.finally(() => { if (chapterOccurrenceWarmTask === task) chapterOccurrenceWarmTask = null; }).catch(() => {});
+    return task;
+  }
 
   function withoutDocumentBody(value) {
     if (!value || typeof value !== 'object') return value;
@@ -417,6 +475,7 @@
   }
 
   async function writeNamingSnapshot(identity, textValue, entries, options = {}) {
+    const occurrenceGeneration = namingGeneration;
     const counts = options.categoryCounts || namingIndex?.categoryCounts || categoryCounts(entries);
     const detectedIds = entries.filter(entry => namingWordState(entry, identity.key) === 'detected').map(entry => entry.id);
     const hiddenByChapter = activeDocumentMap(options.hiddenByChapter || namingIndex?.hiddenByChapter, identity.key);
@@ -442,7 +501,7 @@
       6
     ).slice(0, 6);
     await getProjectDirectoryHandle(NAMING_DOCUMENTS_DIR, { create: true });
-    await writeJson(namingSnapshotPath(identity), {
+    const snapshot = {
       schemaVersion: NAMING_SCHEMA_VERSION,
       generatedAt: new Date().toISOString(),
       document: identity,
@@ -456,7 +515,9 @@
       initialVisibleCategoryIds,
       categoryStates,
       namingData: projected
-    });
+    };
+    await writeJson(namingSnapshotPath(identity), snapshot);
+    if (occurrenceGeneration === namingGeneration) rememberChapterNamingOccurrences(snapshot);
     await cleanupLegacyNamingCaches();
     return projected;
   }
@@ -520,6 +581,7 @@
     if (!sameFingerprint(snapshot.documentSource, currentSource)) return false;
     const currentNamingSource = await fingerprint(PROJECT_NAMING_FILE, { contentHash: true });
     if (!sameFingerprint(snapshot.namingSource, currentNamingSource)) return false;
+    rememberChapterNamingOccurrences(snapshot);
     namingData = normalizeNamingData(snapshot.namingData);
     namingIndex = createNamingIndex(namingData, {
       categoryCounts: snapshot.categoryCounts,
@@ -659,6 +721,7 @@
   }
 
   async function loadNamingForActiveDocument() {
+    warmNamingChapterOccurrences().catch(error => console.warn('Naming occurrence snapshot warmup failed:', error));
     const identity = namingDocumentIdentity();
     if (await loadNamingSnapshot(identity)) {
       const activeText = typeof activeNamingPanelText === 'function' ? activeNamingPanelText() : '';
@@ -832,6 +895,8 @@
 
   function reset() {
     namingGeneration += 1;
+    chapterNamingOccurrences.clear();
+    chapterOccurrenceWarmTask = null;
     clearTimeout(namingSnapshotTimer);
     namingMode = 'empty';
     namingIndex = null;
@@ -864,6 +929,8 @@
     namingCategoryOrphanCount,
     minimumVisibleCategoryIds,
     namingStoryMentionCount,
+    namingChapterOccurrenceScores,
+    warmNamingChapterOccurrences,
     sourceContentHash,
     reset
   });

@@ -432,6 +432,7 @@ const translations = {
     noTagsInChapter: 'No names added in this chapter',
     showExistingNames: 'Show existing names',
     showOtherNames: 'Show other names',
+    showAllNames: 'Show all names',
     hideExistingNames: 'Hide names',
     activeChapterMentions: 'In active chapter',
     times: 'times',

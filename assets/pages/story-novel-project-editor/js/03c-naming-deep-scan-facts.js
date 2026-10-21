@@ -271,8 +271,10 @@ async function deepScanAllNamingEntries(buttonElement = null, options = {}) {
       await writeNamingDataToProject({ authoritativeData: namingData, deduplicateDescriptionHistory: true, allowEntryRemoval: true });
     }
     const sourceIndex = await window.LmNamingDeepScanSource.buildTextIndex({
+      tolerateReadErrors: true,
       onProgress: ({ loaded, total }) => setProgress(`Reading source documents ${loaded}/${total}…`, total ? loaded / total * 12 : 12)
     });
+    const skippedSourceCount = Array.isArray(sourceIndex.readErrors) ? sourceIndex.readErrors.length : 0;
     const authoritativeNamingData = normalizeNamingData(
       await window.LmInitialRendering?.ensureFullNamingData?.({ forceSource: true }) || namingData
     );
@@ -335,7 +337,8 @@ async function deepScanAllNamingEntries(buttonElement = null, options = {}) {
     }
 
     if (updatedCount > 0) {
-      const msg = `Deep scan complete: Updated ${updatedCount} name attachment(s) and cleaned duplicate description history.`;
+      const skippedMessage = skippedSourceCount ? ` Skipped ${skippedSourceCount} missing or unreadable source document(s).` : '';
+      const msg = `Deep scan complete: Updated ${updatedCount} name attachment(s) and cleaned duplicate description history.${skippedMessage}`;
       if (typeof showSmartCopyToast === 'function') {
         showSmartCopyToast(msg);
       } else {
@@ -343,7 +346,8 @@ async function deepScanAllNamingEntries(buttonElement = null, options = {}) {
       }
       options.onComplete?.({ error: false, message: msg, updatedCount });
     } else {
-      const msg = `Deep scan complete: Sources verified and duplicate description history cleaned.`;
+      const skippedMessage = skippedSourceCount ? ` Skipped ${skippedSourceCount} missing or unreadable source document(s).` : '';
+      const msg = `Deep scan complete: Sources verified and duplicate description history cleaned.${skippedMessage}`;
       if (typeof showSmartCopyToast === 'function') {
         showSmartCopyToast(msg);
       } else {
@@ -428,30 +432,198 @@ function categorySortBarHtml(categoryId) {
 
 function existingNamingEntriesHtml(categoryId, entries) {
   const isActive = window.activeExpandedCategoryWithShowMore === categoryId;
-  const filteredEntries = isActive ? getCategoryFilteredSortedEntries(categoryId, entries) : entries;
-  return `
-    <div class="naming-existing-list" ${isActive ? '' : 'hidden'}>
-      ${filteredEntries.map(entry => namingEntryItemHtml(entry, namingEntryUsesOrphanStyle(entry) ? 'naming-existing-entry naming-orphan-entry' : 'naming-existing-entry')).join('')}
-      <button class="hide-existing-names-btn" type="button" onclick="hideExistingNamesForCategory('${escapeJsString(categoryId)}', this)">
-        ${escapeHtml(text().hideExistingNames)}
-      </button>
-    </div>`;
+  if (!isActive) return '';
+  return namingCategoryPageHtml(categoryId, entries, activeNamingPanelText(), [], entries);
 }
 
-async function showExistingNamesForCategory(categoryId, button = null) {
-  await window.LmInitialRendering?.ensureNamingCategoryData?.(categoryId);
-  window.activeExpandedCategoryWithShowMore = categoryId;
-  window.activeExpandedCategoryWithShowMoreDocumentKey = currentNamingChapterKey();
-  expandedNamingCategoryId = categoryId;
-  window.categorySearchQuery = '';
-  window.categorySortOption = 'status';
-  // Hide global search-sort row
-  const globalRow = document.querySelector('.naming-search-sort-row');
-  if (globalRow) globalRow.hidden = true;
-  renderTags();
+let namingCategoryShowRequest = 0;
+
+function resetNamingCategoryPagination() {
+  namingCategoryShowRequest++;
+  window.namingCategoryVisibleCount = 0;
+  window.namingCategoryOccurrenceOrder = null;
+  const display = document.getElementById('tag-display');
+  if (display) {
+    display._namingExpandedCategory = null;
+    display._namingExpandedScrollTop = null;
+    display._namingNamesScroll = null;
+  }
+}
+
+function sizeExpandedNamingViewport(display, selected) {
+  const style = getComputedStyle(display);
+  const cardStyle = getComputedStyle(selected);
+  const below = selected.nextElementSibling?.querySelector('.cat-title');
+  const reserved = below ? below.getBoundingClientRect().height + (parseFloat(cardStyle.marginBottom) || 0) : 0;
+  const available = display.clientHeight - (parseFloat(style.paddingTop) || 0) - (parseFloat(style.paddingBottom) || 0);
+  selected.style.setProperty('--naming-expanded-height', `${Math.max(0, available - reserved)}px`);
+}
+
+function syncExpandedNamingViewport() {
+  const display = document.getElementById('tag-display');
+  if (!display?.classList || typeof document.createElement !== 'function') return;
+  const cards = Array.from(display.querySelectorAll('.naming-category-card'));
+  const categoryId = window.activeExpandedCategoryWithShowMore;
+  const selected = cards.find(card => card.dataset.categoryId === categoryId && categoryId === expandedNamingCategoryId);
+  if (!selected || isFocus) {
+    display.classList.remove('has-expanded-name-list');
+    display._namingViewportObserver?.disconnect();
+    display._namingExpandedCard = null;
+    if (display._namingBeforeExpandScrollTop !== undefined) {
+      display.scrollTop = display._namingBeforeExpandScrollTop;
+      delete display._namingBeforeExpandScrollTop;
+    }
+    return;
+  }
+  if (display._namingBeforeExpandScrollTop === undefined) display._namingBeforeExpandScrollTop = display.scrollTop;
+  display.classList.add('has-expanded-name-list');
+  selected.classList.add('is-expanded-name-scroll');
+  sizeExpandedNamingViewport(display, selected);
+  display._namingExpandedCard = selected;
+  if (!display._namingViewportScrollBound) {
+    display._namingViewportScrollBound = true;
+    display.addEventListener('scroll', () => {
+      if (display.classList.contains('has-expanded-name-list')) display._namingExpandedScrollTop = display.scrollTop;
+    }, { passive: true });
+  }
+  if (typeof ResizeObserver === 'function') {
+    display._namingViewportObserver ||= new ResizeObserver(() => {
+      const card = display._namingExpandedCard;
+      if (card && display.classList.contains('has-expanded-name-list')) sizeExpandedNamingViewport(display, card);
+    });
+    display._namingViewportObserver.disconnect();
+    display._namingViewportObserver.observe(display);
+    const nextHeader = selected.nextElementSibling?.querySelector('.cat-title');
+    if (nextHeader) display._namingViewportObserver.observe(nextHeader);
+  }
+  const list = selected.querySelector('.category-entries');
+  if (list && !list._namingScrollBound) {
+    list._namingScrollBound = true;
+    list.tabIndex = 0;
+    list.setAttribute('role', 'region');
+    list.setAttribute('aria-label', 'Expanded category names');
+    if (display._namingNamesScroll?.categoryId === categoryId) list.scrollTop = display._namingNamesScroll.top;
+    list.addEventListener('scroll', () => {
+      display._namingNamesScroll = { categoryId, top: list.scrollTop };
+    }, { passive: true });
+  }
+  if (display._namingExpandedCategory !== categoryId) {
+    const padding = parseFloat(getComputedStyle(display).paddingTop) || 0;
+    display.scrollTop += selected.getBoundingClientRect().top - display.getBoundingClientRect().top - padding;
+  } else if (display._namingExpandedScrollTop != null) {
+    display.scrollTop = display._namingExpandedScrollTop;
+  }
+  display._namingExpandedCategory = categoryId;
+  display._namingExpandedScrollTop = display.scrollTop;
+}
+
+function namingCategoryRevealButtonsHtml(categoryId, total, visibleCount) {
+  const remaining = Math.max(0, total - visibleCount);
+  const id = escapeJsString(categoryId);
+  if (!remaining) return `<button class="hide-existing-names-btn" type="button" onclick="hideExistingNamesForCategory('${id}', this)">${escapeHtml(text().hideExistingNames)}</button>`;
+  return `${remaining > 20 ? `<button class="show-existing-names-btn" type="button" onclick="showExistingNamesForCategory('${id}', this)">${escapeHtml(text().showOtherNames)}</button>` : ''}
+    <button class="show-existing-names-btn show-all-names-btn" type="button" onclick="showAllNamesForCategory('${id}', this)">${escapeHtml(text().showAllNames || 'Show all names')}</button>`;
+}
+
+function namingCategoryPageHtml(categoryId, entries, activeText, detectedEntries, existingEntries) {
+  const filtered = getCategoryFilteredSortedEntries(categoryId, entries);
+  const visibleCount = Math.max(20, window.namingCategoryVisibleCount || 20);
+  const shown = filtered.slice(0, visibleCount);
+  return `${shown.map(entry => {
+    const extraClass = existingEntries.includes(entry)
+      ? (namingEntryUsesOrphanStyle(entry) ? 'naming-existing-entry naming-orphan-entry' : 'naming-existing-entry')
+      : detectedEntries.includes(entry) ? 'naming-detected-entry' : '';
+    return namingEntryItemHtml(entry, extraClass, activeText);
+  }).join('')}
+    <div class="naming-existing-toggle-row">${namingCategoryRevealButtonsHtml(categoryId, filtered.length, shown.length)}</div>`;
+}
+
+function renderNamingCategoryPage(categoryId) {
+  const display = document.getElementById('tag-display');
+  const card = Array.from(display?.querySelectorAll?.('.naming-category-card') || [])
+    .find(node => node.dataset.categoryId === categoryId);
+  const list = card?.querySelector('.category-entries');
+  if (!list || isFocus || expandedNamingCategoryId !== categoryId) return renderTags();
+  const activeText = activeNamingPanelText();
+  const categoryEntries = namingData.entries.filter(entry => entry.categoryId === categoryId);
+  const priority = namingEntriesByActiveTextPriority(categoryEntries, activeText);
+  list.innerHTML = namingCategoryPageHtml(categoryId,
+    [...priority.activeDocumentEntries, ...priority.detectedEntries, ...priority.existingEntries],
+    activeText, priority.detectedEntries, priority.existingEntries);
+  if (!card.querySelector('.cat-search-sort-wrapper')) {
+    list.insertAdjacentHTML('beforebegin', `<div class="cat-search-sort-wrapper">${categorySortBarHtml(categoryId)}</div>`);
+  }
+  syncExpandedNamingViewport();
+  requestAnimationFrame(() => {
+    if (typeof updateSidebarScrollThumb === 'function') updateSidebarScrollThumb('naming', false);
+  });
+}
+
+function warmNamingCategoryOccurrenceOrder(categoryId, project, documentKey) {
+  const warmup = window.LmInitialRendering?.warmNamingChapterOccurrences?.();
+  if (!warmup) return;
+  Promise.resolve(warmup).then(() => {
+    if (project !== projectDirectoryHandle || documentKey !== currentNamingChapterKey() ||
+        window.activeExpandedCategoryWithShowMore !== categoryId) return;
+    const previous = window.namingCategoryOccurrenceOrder;
+    const next = prepareNamingCategoryOccurrenceOrder(categoryId);
+    window.namingCategoryOccurrenceOrder = next;
+    const changed = next.scores.size !== previous?.scores.size ||
+      [...next.scores].some(([id, score]) => previous.scores.get(id) !== score);
+    if (changed && window.categorySortOption === 'occurrence') renderNamingCategoryPage(categoryId);
+  }).catch(error => console.warn('Naming occurrence snapshot warmup failed:', error));
+}
+
+function showAllNamesForCategory(categoryId, button = null) {
+  return showExistingNamesForCategory(categoryId, button, { showAll: true });
+}
+
+async function showExistingNamesForCategory(categoryId, button = null, options = {}) {
+  if (button?.disabled) return;
+  const project = projectDirectoryHandle;
+  const documentKey = currentNamingChapterKey();
+  const previousExpandedCategory = expandedNamingCategoryId;
+  const request = ++namingCategoryShowRequest;
+  const alreadyOpen = window.activeExpandedCategoryWithShowMore === categoryId &&
+    window.activeExpandedCategoryWithShowMoreDocumentKey === documentKey;
+  if (button) { button.disabled = true; button.setAttribute('aria-busy', 'true'); }
+  try {
+    if (!alreadyOpen) {
+      await window.LmInitialRendering?.ensureNamingCategoryData?.(categoryId);
+      if (project !== projectDirectoryHandle || documentKey !== currentNamingChapterKey() || request !== namingCategoryShowRequest) return;
+      const occurrence = prepareNamingCategoryOccurrenceOrder(categoryId);
+      if (project !== projectDirectoryHandle || documentKey !== currentNamingChapterKey() ||
+          request !== namingCategoryShowRequest || previousExpandedCategory !== expandedNamingCategoryId) return;
+      window.namingCategoryOccurrenceOrder = occurrence;
+      const categoryEntries = namingData.entries.filter(entry => entry.categoryId === categoryId);
+      const priority = namingEntriesByActiveTextPriority(categoryEntries, activeNamingPanelText());
+      // Keep the initial visible allowance, then reveal another twenty names.
+      window.namingCategoryVisibleCount = priority.activeDocumentEntries.length + priority.detectedEntries.length;
+      window.categorySearchQuery = '';
+      window.categorySortOption = 'occurrence';
+    }
+    window.namingCategoryVisibleCount = options.showAll
+      ? Number.MAX_SAFE_INTEGER : (window.namingCategoryVisibleCount || 0) + 20;
+    window.activeExpandedCategoryWithShowMore = categoryId;
+    window.activeExpandedCategoryWithShowMoreDocumentKey = documentKey;
+    expandedNamingCategoryId = categoryId;
+    // Hide global search-sort row
+    const globalRow = document.querySelector('.naming-search-sort-row');
+    if (globalRow) globalRow.hidden = true;
+    renderNamingCategoryPage(categoryId);
+    if (!alreadyOpen) warmNamingCategoryOccurrenceOrder(categoryId, project, documentKey);
+  } catch (error) {
+    console.error('Naming category occurrence sort failed:', error);
+    if (project === projectDirectoryHandle && documentKey === currentNamingChapterKey() && request === namingCategoryShowRequest) {
+      showMiniReminder('नामों की सूची नहीं खुल सकी। कृपया फिर से कोशिश करें।');
+    }
+  } finally {
+    if (button) { button.disabled = false; button.removeAttribute('aria-busy'); }
+  }
 }
 
 function hideExistingNamesForCategory(categoryId, button = null) {
+  resetNamingCategoryPagination();
   window.activeExpandedCategoryWithShowMore = null;
   window.activeExpandedCategoryWithShowMoreDocumentKey = '';
   expandedNamingCategoryId = categoryId;
@@ -468,6 +640,7 @@ function resetFullNamingCategoryListAfterDocumentSwitch(chapterKey = currentNami
   if (!window.activeExpandedCategoryWithShowMore) return false;
   const sourceKey = window.activeExpandedCategoryWithShowMoreDocumentKey || '';
   if (!sourceKey || sourceKey === chapterKey) return false;
+  resetNamingCategoryPagination();
   window.activeExpandedCategoryWithShowMore = null;
   window.activeExpandedCategoryWithShowMoreDocumentKey = '';
   window.categorySearchQuery = '';
@@ -480,6 +653,7 @@ function resetFullNamingCategoryListAfterDocumentSwitch(chapterKey = currentNami
 
 function handleCategorySearch(event, categoryId) {
   window.categorySearchQuery = String(event.target.value || '');
+  window.namingCategoryVisibleCount = 20;
   renderTags();
   // Restore focus to search input after re-render
   requestAnimationFrame(() => {
@@ -522,6 +696,10 @@ function openCategorySortPanel(anchor, categoryId) {
       </button>
     </div>
     <div class="naming-sort-options">
+      <button class="naming-sort-option-btn ${sortOption === 'occurrence' ? 'is-active' : ''}" type="button"
+        onclick="setCategorySortOption('${escapeJsString(categoryId)}', 'occurrence')">
+        Latest Chapter Occurrence (Newest First)
+      </button>
       <button class="naming-sort-option-btn ${sortOption === 'status' ? 'is-active' : ''}" type="button"
         onclick="setCategorySortOption('${escapeJsString(categoryId)}', 'status')">
         Status-wise (Default)
@@ -570,13 +748,13 @@ function toggleCategorySortPanel(anchor, categoryId) {
 
 function setCategorySortOption(categoryId, option) {
   window.categorySortOption = option;
+  window.namingCategoryVisibleCount = 20;
   closeCategorySortPanel();
   renderTags();
 }
 
-function initialNamingCategoriesForActiveDocument(maximum = 6) {
+function initialNamingCategoriesForActiveDocument(maximum = 6, activeText = activeNamingPanelText()) {
   const chapterKey = currentNamingChapterKey();
-  const activeText = activeNamingPanelText();
   const hiddenIds = hiddenCategoriesForChapter(chapterKey);
   const explicitIds = visibleCategoriesForChapter(chapterKey);
   const focusCategoryId = isFocus ? activeFocusNamingCategoryId : '';
@@ -619,17 +797,19 @@ function initializeNamingExpansionForDocument(chapterKey, sortedCategories) {
 function renderTags() {
   const display = document.getElementById('tag-display');
   if (!display) return;
+  if (display.classList?.contains('has-expanded-name-list')) display._namingExpandedScrollTop = display.scrollTop;
+  display.classList?.remove('has-expanded-name-list');
 
   namingData = normalizeNamingData(namingData);
   const chapterKey = currentNamingChapterKey();
+  const activeText = activeNamingPanelText();
   resetFullNamingCategoryListAfterDocumentSwitch(chapterKey);
   const isShowingAllCategories = window.activeNamingShowAllCategoriesKey === chapterKey;
   let visibleCategories = isShowingAllCategories
     ? namingData.categories.filter(category => !hiddenCategoriesForChapter(chapterKey).has(category.id))
-    : initialNamingCategoriesForActiveDocument(6);
+    : initialNamingCategoriesForActiveDocument(6, activeText);
 
   if (namingSearchMode === 'name' && namingSearchQuery) {
-    const activeText = activeNamingPanelText();
     const matchingEntries = namingData.entries.filter(entry =>
       String(entry.name || '').toLocaleLowerCase().includes(namingSearchQuery.toLocaleLowerCase())
     );
@@ -706,8 +886,9 @@ function renderTags() {
   const sortedCategories = [...filteredCategories];
 
   if (namingSortOption === 'status') {
-    const activeText = activeNamingPanelText();
+    const statusScores = new Map();
     const getCategoryStatusScore = (category) => {
+      if (statusScores.has(category.id)) return statusScores.get(category.id);
       const globalEntries = namingData.entries.filter(entry => entry.categoryId === category.id);
       const {
         activeDocumentEntries: entries,
@@ -724,10 +905,9 @@ function renderTags() {
         namingCategoryAllEntriesUseOrphanStyle(category.id, globalEntryCount);
       const hasExistingEntries = !hasChapterEntries && !hasDetectedEntries && hasOtherEntries && !hasOrphanEntries;
 
-      if (hasChapterEntries) return 4;
-      if (hasDetectedEntries) return 3;
-      if (hasExistingEntries) return 2;
-      return 1;
+      const score = hasChapterEntries ? 4 : hasDetectedEntries ? 3 : hasExistingEntries ? 2 : 1;
+      statusScores.set(category.id, score);
+      return score;
     };
     sortedCategories.sort((a, b) => getCategoryStatusScore(b) - getCategoryStatusScore(a));
   } else if (namingSortOption === 'count') {
@@ -742,7 +922,6 @@ function renderTags() {
   initializeNamingExpansionForDocument(chapterKey, sortedCategories);
   display.innerHTML = sortedCategories.map(category => {
     const isExpanded = expandedNamingCategoryId === category.id;
-    const activeText = activeNamingPanelText();
     const globalEntries = namingData.entries.filter(entry => entry.categoryId === category.id);
     const globalEntryCount = window.LmInitialRendering?.namingCategoryCount?.(category.id) ?? globalEntries.length;
     const canDeleteCategory = globalEntryCount === 0;
@@ -770,36 +949,21 @@ function renderTags() {
       if (isShowingAll) {
         // Combine ALL entries and apply category-level filter+sort
         const allCategoryEntries = [...entries, ...detectedEntries, ...existingEntries];
-        const filteredAll = getCategoryFilteredSortedEntries(category.id, allCategoryEntries);
-        entryHtml = `
-          ${filteredAll.map(entry => {
-            const isDetected = detectedEntries.includes(entry);
-            const isExisting = existingEntries.includes(entry);
-            const extraClass = isExisting
-              ? (namingEntryUsesOrphanStyle(entry) ? 'naming-existing-entry naming-orphan-entry' : 'naming-existing-entry')
-              : isDetected ? 'naming-detected-entry' : '';
-            return namingEntryItemHtml(entry, extraClass, activeText);
-          }).join('')}
-          <button class="hide-existing-names-btn" type="button" onclick="hideExistingNamesForCategory('${escapeJsString(category.id)}', this)">
-            ${escapeHtml(text().hideExistingNames)}
-          </button>`;
+        entryHtml = namingCategoryPageHtml(category.id, allCategoryEntries, activeText, detectedEntries, existingEntries);
       } else {
+        const initialEntries = [...entries, ...detectedEntries];
+        const hasMoreNames = hasOtherEntries;
         entryHtml = visibleEntryCount
-          ? `${entries.map(entry => namingEntryItemHtml(entry, '', activeText)).join('')}
-              ${detectedEntries.map(entry => namingEntryItemHtml(entry, 'naming-detected-entry', activeText)).join('')}
-              ${hasOtherEntries ? `
+          ? `${initialEntries.map(entry => namingEntryItemHtml(entry, detectedEntries.includes(entry) ? 'naming-detected-entry' : '', activeText)).join('')}
+              ${hasMoreNames ? `
                 <div class="naming-existing-toggle-row">
-                  <button class="show-existing-names-btn" type="button" onclick="showExistingNamesForCategory('${escapeJsString(category.id)}', this)">
-                    ${escapeHtml(text().showOtherNames)}
-                  </button>
+                  ${namingCategoryRevealButtonsHtml(category.id, Math.max(globalEntryCount, globalEntries.length), initialEntries.length)}
                 </div>
                 ${existingNamingEntriesHtml(category.id, existingEntries)}` : ''}`
           : (hasExistingEntries || hasOrphanEntries)
             ? `<div class="naming-empty naming-chapter-empty naming-existing-toggle-row">
                 <span>${escapeHtml(text().noTagsInChapter)}</span>
-                <button class="show-existing-names-btn" type="button" onclick="showExistingNamesForCategory('${escapeJsString(category.id)}', this)">
-                  ${escapeHtml(text().showExistingNames)}
-                </button>
+                ${namingCategoryRevealButtonsHtml(category.id, Math.max(globalEntryCount, globalEntries.length), 0)}
               </div>
               ${existingNamingEntriesHtml(category.id, existingEntries)}`
             : `<div class="naming-empty">${escapeHtml(text().noTags)}</div>`;
@@ -830,6 +994,7 @@ function renderTags() {
       </div>`;
   }).join('');
 
+  syncExpandedNamingViewport();
   if (isFocus && activeFocusNamingCategoryId) {
     requestAnimationFrame(() => syncFocusNamingCategoryPanel(activeFocusNamingCategoryId));
   }
@@ -1562,7 +1727,7 @@ function exportTxt() {
 }
 
 // Search & Sort State
-window.namingSearchMode = 'category';
+window.namingSearchMode = 'name';
 window.namingSearchQuery = '';
 window.namingSortOption = 'status';
 
@@ -1574,6 +1739,7 @@ function toggleNamingSearchMode() {
     if (btn) {
       btn.classList.remove('is-active');
       btn.title = "Search names (Active) / Search categories (Inactive)";
+      btn.setAttribute('aria-label', btn.title);
       btn.innerHTML = typeof lmIcon === 'function' ? lmIcon('namingSearchName') : '';
     }
     if (input) {
@@ -1584,6 +1750,7 @@ function toggleNamingSearchMode() {
     if (btn) {
       btn.classList.add('is-active');
       btn.title = "Search categories (Active) / Search names (Inactive)";
+      btn.setAttribute('aria-label', btn.title);
       btn.innerHTML = typeof lmIcon === 'function' ? lmIcon('namingSearchCategory') : '';
     }
     if (input) {

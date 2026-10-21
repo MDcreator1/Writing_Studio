@@ -31,6 +31,7 @@
     const draftTexts = new Array(draftList.length);
     const chapterContentHashes = new Array(chapterList.length);
     const draftContentHashes = new Array(draftList.length);
+    const readErrors = [];
     const jobs = [
       ...chapterList.map((item, index) => ({ item, index, type: 'chapter', textTarget: chapterTexts, hashTarget: chapterContentHashes })),
       ...(options.includeDrafts === false ? [] : draftList.map((item, index) => ({ item, index, type: 'draft', textTarget: draftTexts, hashTarget: draftContentHashes })))
@@ -38,6 +39,7 @@
     const batchSize = 10;
 
     for (let offset = 0; offset < jobs.length; offset += batchSize) {
+      await options.checkpoint?.();
       const batch = jobs.slice(offset, offset + batchSize);
       await Promise.all(batch.map(async job => {
         try {
@@ -48,6 +50,13 @@
           if (!options.tolerateReadErrors) throw error;
           job.textTarget[job.index] = '';
           job.hashTarget[job.index] = null;
+          readErrors.push({
+            documentType: job.type,
+            index: job.index,
+            contentPath: job.item?.contentPath || '',
+            errorName: error?.name || 'Error',
+            message: error?.message || String(error)
+          });
           console.warn(`Naming source repair skipped unreadable ${job.type}:`, job.item?.contentPath || job.index, error);
         }
       }));
@@ -56,7 +65,7 @@
       await new Promise(resolve => setTimeout(resolve, 0));
     }
 
-    return { chapterTexts, draftTexts, chapterContentHashes, draftContentHashes };
+    return { chapterTexts, draftTexts, chapterContentHashes, draftContentHashes, readErrors };
   }
 
   async function repairDraftSourcesSeenInChapters(options = {}) {

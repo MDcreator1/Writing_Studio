@@ -10,10 +10,13 @@
     importSplitMode: 'auto',
     importCustomWord: '',
     importTarget: 'drafts',
+    importDraftPrefix: 'I Draft',
+    importChapterPrefix: 'I Chapter',
     importFontSize: 14,
     promoteWordCount: 2500,
     promoteFontSize: 14,
     promoteDestination: 'part',
+    promoteChapterPrefix: 'I Chapter',
     promoteAutoOpenAboveLimit: true
   });
   let activeWorkflowView = 'import';
@@ -39,6 +42,10 @@
     return Number.isFinite(number) ? Math.max(10, Math.min(30, number)) : fallback;
   }
 
+  function normalizeImportPrefix(value, fallback) {
+    return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, 80).trim() || fallback;
+  }
+
   function readSettings() {
     const stored = safeParse(localStorage.getItem(SETTINGS_KEY), {});
     const legacyImportWords = typeof global.lmEditorAdvancedNumber === 'function'
@@ -49,12 +56,26 @@
       importSplitMode: stored.importSplitMode === 'custom' ? 'custom' : 'auto',
       importCustomWord: String(stored.importCustomWord || '').trim(),
       importTarget: stored.importTarget === 'chapters' ? 'chapters' : 'drafts',
+      importDraftPrefix: normalizeImportPrefix(stored.importDraftPrefix, DEFAULTS.importDraftPrefix),
+      importChapterPrefix: normalizeImportPrefix(stored.importChapterPrefix, DEFAULTS.importChapterPrefix),
       importFontSize: clampFontSize(stored.importFontSize, DEFAULTS.importFontSize),
       promoteWordCount: clampWords(stored.promoteWordCount, DEFAULTS.promoteWordCount),
       promoteFontSize: clampFontSize(stored.promoteFontSize, DEFAULTS.promoteFontSize),
       promoteDestination: stored.promoteDestination === 'raw' ? 'raw' : 'part',
+      promoteChapterPrefix: normalizeImportPrefix(stored.promoteChapterPrefix, DEFAULTS.promoteChapterPrefix),
       promoteAutoOpenAboveLimit: stored.promoteAutoOpenAboveLimit !== false
     };
+  }
+
+  function importDocumentTitle(target, index = 0, overrides = {}) {
+    const key = target === 'chapters' ? 'importChapterPrefix' : 'importDraftPrefix';
+    const prefix = normalizeImportPrefix(overrides[key] ?? readSettings()[key], DEFAULTS[key]);
+    return `${prefix} ${Math.max(0, Math.trunc(Number(index) || 0)) + 1}`;
+  }
+
+  function promoteDocumentTitle(index = 0, overrides = {}) {
+    const prefix = normalizeImportPrefix(overrides.promoteChapterPrefix ?? readSettings().promoteChapterPrefix, DEFAULTS.promoteChapterPrefix);
+    return `${prefix} ${Math.max(0, Math.trunc(Number(index) || 0)) + 1}`;
   }
 
   function projectIdentity() {
@@ -167,6 +188,8 @@
           <label class="advanced-runtime-setting-row"><span><strong>Default splitting style</strong><p>Use smart automatic boundaries or split at a repeated separator word.</p></span><select ${controlAttributes('importSplitMode', DEFAULTS.importSplitMode)} onchange="LmAdvancedImportPromoteSettings.syncImportCustomWordVisibility()"><option value="auto" ${settings.importSplitMode === 'auto' ? 'selected' : ''}>Automatic</option><option value="custom" ${settings.importSplitMode === 'custom' ? 'selected' : ''}>Separating word</option></select></label>
           <label class="advanced-runtime-setting-row" data-advanced-workflow-custom-word ${settings.importSplitMode === 'custom' ? '' : 'hidden'}><span><strong>Default splitting word</strong><p>This word is pre-filled when Separating word is selected.</p></span><input class="advanced-workflow-text" type="text" value="${escapeMarkup(settings.importCustomWord)}" placeholder="e.g. अध्याय" ${controlAttributes('importCustomWord', DEFAULTS.importCustomWord)}></label>
           <label class="advanced-runtime-setting-row"><span><strong>Imported text creates</strong><p>Create editable drafts first, or save the generated items directly as chapters.</p></span><select onchange="LmAdvancedImportPromoteSettings.handleImportTargetChange()" ${controlAttributes('importTarget', DEFAULTS.importTarget)}><option value="drafts" ${settings.importTarget === 'drafts' ? 'selected' : ''}>Drafts</option><option value="chapters" ${settings.importTarget === 'chapters' ? 'selected' : ''}>Chapters directly</option></select></label>
+          ${importPrefixControl('drafts', settings)}
+          ${importPrefixControl('chapters', settings)}
         </div>
         ${conclusionMarkup('import', importConclusion)}
       </section>
@@ -176,6 +199,7 @@
           <div class="advanced-runtime-setting-row"><span><strong>Default word count</strong><p>Initial words-per-chapter value for Advanced Promote.</p></span>${numberControl('promoteWordCount', 'Promote default word count', settings.promoteWordCount, DEFAULTS.promoteWordCount)}</div>
           <div class="advanced-runtime-setting-row"><span><strong>Panel text size</strong><p>Use one font size for the source draft and all promoted-chapter previews.</p></span>${numberControl('promoteFontSize', 'Promote panel text size', settings.promoteFontSize, DEFAULTS.promoteFontSize, { min: 10, max: 30, step: 1, unit: 'px' })}</div>
           <label class="advanced-runtime-setting-row"><span><strong>Default destination</strong><p>Prefer the most recent part, or Raw Chapters when that destination is available.</p></span><select ${controlAttributes('promoteDestination', DEFAULTS.promoteDestination)}><option value="part" ${settings.promoteDestination === 'part' ? 'selected' : ''}>Recent part</option><option value="raw" ${settings.promoteDestination === 'raw' ? 'selected' : ''}>Raw chapters</option></select></label>
+          ${importPrefixControl('promote', settings)}
           <div class="advanced-runtime-setting-row"><span><strong>Open Promote directly above word limit</strong><p>When a draft contains more words than the configured limit, skip the Raw / Advanced choice and open Advanced Promote directly.</p></span><label class="advanced-runtime-toggle" aria-label="Open Promote directly above word limit"><input type="checkbox" ${settings.promoteAutoOpenAboveLimit ? 'checked' : ''} ${controlAttributes('promoteAutoOpenAboveLimit', DEFAULTS.promoteAutoOpenAboveLimit)}><i aria-hidden="true"></i></label></div>
         </div>
         ${conclusionMarkup('promote', promoteConclusion)}
@@ -187,11 +211,29 @@
     return document.querySelector(`[data-advanced-runtime-key="workflow-${key}"]`);
   }
 
+  function importPrefixControl(target, settings) {
+    const key = target === 'promote' ? 'promoteChapterPrefix' : target === 'chapters' ? 'importChapterPrefix' : 'importDraftPrefix';
+    const label = target === 'promote' ? 'Promoted chapter name prefix' : target === 'chapters' ? 'Imported chapter name prefix' : 'Imported draft name prefix';
+    const example = target === 'promote' ? promoteDocumentTitle(0, settings) : importDocumentTitle(target, 0, settings);
+    return `<label class="advanced-runtime-setting-row"><span><strong>${label}</strong><p>Numbers are added automatically. Example: <span data-workflow-name-preview="${target}">${escapeMarkup(example)}</span></p></span><input class="advanced-workflow-text" type="text" maxlength="80" aria-label="${label}" value="${escapeMarkup(settings[key])}" placeholder="${DEFAULTS[key]}" oninput="LmAdvancedImportPromoteSettings.syncImportNamePreviews()" ${controlAttributes(key, DEFAULTS[key])}></label>`;
+  }
+
+  function syncImportNamePreviews() {
+    for (const target of ['drafts', 'chapters', 'promote']) {
+      const key = target === 'promote' ? 'promoteChapterPrefix' : target === 'chapters' ? 'importChapterPrefix' : 'importDraftPrefix';
+      const preview = document.querySelector(`[data-workflow-name-preview="${target}"]`);
+      if (preview) preview.textContent = target === 'promote'
+        ? promoteDocumentTitle(0, { [key]: panelControl(key)?.value })
+        : importDocumentTitle(target, 0, { [key]: panelControl(key)?.value });
+    }
+  }
+
   function syncImportCustomWordVisibility() {
     const row = document.querySelector('[data-advanced-workflow-custom-word]');
     if (row) row.hidden = panelControl('importSplitMode')?.value !== 'custom';
     if (typeof global.syncCustomSelects === 'function') global.syncCustomSelects(document.getElementById('advancedEditorSettingsModal'));
     syncImportTargetConclusionAction();
+    syncImportNamePreviews();
   }
 
   function importTarget() {
@@ -306,10 +348,13 @@
       importSplitMode,
       importCustomWord,
       importTarget: panelControl('importTarget')?.value === 'chapters' ? 'chapters' : 'drafts',
+      importDraftPrefix: normalizeImportPrefix(panelControl('importDraftPrefix')?.value, DEFAULTS.importDraftPrefix),
+      importChapterPrefix: normalizeImportPrefix(panelControl('importChapterPrefix')?.value, DEFAULTS.importChapterPrefix),
       importFontSize,
       promoteWordCount,
       promoteFontSize,
       promoteDestination: panelControl('promoteDestination')?.value === 'raw' ? 'raw' : 'part',
+      promoteChapterPrefix: normalizeImportPrefix(panelControl('promoteChapterPrefix')?.value, DEFAULTS.promoteChapterPrefix),
       promoteAutoOpenAboveLimit: Boolean(panelControl('promoteAutoOpenAboveLimit')?.checked)
     };
     if (options.save === true) {
@@ -324,6 +369,9 @@
   global.LmAdvancedImportPromoteSettings = Object.freeze({
     defaults: DEFAULTS,
     read: readSettings,
+    importDocumentTitle,
+    promoteDocumentTitle,
+    syncImportNamePreviews,
     renderSectionHtml,
     validateFromPanel: () => Boolean(settingsFromPanel()),
     saveFromPanel: () => Boolean(settingsFromPanel({ save: true })),

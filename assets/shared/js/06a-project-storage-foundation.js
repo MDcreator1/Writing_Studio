@@ -1339,10 +1339,16 @@ function persistChapterEditDrafts() {
 }
 
 function saveNamingData(options = {}) {
-  namingData = normalizeNamingData(namingData);
+  // A validated single-entry edit does not require normalizing the entire novel
+  // again on the Save click. Other callers retain the full normalization path.
+  const { skipNormalization = false, ...writeOptions } = options;
+  if (!skipNormalization) namingData = normalizeNamingData(namingData);
   localStorage.setItem(NAMING_STORAGE_KEY, JSON.stringify(namingData));
   if (projectDirectoryHandle) {
-    writeNamingDataToProject(options).catch(error => console.warn('Naming data save failed:', error));
+    writeNamingDataToProject(writeOptions).catch(error => {
+      console.warn('Naming data save failed:', error);
+      showMiniReminder('नाम का बदलाव ब्राउज़र में सुरक्षित है, लेकिन प्रोजेक्ट फ़ाइल सेव नहीं हो सकी।');
+    });
   }
 }
 

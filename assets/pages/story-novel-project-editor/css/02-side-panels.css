@@ -712,6 +712,47 @@
   margin-left: 20px;
 }
 
+.naming-categories.has-expanded-name-list {
+  overflow-y: auto;
+}
+
+.has-expanded-name-list > .naming-category-card {
+  flex-shrink: 0;
+}
+
+.has-expanded-name-list > .is-expanded-name-scroll {
+  display: flex;
+  flex: 0 0 var(--naming-expanded-height);
+  height: var(--naming-expanded-height);
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.is-expanded-name-scroll > .cat-title,
+.is-expanded-name-scroll > .cat-search-sort-wrapper {
+  flex: 0 0 auto;
+}
+
+.has-expanded-name-list .is-expanded-name-scroll > .category-entries {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.has-expanded-name-list .is-expanded-name-scroll > .category-entries > * {
+  flex-shrink: 0;
+}
+
+.has-expanded-name-list .is-expanded-name-scroll > .category-entries::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 .naming-empty {
   padding: 10px;
   border: 1px dashed var(--border);
@@ -745,6 +786,8 @@
   margin-top: 10px;
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .show-existing-names-btn {

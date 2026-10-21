@@ -19,7 +19,7 @@
   <link rel="stylesheet"
     href="assets/pages/story-novel-project-editor/css/03-focus-responsive.css?v=20260609-dock-row-layout">
   <link rel="stylesheet"
-    href="assets/pages/story-novel-project-editor/css/04-advanced-draft-promote.css?v=20260904-workflow-font-size">
+    href="assets/pages/story-novel-project-editor/css/04-advanced-draft-promote.css?v=20261017-import-theme">
   <link rel="stylesheet"
     href="assets/pages/story-novel-project-editor/css/05-text-import.css?v=20260905-source-choice-drop">
   <link rel="stylesheet"
@@ -881,12 +881,12 @@
         </div>
         <div class="naming-search-sort-row">
           <div class="naming-search-bar-container">
-            <button class="naming-search-toggle-btn is-active" id="namingSearchToggleBtn" type="button"
-              onclick="toggleNamingSearchMode()" title="Search categories (Active) / Search names (Inactive)"
-              aria-label="Search categories (Active) / Search names (Inactive)">
-              <span data-lm-icon="namingSearchCategory"></span>
+            <button class="naming-search-toggle-btn" id="namingSearchToggleBtn" type="button"
+              onclick="toggleNamingSearchMode()" title="Search names (Active) / Search categories (Inactive)"
+              aria-label="Search names (Active) / Search categories (Inactive)">
+              <span data-lm-icon="namingSearchName"></span>
             </button>
-            <input type="text" id="namingSearchInput" class="naming-search-input" placeholder="Search categories..."
+            <input type="text" id="namingSearchInput" class="naming-search-input" placeholder="Search names..."
               oninput="handleNamingSearch(event)">
           </div>
           <button class="naming-sort-btn" id="namingSortBtn" type="button" onclick="toggleNamingSortPanel(this)"
@@ -1269,11 +1269,11 @@
   <script src="assets/shared/js/04a-state-defaults-normalization.js?v=20260906-draft-source-chapter-priority"></script>
   <script src="assets/shared/js/04b-editor-document-state.js?v=20260903-document-safety"></script>
   <script src="assets/shared/js/05-floating-panel-positions.js?v=20260610-ai-connection-floating"></script>
-  <script src="assets/shared/js/05aa-advanced-import-promote-settings.js?v=20260904-workflow-font-size"></script>
-  <script src="assets/shared/js/05a-editor-advanced-config.js?v=20260905-import-entry-threshold"></script>
+  <script src="assets/shared/js/05aa-advanced-import-promote-settings.js?v=20261017-promote-name-prefix"></script>
+  <script src="assets/shared/js/05a-editor-advanced-config.js?v=20261017-promote-name-prefix"></script>
   <script src="assets/shared/js/05b-advanced-word-editing.js?v=20260906-temporary-height-reconcile"></script>
     <script src="assets/shared/js/06a-project-storage-foundation.js?v=20260904-naming-projection-race-guard"></script>
-    <script src="assets/shared/js/06aa-naming-file-safety.js?v=20260905-authoritative-import"></script>
+    <script src="assets/shared/js/06aa-naming-file-safety.js?v=20261018-promotion-progress"></script>
   <script src="assets/shared/js/06b-workspace-restore-autosave.js?v=20260906-intentional-empty-save"></script>
   <script src="assets/shared/js/06c-workspace-library-settings.js?v=20260905-document-prefetch-cache"></script>
   <script src="assets/shared/js/06d-editor-paste-settings.js?v=20260906-temporary-panel-sizing"></script>
@@ -1309,8 +1309,9 @@
   <script src="assets/pages/story-novel-project-editor/js/03f-naming-portable-transfer.js?v=20260906-complete-body-action"></script>
   <script src="assets/pages/story-novel-project-editor/js/04-editor-boot.js?v=20260608-file-renames"></script>
   <script
-    src="assets/pages/story-novel-project-editor/js/05-advanced-draft-promote.js?v=20260908-promote-source-repair"></script>
+    src="assets/pages/story-novel-project-editor/js/05-advanced-draft-promote.js?v=20261018-promotion-progress"></script>
   <script src="assets/pages/story-novel-project-editor/js/05a-advanced-import-splitting.js?v=20260904-import-remainder-draft"></script>
+  <script src="assets/pages/story-novel-project-editor/js/05b-text-import-progress.js?v=20261018-promotion-progress"></script>
   <script src="assets/pages/story-novel-project-editor/js/06-text-import.js?v=20260905-source-choice-drop"></script>
 </body>
 

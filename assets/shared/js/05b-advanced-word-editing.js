@@ -6,6 +6,7 @@
   const REPLACEMENT_WORD = /[\p{L}\p{N}]/u;
   const state = { rules: [], categories: ['General'], search: '', categoryFilter: 'all', sortMode: 'order', customCategoriesFirst: false, activeView: 'dictionary', keepEditorReplacements: true, showEditorQuickAction: false, collectUnmatchedReplacements: false, unmatchedReplacementThreshold: 3, unmatchedCategory: 'General', unmatchedObservations: new Map(), temporaryCandidates: [], namingCategories: new Set(), expandedCategories: new Set(), visibleRules: [], selectedRuleIds: new Set(), selectionAnchorRuleId: '', pendingDeleteRuleIds: [], editingCategory: '', categoryFormOpen: false, categoryAction: null, draftAliases: [], root: null, loaded: false, restorePromise: null, projectHandle: null, persistTimer: 0, categoryScrollTimer: 0, aliasResizeObserver: null, dialogDrag: null, temporaryPanelDrag: null, temporaryPanelResize: null, outsideClickHandler: null };
   const TEMPORARY_PANEL_GEOMETRY_KEY = 'lm-awe-temporary-panel-geometry-v1';
+  let editorDictionaryApplying = false;
   function escapeHTML(value) { return String(value ?? '').replace(/[&<>"]/gu, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[character]); }
   function escapeAttribute(value) { return escapeHTML(value).replace(/'/gu, '&#39;'); }
   function iconMarkup(name, className, fallback = '') { let markup = typeof window.lmIcon === 'function' ? window.lmIcon(name, className) : '';
@@ -927,11 +928,16 @@
       button.type = 'button';
       button.title = 'Apply Word Dictionary';
       button.setAttribute('aria-label', 'Apply Word Dictionary to editor');
-      button.innerHTML = iconMarkup('refresh', 'awe-editor-refresh-quick-icon', '↻');
+      button.innerHTML = `<span class="awe-editor-refresh-quick-spinner" aria-hidden="true">${iconMarkup('refresh', 'awe-editor-refresh-quick-icon', '↻')}</span>`;
       button.addEventListener('click', () => applyDictionaryToEditor({ source: 'quick-action' }));
       editorWrap.appendChild(button);
     }
     button.hidden = !state.showEditorQuickAction;
+    button.classList.toggle('is-working', editorDictionaryApplying);
+    button.disabled = editorDictionaryApplying;
+    button.setAttribute('aria-busy', String(editorDictionaryApplying));
+    button.title = editorDictionaryApplying ? 'Applying Word Dictionary…' : 'Apply Word Dictionary';
+    button.setAttribute('aria-label', editorDictionaryApplying ? 'Applying Word Dictionary to editor' : 'Apply Word Dictionary to editor');
   }
   function editorDockPanelState() {
     ensureCategories();
@@ -1202,6 +1208,25 @@
     return { count: totalReplacements, changed: totalReplacements > 0 };
   }
   async function applyDictionaryToEditor(options = {}) {
+    if (editorDictionaryApplying) return { count: 0, changed: false, busy: true };
+    editorDictionaryApplying = true;
+    try {
+      syncEditorQuickAction();
+      // Paint the busy icon before the synchronous dictionary scan starts.
+      await new Promise(resolve => {
+        if (document.hidden || typeof window.requestAnimationFrame !== 'function') {
+          window.setTimeout(resolve, 0);
+        } else {
+          window.requestAnimationFrame(() => window.requestAnimationFrame(resolve));
+        }
+      });
+      return await performDictionaryToEditor(options);
+    } finally {
+      editorDictionaryApplying = false;
+      syncEditorQuickAction();
+    }
+  }
+  async function performDictionaryToEditor(options = {}) {
     await restore();
     if (typeof canEditActiveDocument === 'function' && !canEditActiveDocument()) {
       toast('Open an editable draft or chapter before applying the dictionary.', 'error');

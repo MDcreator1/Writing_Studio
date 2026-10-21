@@ -1,3 +1,165 @@
+.text-import-progress {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(420px, calc(100vw - 40px));
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 20px;
+  border: 1px solid var(--lm-chapter-panel-shell-border, var(--border));
+  border-radius: 14px;
+  background: var(--surface, #fff);
+  color: var(--ink, #192336);
+  box-shadow: var(--lm-shadow-panel-soft), inset 0 1px 0 color-mix(in srgb, var(--surface) 70%, transparent);
+  font-family: inherit;
+}
+
+.text-import-progress::backdrop {
+  background: var(--color-backdrop);
+  backdrop-filter: blur(4px);
+}
+
+.text-import-progress-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--border);
+}
+
+.text-import-progress h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--font-size-lg, 18px);
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.text-import-progress-spinner {
+  width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  border: 2px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: appLoaderSpin .8s linear infinite;
+}
+
+.text-import-progress-status {
+  margin: 18px 0 12px;
+  color: var(--lm-color-ink-muted, var(--ink));
+  font-size: var(--font-size-sm, 14px);
+  line-height: 1.5;
+}
+
+.text-import-progress progress {
+  width: 100%;
+  display: block;
+  height: 8px;
+  appearance: none;
+  -webkit-appearance: none;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  accent-color: var(--accent);
+}
+
+.text-import-progress progress::-webkit-progress-bar {
+  border-radius: 999px;
+  background: var(--surface-soft);
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--ink) 7%, transparent);
+}
+
+.text-import-progress progress::-webkit-progress-value {
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width .2s ease;
+}
+
+.text-import-progress progress::-moz-progress-bar {
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.text-import-progress progress:not([value]) {
+  background: linear-gradient(90deg, var(--surface-soft) 25%, var(--accent-soft) 50%, var(--accent) 65%, var(--surface-soft) 85%);
+  background-size: 250% 100%;
+  animation: text-import-progress-wait 1.4s ease-in-out infinite;
+}
+
+.text-import-progress progress:not([value])::-webkit-progress-bar {
+  background: transparent;
+  box-shadow: none;
+}
+
+.text-import-progress-count {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: var(--font-size-xs, 12px);
+  line-height: 1.5;
+  color: var(--muted, #657086);
+  font-variant-numeric: tabular-nums;
+}
+
+.text-import-progress-count strong {
+  color: var(--accent);
+  font-weight: 750;
+}
+
+.text-import-progress-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.text-import-progress-actions button {
+  width: 75%;
+  min-height: 38px;
+  padding: 9px 14px;
+  border: 1px solid var(--lm-border-action-color, var(--border));
+  border-radius: 9px;
+  background: var(--lm-bg-action-soft, var(--surface-raised));
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--font-size-sm, 14px);
+  font-weight: 650;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+
+.text-import-progress-actions button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--lm-bg-action-hover, var(--accent-soft));
+  box-shadow: var(--lm-master-hover-shadow-accent-subtle);
+}
+
+.text-import-progress-actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.text-import-progress-actions button:disabled { opacity: .65; cursor: wait; }
+
+@keyframes text-import-progress-wait {
+  from { background-position: 100% 0; }
+  to { background-position: 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .text-import-progress-spinner,
+  .text-import-progress progress:not([value]) { animation: none; }
+  .text-import-progress progress::-webkit-progress-value,
+  .text-import-progress-actions button { transition: none; }
+}
+
 .draft-promote-mode-panel {
   width: min(430px, calc(100vw - 24px));
   /* The mode descriptions are visual popups and must be able to escape the

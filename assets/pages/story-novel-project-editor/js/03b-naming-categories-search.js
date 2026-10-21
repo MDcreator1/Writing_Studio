@@ -1259,6 +1259,29 @@ function closeNamingEntryPanel(options = {}) {
   }
 }
 
+let namingEntryRefreshScheduled = false;
+
+function scheduleNamingEntryRefresh() {
+  if (namingEntryRefreshScheduled) return;
+  namingEntryRefreshScheduled = true;
+  // Let the closed panel and confirmation paint before rebuilding the list.
+  const refresh = () => setTimeout(() => {
+    namingEntryRefreshScheduled = false;
+    renderTags();
+  }, 0);
+  if (document.hidden) refresh();
+  else requestAnimationFrame(refresh);
+}
+
+function finishNamingEntrySave(message) {
+  closeNamingEntryPanel();
+  showSidePanelSaveLine(message);
+  // Both entry creation and editing already normalize the changed fields.
+  // Keep the immediate recovery cache; the verified project write is async.
+  saveNamingData({ skipNormalization: true });
+  scheduleNamingEntryRefresh();
+}
+
 function saveNamingEntry() {
   const nameInput = document.getElementById('namingNameInp');
   const descriptionInput = document.getElementById('namingDescriptionInp');
@@ -1273,12 +1296,10 @@ function saveNamingEntry() {
     });
     if (changed) {
       expandedNamingCategoryId = editingEntry.categoryId;
-      renderTags();
-      saveNamingData();
-      showSidePanelSaveLine(text().nameEdited);
+      finishNamingEntrySave(text().nameEdited);
+    } else {
+      closeNamingEntryPanel();
     }
-
-    closeNamingEntryPanel();
     return;
   }
 
@@ -1299,11 +1320,8 @@ function saveNamingEntry() {
     updatedAt: createdAt
   }));
 
-  closeNamingEntryPanel();
   expandedNamingCategoryId = activeNamingCategoryId;
-  renderTags();
-  saveNamingData();
-  showSidePanelSaveLine(text().nameSaved);
+  finishNamingEntrySave(text().nameSaved);
 }
 
 function namingEntryMentionCount(entry = {}, activeText = null) {

@@ -795,7 +795,7 @@ function renderAdvancedEditorSettings() {
     advancedFeatureSection('smart-copy', smartCopyMeta, smartCopyBody, '3 controls', [{ key: 'smartCopy', label: 'Smart Copy' }]),
     advancedFeatureSection('smart-paste', smartPasteMeta, smartPasteBody, '4 controls', [{ key: 'smartPaste', label: 'Smart Paste' }], smartPasteSyncButton),
     advancedFeatureSection('global', globalMeta, globalBody, '8 controls'),
-    advancedFeatureSection('import-promote', importPromoteMeta, importPromoteBody, '9 controls'),
+    advancedFeatureSection('import-promote', importPromoteMeta, importPromoteBody, '12 controls'),
     advancedFeatureSection('find-replace', findMeta, findBody, '2 controls'),
     advancedFeatureSection('advanced-word-editing', wordEditingMeta, wordEditingBody)
   ].join('');

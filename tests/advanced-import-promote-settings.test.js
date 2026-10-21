@@ -28,6 +28,45 @@ assert.strictEqual(api.read().importSplitMode, 'auto');
 assert.strictEqual(api.read().promoteAutoOpenAboveLimit, true);
 assert.strictEqual(api.read().importFontSize, 14, 'Import panel should have its own text-size default');
 assert.strictEqual(api.read().promoteFontSize, 14, 'Promote panel should have its own text-size default');
+assert.strictEqual(api.read().importDraftPrefix, 'I Draft');
+assert.strictEqual(api.read().importChapterPrefix, 'I Chapter');
+assert.strictEqual(api.read().promoteChapterPrefix, 'I Chapter');
+assert.strictEqual(api.promoteDocumentTitle(1), 'I Chapter 2');
+assert.strictEqual(api.importDocumentTitle('drafts', 0), 'I Draft 1');
+assert.strictEqual(api.importDocumentTitle('chapters', 7), 'I Chapter 8');
+localStorage.setItem('lm_advanced_import_promote_settings_v1', JSON.stringify({ importWordCount: 3000 }));
+assert.strictEqual(api.read().importDraftPrefix, 'I Draft', 'older saved settings receive the new naming defaults');
+localStorage.setItem('lm_advanced_import_promote_settings_v1', JSON.stringify({ importDraftPrefix: '  नया   ड्राफ्ट  ', importChapterPrefix: '' }));
+assert.strictEqual(api.importDocumentTitle('drafts', 2), 'नया ड्राफ्ट 3', 'prefix whitespace is normalized and numbering stays automatic');
+assert.strictEqual(api.importDocumentTitle('chapters', 0), 'I Chapter 1', 'blank prefixes fall back to the default');
+localStorage.removeItem('lm_advanced_import_promote_settings_v1');
+
+const titleContext = { window };
+vm.createContext(titleContext);
+vm.runInContext(promoteSource.slice(promoteSource.indexOf('function advancedPromoteDefaultTitle('), promoteSource.indexOf('function advancedPromoteUniqueChapterTitle(')), titleContext);
+assert.strictEqual(titleContext.advancedImportDocumentTitle({ draftTitle: 'Imported Draft', importTarget: 'drafts' }, 0), 'I Draft 1', 'source filenames are not prepended to generated draft names');
+assert.strictEqual(titleContext.advancedImportDocumentTitle({ draftTitle: 'My Novel', importTarget: 'chapters', importChapterPrefix: 'अध्याय' }, 3), 'अध्याय 4');
+assert.strictEqual(titleContext.advancedImportDocumentTitle({ importTarget: 'chapters', importDraftPrefix: 'बाकी ड्राफ्ट' }, 0, 'drafts'), 'बाकी ड्राफ्ट 1', 'remainder drafts use the draft prefix');
+assert.strictEqual(titleContext.advancedPromoteGeneratedTitle({ mode: 'draft', draftTitle: 'Original draft', promoteChapterPrefix: 'भाग' }, 2), 'भाग 3');
+
+Object.assign(titleContext, {
+  clampNumber: (value, min, max) => Math.max(min, Math.min(max, value)),
+  advancedPromoteNormalizedText: value => String(value || '').trim(),
+  advancedPromoteWordCount: value => String(value || '').trim().split(/\s+/).filter(Boolean).length,
+  advancedPromoteFixSplitForChapter: (value, limit) => {
+    const words = value.split(/\s+/);
+    return [words.slice(0, limit).join(' '), words.slice(limit).join(' ')];
+  },
+  advancedPromoteLastSentence: () => ''
+});
+vm.runInContext(promoteSource.slice(promoteSource.indexOf('function advancedPromoteGenerateChapters('), promoteSource.indexOf('function advancedImportUsesRawMode(')), titleContext);
+const promoteSample = Array.from({ length: 220 }, (_, index) => `word${index}`).join(' ');
+const defaultPromotion = titleContext.advancedPromoteGenerateChapters(promoteSample, { wordLimit: 100, chapterCount: 2 });
+assert.strictEqual(defaultPromotion.chapters[0].title, 'I Chapter 1');
+assert.strictEqual(defaultPromotion.chapters[1].title, 'I Chapter 2');
+const customPromotion = titleContext.advancedPromoteGenerateChapters(promoteSample, { wordLimit: 100, chapterCount: 2, titleBase: 'अध्याय' });
+assert.strictEqual(customPromotion.chapters[0].title, 'अध्याय 1');
+assert.strictEqual(customPromotion.chapters[1].title, 'अध्याय 2');
 
 localStorage.setItem('lm_advanced_promote_conclusion_v1:default', 'पुराना साझा conclusion');
 assert.strictEqual(api.readPermanentConclusion('import'), 'पुराना साझा conclusion', 'legacy conclusion should migrate into the import key');
@@ -46,7 +85,9 @@ assert(promoteSource.includes('advanced-promote-chapter-list-btn is-imported-sou
 assert(promoteSource.includes('advanced-import-index-separator'), 'Imported Text and created documents should have a labelled separator');
 assert(promoteSource.includes('Remainder Text · As Draft'), 'direct chapter imports should expose their remainder draft in the left index');
 assert(promoteSource.includes("setAdvancedPromoteView('remainder')"), 'remainder text should have a selectable preview action');
-assert(promoteSource.includes('importedRemainderDraft'), 'direct chapter imports should persist remaining text as a draft');
+const progressSource = fs.readFileSync(path.join(root, 'assets/pages/story-novel-project-editor/js/05b-text-import-progress.js'), 'utf8');
+assert(progressSource.includes('addDraft(advancedImportDocumentTitle') && progressSource.includes('remainder'), 'direct chapter imports should persist remaining text as a draft');
+assert(promoteSource.includes('LmTextImportProgress.promote(state, proposedChapters, draft)'), 'Advanced Promote should use the shared processing panel');
 assert(importSplittingSource.includes("state.importTarget === 'chapters'"), 'only direct chapter imports should separate the final remainder');
 assert(promoteSource.includes('advanced-promote-full-reading'), 'generated content should open in a unified reading view');
 assert(promoteSource.includes('updateAdvancedPromoteChapterFullText'), 'body and conclusion should be edited through one full-document update path');
@@ -114,6 +155,10 @@ assert.strictEqual(chapterSplit.parts.length, 2, 'direct chapter import should k
 assert.strictEqual(splitContext.advancedPromoteWordCount(chapterSplit.remainderText), 5, 'direct chapter import should return the short remainder separately');
 
 const controls = {
+  importWordCount: { value: '2500' }, promoteWordCount: { value: '2500' },
+  importFontSize: { value: '14' }, promoteFontSize: { value: '14' },
+  importDraftPrefix: { value: '  Custom Draft  ' }, importChapterPrefix: { value: 'Custom Chapter' },
+  promoteChapterPrefix: { value: '  Promoted Chapter  ' },
   importTarget: { value: 'chapters' },
   importConclusion: { value: 'मूल draft conclusion', dispatchEvent() {} },
   promoteConclusion: { value: 'promote conclusion' }
@@ -136,4 +181,31 @@ assert.strictEqual(syncButton.textContent, 'Sync Draft Conclusion');
 api.syncImportConclusion();
 assert.strictEqual(controls.importConclusion.value, 'मूल draft conclusion');
 
-console.log('advanced-import-promote-settings: 56 assertions passed');
+assert.strictEqual(api.saveFromPanel(), true);
+assert.strictEqual(api.read().importDraftPrefix, 'Custom Draft');
+assert.strictEqual(api.read().importChapterPrefix, 'Custom Chapter');
+assert.strictEqual(api.read().promoteChapterPrefix, 'Promoted Chapter');
+assert.strictEqual(api.promoteDocumentTitle(2), 'Promoted Chapter 3');
+assert.strictEqual(api.importDocumentTitle('chapters', 0), 'Custom Chapter 1', 'promote naming is independent of import naming');
+assert.strictEqual(api.importDocumentTitle('drafts', 1), 'Custom Draft 2');
+assert.strictEqual(api.importDocumentTitle('chapters', 1), 'Custom Chapter 2');
+const draftPreview = { textContent: '' }, chapterPreview = { textContent: '' }, promotePreview = { textContent: '' };
+const originalQuery = document.querySelector;
+document.querySelector = selector => selector === '[data-workflow-name-preview="drafts"]' ? draftPreview
+  : selector === '[data-workflow-name-preview="chapters"]' ? chapterPreview
+  : selector === '[data-workflow-name-preview="promote"]' ? promotePreview : originalQuery(selector);
+controls.importDraftPrefix.value = 'नया मसौदा';
+controls.importChapterPrefix.value = '';
+controls.promoteChapterPrefix.value = 'प्रमोट अध्याय';
+api.syncImportNamePreviews();
+assert.strictEqual(draftPreview.textContent, 'नया मसौदा 1', 'the example updates while typing');
+assert.strictEqual(chapterPreview.textContent, 'I Chapter 1');
+assert.strictEqual(promotePreview.textContent, 'प्रमोट अध्याय 1');
+controls.importDraftPrefix.value = api.defaults.importDraftPrefix;
+controls.importChapterPrefix.value = api.defaults.importChapterPrefix;
+controls.promoteChapterPrefix.value = api.defaults.promoteChapterPrefix;
+api.saveFromPanel();
+assert.strictEqual(api.importDocumentTitle('drafts', 0), 'I Draft 1', 'resetting defaults restores generated names');
+assert.strictEqual(api.promoteDocumentTitle(0), 'I Chapter 1');
+
+console.log('advanced-import-promote-settings: workflow, naming defaults, prefix persistence and previews passed');

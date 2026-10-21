@@ -1105,6 +1105,7 @@ async function toggleNamingCategory(categoryId) {
 
   if (window.activeExpandedCategoryWithShowMore) {
     if (isClosingCurrent || window.activeExpandedCategoryWithShowMore !== expandedNamingCategoryId) {
+      resetNamingCategoryPagination();
       window.activeExpandedCategoryWithShowMore = null;
       window.activeExpandedCategoryWithShowMoreDocumentKey = '';
       window.categorySearchQuery = '';

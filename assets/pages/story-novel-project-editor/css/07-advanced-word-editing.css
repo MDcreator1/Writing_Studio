@@ -362,6 +362,34 @@
   fill: currentColor;
 }
 
+.awe-editor-refresh-quick-spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+.awe-editor-refresh-quick-button.is-working {
+  color: var(--accent);
+  cursor: progress;
+}
+
+.awe-editor-refresh-quick-button.is-working .awe-editor-refresh-quick-spinner {
+  animation: awe-editor-refresh-spin .8s linear infinite;
+  will-change: transform;
+}
+
+@keyframes awe-editor-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .awe-editor-refresh-quick-button.is-working .awe-editor-refresh-quick-spinner {
+    animation: none;
+  }
+}
+
 .awe-workspace button:disabled {
   opacity: .45;
   cursor: default;

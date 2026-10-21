@@ -148,6 +148,7 @@
   }
 
   async function recoverPromotion(project) {
+    await recoverTextImport(project);
     const handle = await existingNamingFile(project, promotionJournalFile);
     if (!handle) return;
     const journal = JSON.parse(await readHandleText(handle));
@@ -155,6 +156,114 @@
     if (journal.phase !== 'committed') await restorePromotionFiles(project, journal);
     else for (const path of journal.removePaths) await removePath(project, path);
     await project.removeEntry(promotionJournalFile);
+  }
+
+  const importJournalFile = 'Text_Import.transaction.json';
+
+  async function recoverTextImport(project) {
+    const handle = await existingNamingFile(project, importJournalFile);
+    if (!handle) return;
+    const journal = JSON.parse(await readHandleText(handle));
+    if (!journal || !Array.isArray(journal.previousFiles)) throw new Error('Invalid text import recovery journal.');
+    if (journal.phase !== 'committed') await restorePromotionFiles(project, journal);
+    await project.removeEntry(importJournalFile);
+  }
+
+  // Import owns an explicit file batch, including metadata. No derived caches or
+  // browser state are published until this batch has durably committed.
+  function commitTextImport(project, options) {
+    if (!project) return performTextImport(project, options);
+    const previous = writeTasks.get(project) || Promise.resolve();
+    const task = previous.catch(() => {}).then(() => performTextImport(project, options));
+    writeTasks.set(project, task);
+    return task;
+  }
+
+  async function performTextImport(project, { files, checkpoint, onProgress, onRollback, onCommitted }) {
+    await checkpoint?.();
+    if (!project) {
+      for (let index = 0; index < files.length; index++) {
+        await checkpoint?.();
+        onProgress?.({ written: index + 1, total: files.length, file: files[index] });
+      }
+      await checkpoint?.();
+      onCommitted?.();
+      return;
+    }
+    await recoverTextImport(project);
+    const paths = files.map(file => file.path);
+    if (new Set(paths).size !== paths.length || paths.includes(importJournalFile)) throw new Error('Invalid text import file batch.');
+    const previousFiles = [];
+    for (const path of paths) {
+      await checkpoint?.();
+      try { previousFiles.push({ path, text: await readHandleText((await pathHandle(project, path)).handle) }); }
+      catch (error) {
+        if (error?.name !== 'NotFoundError') throw error;
+        previousFiles.push({ path, text: null });
+      }
+    }
+    await checkpoint?.();
+    const journal = { phase: 'prepared', previousFiles };
+    const journalHandle = await project.getFileHandle(importJournalFile, { create: true });
+    const saveJournal = async () => {
+      const payload = JSON.stringify(journal);
+      await writeHandleText(journalHandle, payload);
+      if (await readHandleText(journalHandle) !== payload) throw new Error('Import recovery journal verification failed.');
+    };
+    const rollback = async () => {
+      journal.phase = 'prepared';
+      await saveJournal();
+      await restorePromotionFiles(project, journal);
+      await project.removeEntry(importJournalFile);
+    };
+    try { await saveJournal(); }
+    catch (error) {
+      // No import file has been touched yet; an incomplete journal is disposable.
+      await project.removeEntry(importJournalFile);
+      throw error;
+    }
+    try {
+      for (let index = 0; index < files.length; index++) {
+        await checkpoint?.();
+        if (project !== projectDirectoryHandle) throw new Error('Project changed during import.');
+        const file = files[index];
+        onProgress?.({ written: index, total: files.length, file });
+        if (file.text === null) {
+          await removePath(project, file.path);
+          try {
+            await pathHandle(project, file.path);
+            throw new Error(`Source draft cleanup verification failed: ${file.path}`);
+          } catch (error) { if (error?.name !== 'NotFoundError') throw error; }
+        } else {
+          const target = await pathHandle(project, file.path, true);
+          await writeHandleText(target.handle, file.text);
+          if (await readHandleText(target.handle) !== file.text) throw new Error(`Import verification failed: ${file.path}`);
+        }
+        onProgress?.({ written: index + 1, total: files.length, file });
+      }
+      await checkpoint?.();
+      if (project !== projectDirectoryHandle) throw new Error('Project changed during import.');
+      journal.phase = 'committed';
+      await saveJournal();
+      // A cancel click during the final journal write still restores the batch.
+      await checkpoint?.();
+    } catch (error) {
+      onRollback?.();
+      try {
+        await rollback();
+      } catch (rollbackError) {
+        // Keep the journal so reopening can finish recovery after a disk error.
+        const failure = new Error('Import rollback could not finish. Reopen this project to retry recovery.');
+        failure.cause = rollbackError;
+        failure.rollbackIncomplete = true;
+        failure.retryRollback = rollback;
+        throw failure;
+      }
+      throw error;
+    }
+    onCommitted?.();
+    try { await project.removeEntry(importJournalFile); }
+    catch (error) { console.warn('Committed import journal cleanup will retry on open:', error); }
   }
 
   async function commitPromotion(project, { promotionId, documents, removePaths = [] }) {
@@ -250,5 +359,5 @@
     return task;
   }
 
-  window.LmNamingFileSafety = Object.freeze({ writeVerified, writeCurrentProject, migrateAuthoritative, commitPromotion, recoverPromotion });
+  window.LmNamingFileSafety = Object.freeze({ writeVerified, writeCurrentProject, migrateAuthoritative, commitPromotion, recoverPromotion, commitTextImport, recoverTextImport });
 })();

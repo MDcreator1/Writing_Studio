@@ -57,5 +57,20 @@ const entries = [
   });
   assert.equal(pendingResult.updatedCount, 0);
   assert.equal(pending[0].source.documentType, 'draft', 'an editor-only occurrence cannot detach its source before chapter autosave');
+
+  context.projectDirectoryHandle = { name: 'project' };
+  context.getProjectFileHandle = async contentPath => {
+    if (contentPath === 'Drafts/one.txt') {
+      const error = new Error('The requested file could not be found.');
+      error.name = 'NotFoundError';
+      throw error;
+    }
+    return { contentPath };
+  };
+  context.readFileText = async handle => handle.contentPath.includes('two.txt') ? 'Alice in chapter' : 'First chapter';
+  const tolerantIndex = await context.window.LmNamingDeepScanSource.buildTextIndex({ tolerateReadErrors: true });
+  assert.equal(tolerantIndex.readErrors.length, 1, 'tolerant scans report each unreadable source');
+  assert.equal(tolerantIndex.readErrors[0].contentPath, 'Drafts/one.txt');
+  assert.equal(tolerantIndex.draftTexts[0], '', 'an unreadable source is represented by empty scan text');
   console.log('naming-draft-source-repair: chapter promotion and targeted scan passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

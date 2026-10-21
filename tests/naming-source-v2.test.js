@@ -190,11 +190,12 @@ function testEditorCreationAndProjection() {
     activeNamingCategoryId: 'characters', activeEditingNamingEntryId: null, activeNamingSimilarNames: [],
     normalizeSimilarNameValue: value => value, getCleanEditorText: () => 'Alice', isTrashDraftActive: () => false,
     currentDescriptionChapterMeta: () => ({ documentType: 'chapter', chapterKey: chapter.contentPath }),
-    renderTags() {}, saveNamingData() {}, closeNamingEntryPanel() {}, showSidePanelSaveLine() {}, text: () => ({})
+    renderTags() {}, saveNamingData() {}, closeNamingEntryPanel() {}, showSidePanelSaveLine() {}, text: () => ({}),
+    requestAnimationFrame: callback => callback(), setTimeout: callback => callback()
   });
   context.namingData = context.normalizeNamingData({ schemaVersion: 2, entries: [] });
   const editor = read('assets/pages/story-novel-project-editor/js/03b-naming-categories-search.js');
-  vm.runInContext(editor.slice(editor.indexOf('function saveNamingEntry'), editor.indexOf('function namingEntryMentionCount')), context);
+  vm.runInContext(editor.slice(editor.indexOf('let namingEntryRefreshScheduled'), editor.indexOf('function namingEntryMentionCount')), context);
   context.saveNamingEntry();
   const entry = context.namingData.entries[0];
   equal(Object.keys(entry).length, 9);

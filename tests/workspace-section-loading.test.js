@@ -371,7 +371,7 @@ function testStorageAndActionContracts() {
   check(rendering.includes('categoryOrphanCounts') && rendering.includes('namingCategoryOrphanCount'), 'Naming snapshots should retain category-wide orphan counts for lazy status rendering');
   check(rendering.includes('left.contentHash === right.contentHash'), 'Naming snapshot validation should reject content-hash mismatches');
   check(rendering.includes(').slice(0, 6);'), 'per-document Naming snapshots should cap initial categories at six');
-  check(deepScan.includes('initialNamingCategoriesForActiveDocument(6)') && deepScan.includes('activeCount'), 'empty and populated drafts should render a maximum of six priority categories initially');
+  check(deepScan.includes('initialNamingCategoriesForActiveDocument(6, activeText)') && deepScan.includes('activeCount'), 'empty and populated drafts should render a maximum of six priority categories initially');
   check(namingPanels.includes('activeNamingShowAllCategoriesKey'), 'Show All Categories should remain an explicit user override of the six-category initial view');
   check(chapterActions.includes('shouldRefreshNamingProjection') && chapterActions.includes('queueActiveNamingSnapshotRefresh'), 'typing into an empty draft should refresh its lazy Naming projection for detected categories');
   check(rendering.includes('syncFactsPanelData') && rendering.includes('Facts_Panel.json'), 'facts panel should expose its own rendering snapshot builder');

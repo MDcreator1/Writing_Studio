@@ -228,10 +228,18 @@ function advancedPromoteDefaultTitle(baseTitle = '', index = 0) {
   return `${cleanBase} ${index + 1}`;
 }
 
+function advancedPromoteGeneratedTitle(state, index = 0) {
+  if (state?.mode === 'import') return advancedImportDocumentTitle(state, index);
+  return window.LmAdvancedImportPromoteSettings?.promoteDocumentTitle?.(index, state || {})
+    || advancedPromoteDefaultTitle(state?.promoteChapterPrefix || 'I Chapter', index);
+}
+
 function advancedImportDocumentTitle(state, index = 0, target = state?.importTarget) {
-  const documentType = target === 'chapters' ? 'Chapter' : 'Draft';
-  const sourceTitle = String(state?.draftTitle || '').trim();
-  return `${sourceTitle || 'Imported'} ${documentType} ${index + 1}`;
+  const configured = window.LmAdvancedImportPromoteSettings?.importDocumentTitle?.(target, index, state || {});
+  if (configured) return configured;
+  const key = target === 'chapters' ? 'importChapterPrefix' : 'importDraftPrefix';
+  const prefix = String(state?.[key] || '').trim() || (target === 'chapters' ? 'I Chapter' : 'I Draft');
+  return `${prefix} ${index + 1}`;
 }
 
 function advancedPromoteUniqueChapterTitle(baseTitle = '', usedKeys = new Set()) {
@@ -251,7 +259,7 @@ function advancedPromoteGenerateChapters(sourceText = '', options = {}) {
   const wordLimit = clampNumber(parseInt(options.wordLimit, 10) || 2500, 100, 50000);
   const requestedCount = clampNumber(parseInt(options.chapterCount, 10) || 1, 1, 50);
   const permanentConclusion = String(options.permanentConclusion || '').trim();
-  const titleBase = String(options.titleBase || advancedPromoteCopy('chapterTitleLabel', 'Chapter')).trim();
+  const titleBase = String(options.titleBase || window.LmAdvancedImportPromoteSettings?.read?.().promoteChapterPrefix || 'I Chapter').trim();
   let remainingText = advancedPromoteNormalizedText(sourceText);
   const chaptersToCreate = [];
 
@@ -441,6 +449,7 @@ async function openAdvancedDraftPromotePanel(draftIndex) {
     mode: 'draft',
     draftIndex,
     draftTitle: draft.title || `${text().draftPrefix} ${draftIndex + 1}`,
+    promoteChapterPrefix: workflowDefaults.promoteChapterPrefix || 'I Chapter',
     sourceText,
     generatedSourceText: sourceText,
     contentFontSize: clampNumber(parseInt(workflowDefaults.promoteFontSize, 10) || 14, 10, 30),
@@ -468,7 +477,7 @@ async function openAdvancedDraftPromotePanel(draftIndex) {
     wordLimit: advancedDraftPromoteState.wordLimit,
     chapterCount: advancedDraftPromoteState.chapterCount,
     permanentConclusion,
-    titleBase: advancedDraftPromoteState.draftTitle
+    titleBase: advancedDraftPromoteState.promoteChapterPrefix
   });
   advancedDraftPromoteState.chapters = generated.chapters;
   advancedDraftPromoteState.remainderText = generated.remainderText;
@@ -501,6 +510,8 @@ function openAdvancedTextImportPanel(sourceText = '', sourceTitle = '') {
     customWord: String(workflowDefaults.importCustomWord || '').trim(),
     generatedCustomWord: String(workflowDefaults.importCustomWord || '').trim(),
     importTarget: workflowDefaults.importTarget === 'chapters' ? 'chapters' : 'drafts',
+    importDraftPrefix: workflowDefaults.importDraftPrefix || 'I Draft',
+    importChapterPrefix: workflowDefaults.importChapterPrefix || 'I Chapter',
     customSplitValid: true,
     customSplitReason: '',
     customValidationVisible: false,
@@ -744,7 +755,7 @@ function advancedPromoteChapterTitleConflict(state) {
   for (let index = 0; index < state.chapters.length; index += 1) {
     const chapter = state.chapters[index];
     if (!advancedPromoteChapterBody(chapter)) continue;
-    const title = String(chapter.title || advancedPromoteDefaultTitle(state.draftTitle, index)).trim();
+    const title = String(chapter.title || advancedPromoteGeneratedTitle(state, index)).trim();
     const key = uniqueNameKey(title);
     if (chapterTitleExists(title)) return { index, title, type: 'existing' };
     if (generatedKeys.has(key)) return { index, title, type: 'generated' };
@@ -946,7 +957,7 @@ function updateAdvancedPromoteChapterTitle(index, value = '') {
   if (!chapter) return;
   chapter.title = String(value || '').trimStart();
   const listTitle = document.querySelector(`[data-advanced-promote-list-title="${index}"]`);
-  if (listTitle) listTitle.textContent = chapter.title || advancedPromoteDefaultTitle(advancedDraftPromoteState.draftTitle, index);
+  if (listTitle) listTitle.textContent = chapter.title || advancedPromoteGeneratedTitle(advancedDraftPromoteState, index);
   refreshAdvancedPromoteApplyButton();
 }
 
@@ -1126,7 +1137,7 @@ function generateAdvancedPromoteChaptersFromPanel() {
         wordLimit: state.wordLimit,
         chapterCount: state.chapterCount,
         permanentConclusion: state.permanentConclusion,
-        titleBase: state.draftTitle
+        titleBase: state.promoteChapterPrefix
       });
   if (state.mode === 'import' && !generated.valid) {
     state.customSplitValid = false;
@@ -1167,62 +1178,7 @@ function reverseAdvancedPromoteCreation() {
 }
 
 async function applyAdvancedTextImportAsDrafts(state, proposedDrafts = []) {
-  if (!state || !proposedDrafts.length) return;
-  showAppLoader('Importing drafts…');
-  chapterDrafts = normalizeDrafts(chapterDrafts);
-  const firstDraftIndex = chapterDrafts.length;
-  const importedDrafts = [];
-
-  proposedDrafts.forEach((item, offset) => {
-    const draftIndex = chapterDrafts.length;
-    const draftText = advancedPromoteNormalizedText(item.text);
-    const draft = normalizeDraft({
-      ...createDefaultDraft(draftIndex),
-      id: Date.now() + offset,
-      title: String(item.title || advancedPromoteDefaultTitle(state.draftTitle, offset)).trim(),
-      content: textToEditorHTML(draftText),
-      contentPath: nextDraftFilePath(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      _wordCount: advancedPromoteWordCount(draftText),
-      wordCount: advancedPromoteWordCount(draftText)
-    }, draftIndex);
-    chapterDrafts.push(draft);
-    importedDrafts.push({ draft, text: draftText, index: draftIndex });
-  });
-
-  chapterDrafts = normalizeDrafts(chapterDrafts);
-  saveToStorage(false);
-  closeAdvancedDraftPromotePanel();
-  renderChapters();
-  setDraftBoxSaveIndicator('busy');
-
-  try {
-    if (projectDirectoryHandle) {
-      for (const imported of importedDrafts) {
-        await writeDraftToLocalFile(imported.index, imported.text);
-      }
-      await writeDraftsDataToProject();
-    }
-    setDraftBoxSaveIndicator('saved');
-    await switchDraft(firstDraftIndex);
-    setSaveStatusDot('saved', 'Drafts imported');
-  } catch (error) {
-    console.warn('Advanced text import failed:', error);
-    if (projectDirectoryHandle) {
-      await Promise.all(importedDrafts.map(imported =>
-        removeProjectFileIfExists(imported.draft.contentPath).catch(() => false)
-      ));
-    }
-    chapterDrafts.splice(firstDraftIndex, importedDrafts.length);
-    chapterDrafts = normalizeDrafts(chapterDrafts);
-    saveToStorage(false);
-    renderChapters();
-    setDraftBoxSaveIndicator('idle');
-    showMiniReminder(error?.message || 'The imported drafts could not be saved.');
-  } finally {
-    hideAppLoader();
-  }
+  return window.LmTextImportProgress.apply(state, proposedDrafts);
 }
 
 async function applyAdvancedTextImportRaw() {
@@ -1247,7 +1203,7 @@ async function applyAdvancedTextImportRaw() {
     await applyAdvancedDraftPromote();
     return;
   }
-  await applyAdvancedTextImportAsDrafts(state, [singleItem]);
+  await runNamingPromotion(() => applyAdvancedTextImportAsDrafts(state, [singleItem]));
 }
 
 async function applyAdvancedDraftPromote() {
@@ -1301,167 +1257,12 @@ async function performAdvancedDraftPromote() {
     return;
   }
 
-  if (isTextImport && state.importTarget !== 'chapters') {
-    await applyAdvancedTextImportAsDrafts(state, proposedChapters);
+  if (isTextImport) {
+    await window.LmTextImportProgress.apply(state, proposedChapters);
     return;
   }
 
-  await window.LmInitialRendering?.ensureFullNamingData?.();
-  const promotionSnapshot = captureNamingPromotionState();
-  const draftIdentity = isTextImport ? null : createNamingSource(draft, 'draft', state.draftIndex);
-  showAppLoader(isTextImport ? 'Importing chapters…' : (text().advancedPromoteApply || text().saveDraftAsChapter));
-
-  const manifest = normalizeProjectManifest(projectManifest || createProjectManifest());
-  const hasParts = manifest.parts.length > 0;
-  const shouldPromoteToRaw = state.destination === 'raw' && state.showDestination && hasRawChaptersInPanel(manifest);
-  const targetPartIndex = shouldPromoteToRaw ? -1 : hasParts ? latestPartIndex(manifest) : -1;
-  const firstChapterIndex = chapters.length;
-  const basePartChapterCount = targetPartIndex >= 0
-    ? chapters.filter(chapter => chapter.partIndex === targetPartIndex).length
-    : hasParts
-      ? chapters.filter(chapter => {
-        const partIndex = Number.isInteger(chapter.partIndex) ? chapter.partIndex : -1;
-        return partIndex < 0 || partIndex >= manifest.parts.length;
-      }).length
-      : chapters.length;
-  const promotedAt = new Date().toISOString();
-  const usedTitleKeys = new Set();
-  const draftPath = isTextImport ? '' : draft.contentPath;
-
-  const newChapters = proposedChapters.map((item, offset) => {
-    const chapterIndex = firstChapterIndex + offset;
-    const title = advancedPromoteUniqueChapterTitle(
-      item.title || advancedPromoteDefaultTitle(state.draftTitle, offset),
-      usedTitleKeys
-    );
-    return normalizeChapter({
-      id: Date.now() + offset,
-      title,
-      content: textToEditorHTML(item.text),
-      notes: draft.notes || [],
-      contentPath: chapterFilePath(chapterIndex),
-      partIndex: targetPartIndex,
-      chapterNo: basePartChapterCount + offset + 1,
-      createdAt: promotedAt,
-      alignment: draft.alignment,
-      lineHeight: draft.lineHeight,
-      paragraphGap: draft.paragraphGap,
-      paragraphMargin: draft.paragraphMargin,
-      fontFamily: draft.fontFamily,
-      fontSize: draft.fontSize,
-      _wordCount: advancedPromoteWordCount(item.text)
-    }, chapterIndex, targetPartIndex, basePartChapterCount + offset);
-  });
-
-  newChapters.forEach((chapter, offset) => {
-    chapters.push(chapter);
-
-  });
-
-  const remainderText = advancedPromoteNormalizedText(state.remainderText);
-  let importedRemainderDraft = null;
-  if (isTextImport && state.importTarget === 'chapters' && remainderText) {
-    const remainderDraftIndex = chapterDrafts.length;
-    importedRemainderDraft = {
-      index: remainderDraftIndex,
-      draft: normalizeDraft({
-        ...createDefaultDraft(remainderDraftIndex),
-        id: Date.now() + newChapters.length + 1,
-        title: `${state.draftTitle} Remainder Draft`,
-        content: textToEditorHTML(remainderText),
-        contentPath: nextDraftFilePath(),
-        createdAt: promotedAt,
-        updatedAt: promotedAt,
-        _wordCount: advancedPromoteWordCount(remainderText),
-        wordCount: advancedPromoteWordCount(remainderText)
-      }, remainderDraftIndex)
-    };
-    chapterDrafts.push(importedRemainderDraft.draft);
-  }
-  if (!isTextImport) {
-    if (remainderText) {
-      const remainderDraft = normalizeDraft({
-        ...draft,
-        id: Date.now() + newChapters.length + 1,
-        contentPath: nextDraftFilePath(),
-        contentHandle: null,
-        title: draft.title || `${text().draftPrefix} ${state.draftIndex + 1}`,
-        content: textToEditorHTML(remainderText),
-        updatedAt: promotedAt,
-        _wordCount: advancedPromoteWordCount(remainderText)
-      }, state.draftIndex);
-      chapterDrafts.splice(state.draftIndex, 1, remainderDraft);
-    } else {
-      chapterDrafts.splice(state.draftIndex, 1);
-    }
-  }
-
-  if (!isTextImport) remapNamesForAdvancedPromotion({
-    draftIdentity,
-    createdChapters: newChapters.map((chapter, offset) => ({ chapter, index: firstChapterIndex + offset, text: proposedChapters[offset].text })),
-    remainderDraft: remainderText ? { draft: chapterDrafts[state.draftIndex], index: state.draftIndex, text: remainderText } : null,
-    promotedAt
-  });
-  newChapters.forEach((chapter, offset) => {
-    scanNamingUsesForDocument(chapter.contentPath, proposedChapters[offset].text, null, promotedAt, { resolveUnattached: false });
-  });
-  if (!isTextImport && remainderText) {
-    scanNamingUsesForDocument(chapterDrafts[state.draftIndex].contentPath, remainderText, null, promotedAt, { resolveUnattached: false });
-  }
-
-  chapterDrafts = normalizeDrafts(chapterDrafts);
-  selectedDraftIndexes.clear();
-  lastSelectedDraftIndex = null;
-  activeEditorMode = 'chapter';
-  isChapterEditUnlocked = false;
-  curChap = firstChapterIndex;
-  if (!isTextImport) curDraft = chapterDrafts.length ? Math.min(state.draftIndex, chapterDrafts.length - 1) : -1;
-  syncDraftPromoteButton();
-  curPart = targetPartIndex;
-  expandedPartIndex = targetPartIndex;
-  isRawChapterSectionExpanded = shouldPromoteToRaw;
-  isPartsListCollapsedByRaw = shouldPromoteToRaw;
-  isPartsListForceExpanded = !shouldPromoteToRaw && targetPartIndex >= 0;
-  if (!shouldPromoteToRaw && targetPartIndex >= 0 && chapterListOverflowMode === 'collapsed') chapterListOverflowMode = 'expanded';
-
-  let promotionCommitted = false;
-  const promotedNamingData = namingData;
-  try {
-    const documents = newChapters.map((chapter, offset) => ({ path: chapter.contentPath, text: proposedChapters[offset].text }));
-    if (!isTextImport && remainderText) documents.push({ path: chapterDrafts[state.draftIndex].contentPath, text: remainderText });
-    if (importedRemainderDraft) documents.push({ path: importedRemainderDraft.draft.contentPath, text: remainderText });
-    await window.LmNamingFileSafety.commitPromotion(projectDirectoryHandle, {
-      promotionId: state.promotionId || (state.promotionId = `promotion-${promotedAt}`),
-      documents,
-      removePaths: draftPath ? [draftPath] : []
-    });
-    promotionCommitted = true;
-    const repairedSources = await window.LmNamingDeepScanSource?.repairDraftSourcesSeenInChapters?.({
-      entries: promotedNamingData.entries,
-      triggerTexts: proposedChapters.map(item => item.text)
-    });
-    if (repairedSources?.updatedCount) {
-      await writeNamingDataToProject({ authoritativeData: promotedNamingData });
-    }
-    persistProjectManifestSnapshot();
-    saveToStorage(false);
-    closeAdvancedDraftPromotePanel();
-    await loadEditor();
-    await window.LmInitialRendering?.syncNamingIndex?.(promotedNamingData);
-    renderChapters();
-    renderActiveWorkspaceSidePanel();
-    updateChapterStatus();
-    rememberCurrentChapterSaved();
-    setDraftBoxSaveIndicator('saved');
-    setSaveStatusDot('saved', text().advancedPromoteSaved || text().draftPromoted);
-  } catch (error) {
-    if (!promotionCommitted) restoreNamingPromotionState(promotionSnapshot);
-    console.warn('Advanced draft promote failed:', error);
-    showMiniReminder(promotionCommitted ? 'Promotion saved; reload to refresh the editor.' : 'Promotion save failed; original draft is recoverable.');
-    setDraftBoxSaveIndicator('idle');
-  } finally {
-    hideAppLoader();
-  }
+  await window.LmTextImportProgress.promote(state, proposedChapters, draft);
 }
 
 try {

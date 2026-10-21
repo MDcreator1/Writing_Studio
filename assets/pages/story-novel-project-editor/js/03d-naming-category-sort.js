@@ -1,5 +1,13 @@
 'use strict';
 
+function prepareNamingCategoryOccurrenceOrder(categoryId) {
+  const project = projectDirectoryHandle;
+  const entries = namingData.entries.filter(entry => entry.categoryId === categoryId);
+  const scores = window.LmInitialRendering?.namingChapterOccurrenceScores?.(entries) ||
+    new Map(entries.map(entry => [entry.id, -1]));
+  return { project, categoryId, scores };
+}
+
 function getEntryTime(entry) {
   if (!entry) return 0;
   const timestamp = entry.updatedAt || entry.createdAt;
@@ -87,6 +95,13 @@ function getCategoryFilteredSortedEntries(categoryId, entries) {
     filtered.sort((a, b) => getEntryTime(b) - getEntryTime(a) || compareNames(a, b));
   } else if (sortOption === 'chapter') {
     filtered.sort((a, b) => compareNamingEntriesByCreationDocument(a, b, compareNames));
+  } else if (sortOption === 'occurrence') {
+    const occurrence = window.namingCategoryOccurrenceOrder;
+    const scores = occurrence?.project === projectDirectoryHandle && occurrence.categoryId === categoryId
+      ? (window.LmInitialRendering?.namingChapterOccurrenceScores?.(filtered) || occurrence.scores) : new Map();
+    // Story order only: creation/modified timestamps and first-attachment metadata
+    // must never promote a name above a more recent actual chapter occurrence.
+    filtered.sort((a, b) => (scores.get(b.id) ?? -1) - (scores.get(a.id) ?? -1) || compareNames(a, b));
   } else if (sortOption === 'status') {
     const activeText = activeNamingPanelText();
     const rank = entry => namingEntryMatchesActiveDocument(entry, activeText) ? 0
