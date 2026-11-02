@@ -72,5 +72,43 @@ const entries = [
   assert.equal(tolerantIndex.readErrors.length, 1, 'tolerant scans report each unreadable source');
   assert.equal(tolerantIndex.readErrors[0].contentPath, 'Drafts/one.txt');
   assert.equal(tolerantIndex.draftTexts[0], '', 'an unreadable source is represented by empty scan text');
+  const freshEntries = () => [{ id: 'alice', name: 'Alice', similarNames: [], source: { ...draftSource } }];
+  context.getProjectFileHandle = async contentPath => {
+    if (contentPath === 'Chapters/one.txt') throw Object.assign(new Error('Permission denied'), { name: 'NotAllowedError' });
+    return { contentPath };
+  };
+  context.readFileText = async () => 'Alice in later chapter';
+  const blocked = freshEntries();
+  const incomplete = await context.window.LmNamingDeepScanSource.repairDraftSourcesSeenInChapters({ entries: blocked, triggerTexts: ['Alice'] });
+  assert.equal(incomplete.incomplete, true);
+  assert.equal(incomplete.updatedCount, 0);
+  assert.equal(blocked[0].source.documentType, 'draft', 'failed early chapter must not become a false absence');
+  context.getProjectFileHandle = async contentPath => ({ contentPath });
+  context.readFileText = async () => 'Alice in saved chapter';
+  const retried = await context.window.LmNamingDeepScanSource.repairDraftSourcesSeenInChapters({ entries: blocked, triggerTexts: ['Alice'] });
+  assert.equal(retried.updatedCount, 1);
+  assert.equal(blocked[0].source.documentId, 'c1', 'a successful retry selects the earliest saved occurrence');
+  for (const chapterTexts of [[, 'Alice'], ['Alice']]) {
+    const sparseEntries = freshEntries();
+    const sparse = await context.window.LmNamingDeepScanSource.repairDraftSourcesSeenInChapters({ entries: sparseEntries, sourceIndex: { chapterTexts } });
+    assert.equal(sparse.incomplete, true);
+    assert.equal(sparseEntries[0].source.documentType, 'draft');
+  }
+  const draftErrorEntries = freshEntries();
+  await context.window.LmNamingDeepScanSource.repairDraftSourcesSeenInChapters({ entries: draftErrorEntries,
+    sourceIndex: { chapterTexts: ['Alice', 'Alice'], readErrors: [{ documentType: 'draft', index: 0 }] } });
+  assert.equal(draftErrorEntries[0].source.documentId, 'c1', 'an unrelated draft error does not invalidate a complete chapter scan');
+  const switchedEntries = freshEntries();
+  let switched = false;
+  const oldProject = context.projectDirectoryHandle;
+  context.readFileText = async () => { if (!switched) { switched = true; context.projectDirectoryHandle = {}; } return 'Alice'; };
+  await assert.rejects(context.window.LmNamingDeepScanSource.repairDraftSourcesSeenInChapters({ entries: switchedEntries }), /Project changed/);
+  assert.equal(switchedEntries[0].source.documentType, 'draft');
+  context.projectDirectoryHandle = oldProject;
+  context.readFileText = async () => { if (chapters[0].id === 'c1') chapters.reverse(); return 'Alice'; };
+  const reorderedEntries = freshEntries();
+  await assert.rejects(context.window.LmNamingDeepScanSource.repairDraftSourcesSeenInChapters({ entries: reorderedEntries }), /structure changed/);
+  assert.equal(reorderedEntries[0].source.documentType, 'draft');
+  chapters.reverse();
   console.log('naming-draft-source-repair: chapter promotion and targeted scan passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

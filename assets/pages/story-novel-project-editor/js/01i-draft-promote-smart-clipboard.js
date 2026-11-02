@@ -59,7 +59,14 @@ async function confirmDraftMerge(copy = false) {
     let snapshot = null;
     let committed = false;
     try {
+      if (typeof flushEditorHTMLMemoryCommit === 'function') await flushEditorHTMLMemoryCommit();
+      if (request.project !== projectDirectoryHandle) return;
       syncActiveEditorDocumentFromEditor();
+      // Persist the document being left, including one outside the selection.
+      // A failed write must stop the merge before any source is removed.
+      if (isDraftActive()) await writeCurrentDraftToLocalFile();
+      else if (isChapterEditDraftActive()) await writeActiveChapterEditDraftToLocalFile();
+      if (request.project !== projectDirectoryHandle) return;
       const indexes = request.sources.map(source => chapterDrafts.findIndex((draft, index) =>
         sourcesIdentifySameDocument(source, createNamingSource(draft, 'draft', index))));
       if (indexes.some(index => index < 0)) throw new Error('Selected drafts changed. Select them again.');
@@ -84,6 +91,7 @@ async function confirmDraftMerge(copy = false) {
         removePaths: copy ? [] : result.sources.map(draft => draft.contentPath).filter(Boolean)
       });
       committed = true;
+      if (request.project !== projectDirectoryHandle) return;
       clearSidebarSelections(false);
       activeEditorMode = 'draft';
       isChapterEditUnlocked = false;

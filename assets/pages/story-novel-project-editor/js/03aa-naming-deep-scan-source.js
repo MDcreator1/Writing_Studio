@@ -82,12 +82,25 @@
     if (!candidates.length) return { updatedCount: 0, sourceIndex: options.sourceIndex || null };
 
     const scanProject = projectDirectoryHandle;
+    const chapterKeys = (Array.isArray(chapters) ? chapters : []).map(item => `${item.id}:${item.contentPath}`);
     const sourceIndex = options.sourceIndex || await buildTextIndex({
       includeDrafts: false,
       tolerateReadErrors: true,
       onProgress: options.onProgress
     });
     if (scanProject !== projectDirectoryHandle) throw new Error('Project changed during draft-source repair.');
+    const currentChapters = Array.isArray(chapters) ? chapters : [];
+    if (currentChapters.length !== chapterKeys.length || currentChapters.some((item, index) =>
+      `${item.id}:${item.contentPath}` !== chapterKeys[index])) {
+      throw new Error('Chapter structure changed during draft-source repair.');
+    }
+    // An unreadable chapter is unknown, not an empty chapter. Keep the draft
+    // source until a complete scan can establish the first saved occurrence.
+    if (sourceIndex.readErrors?.some(error => error.documentType === 'chapter') ||
+        !Array.isArray(sourceIndex.chapterTexts) || currentChapters.some((_, index) =>
+          typeof sourceIndex.chapterTexts[index] !== 'string')) {
+      return { updatedCount: 0, sourceIndex, incomplete: true };
+    }
 
     const checkedAt = options.checkedAt || new Date().toISOString();
     const chapterDocuments = (Array.isArray(chapters) ? chapters : []).map((document, index) => ({
