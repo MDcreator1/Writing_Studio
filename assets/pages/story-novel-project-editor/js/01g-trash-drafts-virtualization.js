@@ -369,6 +369,7 @@ function hasChapterPanelListContent() {
 }
 
 function shouldConstrainChapterPanelLists() {
+  if (window.innerWidth <= 940) return false;
   if (!hasActiveStory() || !chapterDrafts.length || !hasChapterPanelListContent()) return false;
 
   const panel = document.getElementById('chapter-panel');
@@ -462,6 +463,21 @@ function syncSidebarChapterEditIndicators() {
   });
 }
 
+let mobilePartsExpansionTarget = null;
+
+function syncMobilePartExpansion(manifest, forceDefault = false) {
+  if (window.innerWidth > 940) { mobilePartsExpansionTarget = null; return; }
+  const parts = manifest.parts || [];
+  const chapter = activeEditorMode === 'chapter' ? chapters[curChap] : null;
+  const activePart = chapter?.partIndex;
+  const preferred = Number.isInteger(activePart) && activePart >= 0 && activePart < parts.length
+    ? activePart : parts.length - 1;
+  const key = `${activeEditorMode}:${curChap}:${curDraft}:${chapter?.contentPath || ''}:${parts.length}:${preferred}`;
+  const changed = !mobilePartsExpansionTarget || mobilePartsExpansionTarget.project !== projectDirectoryHandle || mobilePartsExpansionTarget.key !== key;
+  if (forceDefault || changed || expandedPartIndex < 0 || expandedPartIndex >= parts.length) expandedPartIndex = preferred;
+  mobilePartsExpansionTarget = { project: projectDirectoryHandle, key };
+}
+
 function applyChapterPanelOverflowClasses() {
   syncSidebarChapterEditIndicators();
   const panel = document.getElementById('chapter-panel');
@@ -469,10 +485,11 @@ function applyChapterPanelOverflowClasses() {
   if (!panel || !chapterList) return;
 
   syncChapterPanelLayoutMetrics();
-  const isConstrained = chapterListOverflowMode !== 'normal' || isPartsListCollapsedByRaw || isPartsListForceExpanded;
-  const isCollapsed = !isPartsListForceExpanded && (chapterListOverflowMode === 'collapsed' || isPartsListCollapsedByRaw);
+  const mobile = window.innerWidth <= 940;
+  const isConstrained = !mobile && (chapterListOverflowMode !== 'normal' || isPartsListCollapsedByRaw || isPartsListForceExpanded);
+  const isCollapsed = !mobile && !isPartsListForceExpanded && (chapterListOverflowMode === 'collapsed' || isPartsListCollapsedByRaw);
   const rawSection = document.getElementById('rawChapterSection');
-  const isPartsExpanded = !isCollapsed && (chapterListOverflowMode === 'expanded' || isPartsListForceExpanded);
+  const isPartsExpanded = mobile || (!isCollapsed && (chapterListOverflowMode === 'expanded' || isPartsListForceExpanded));
   const isRawExpanded = Boolean(rawSection && !rawSection.hidden && rawSection.classList.contains('is-expanded'));
   const isExpandedAfterDraftOverflow = isPartsExpanded || isRawExpanded;
   const shouldCompactDraftBox = isExpandedAfterDraftOverflow && chapterDrafts.length >= DRAFT_COMPACT_MIN_ITEMS;
@@ -510,6 +527,7 @@ function scheduleChapterPanelOverflowCheck() {
 }
 
 function toggleChapterListOverflowPanel() {
+  if (window.innerWidth <= 940) return;
   const isCollapsed = !isPartsListForceExpanded && (chapterListOverflowMode === 'collapsed' || isPartsListCollapsedByRaw);
   if (chapterListOverflowMode === 'normal' && !isPartsListCollapsedByRaw && !isPartsListForceExpanded) return;
   if (isCollapsed) {
@@ -530,7 +548,7 @@ function toggleChapterListOverflowPanel() {
 function toggleRawChapterExpansion() {
   const willExpandRawChapters = !isRawChapterSectionExpanded;
   isRawChapterSectionExpanded = willExpandRawChapters;
-  if (willExpandRawChapters) {
+  if (willExpandRawChapters && window.innerWidth > 940) {
     expandedPartIndex = -1;
     isPartsListCollapsedByRaw = true;
     isPartsListForceExpanded = false;
@@ -547,7 +565,7 @@ function handleRawChapterToggleKeydown(event) {
 
 function renderChapterPanelHeading(partsHeading, label) {
   if (!partsHeading) return;
-  const isConstrained = chapterListOverflowMode !== 'normal' || isPartsListCollapsedByRaw || isPartsListForceExpanded;
+  const isConstrained = window.innerWidth > 940 && (chapterListOverflowMode !== 'normal' || isPartsListCollapsedByRaw || isPartsListForceExpanded);
   const isCollapsed = !isPartsListForceExpanded && (chapterListOverflowMode === 'collapsed' || isPartsListCollapsedByRaw);
   partsHeading.classList.toggle('is-collapse-toggle', isConstrained);
   if (!isConstrained) {
@@ -787,6 +805,7 @@ function renderChapters() {
   const copy = text();
   const manifest = normalizeProjectManifest(projectManifest || createProjectManifest());
   const hasParts = manifest.parts.length > 0;
+  syncMobilePartExpansion(manifest);
   if (partsHeading) {
     partsHeading.hidden = !hasParts && !chapters.length;
     renderChapterPanelHeading(partsHeading, hasParts ? copy.parts : copy.chapters);

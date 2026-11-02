@@ -306,6 +306,8 @@ body.is-advanced-editor-settings-open {
   gap: 7px;
 }
 
+.advanced-feature-pin-actions { display: contents; }
+
 .advanced-explanation-language-toggle {
   min-height: 34px;
   display: inline-flex;

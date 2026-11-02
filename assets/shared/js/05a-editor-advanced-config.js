@@ -56,6 +56,7 @@ const LM_EDITOR_ADVANCED_SCHEMA = [
   { category: 'Focus & auto-scroll', key: 'caretSyncDelay', label: 'Caret position sync', unit: 'ms', value: 90, min: 0, max: 2000, step: 10, work: 'Delay before caret placement updates auto-scroll markers.', up: 'Fewer geometry reads; marker follows later.', down: 'Marker follows sooner; more layout reads.' },
   { category: 'Focus & auto-scroll', key: 'autoScrollBandMinGap', label: 'Comfort band minimum gap', unit: '%', value: 22, min: 5, max: 50, step: 1, work: 'Minimum vertical gap enforced between the comfort-band top and bottom boundaries.', up: 'Top and bottom guides remain farther apart.', down: 'Allows tighter comfort-band boundaries.' },
 
+  { category: 'Sidebar & feedback', key: 'mobileFontSizeCompress', label: 'Font size compress', unit: 'px', value: 0, min: 0, max: 100, step: 1, work: 'Subtract this many pixels from the displayed editor font size on mobile screens up to 940 px. Zero keeps the original size. Display size stays at least 8 px; saved document formatting is unchanged.', up: 'Smaller text on mobile only.', down: 'Larger mobile text, closer to the saved font size.' },
   { category: 'Sidebar & feedback', key: 'sidebarMinHeight', label: 'Chapter list minimum', unit: 'px', value: 160, min: 80, max: 500, step: 10, work: 'Minimum usable chapter-list height.', up: 'List keeps more space; editor may get less.', down: 'More room for other sidebar sections.' },
   { category: 'Sidebar & feedback', key: 'draftVisibleItems', label: 'Compact draft visibility', unit: 'items', value: 2.5, min: 1, max: 10, step: 0.5, work: 'Approximate visible drafts in compact mode.', up: 'More drafts visible; chapter area shrinks.', down: 'More chapter space; fewer drafts visible.' },
   { category: 'Sidebar & feedback', key: 'draftCompactMinimum', label: 'Compact mode minimum drafts', unit: 'items', value: 3, min: 1, max: 20, step: 1, work: 'Draft count required before compact mode activates.', up: 'Compact mode activates later.', down: 'Compact mode activates sooner.' },
@@ -75,7 +76,7 @@ const LM_EDITOR_DEVELOPER_SETTING_KEYS = new Set([
   'workerWindowMaximum', 'workerResponseTimeout', 'patchBatchDelay', 'materializeDelay', 'fullAnalysisDelay', 'memoryCommitDelay',
   'autosaveDelay', 'autosaveIntervalDelay', 'historyDebounce', 'hindiLogicalRefresh', 'caretScrollSuppress',
   'manualScrollOverride', 'manualScrollIntent', 'programmaticScrollWindow', 'markerClickDelay', 'caretSyncDelay',
-  'draftFallbackHeight', 'customSelectHeight', 'autoScrollBandMinGap'
+  'draftFallbackHeight', 'customSelectHeight', 'autoScrollBandMinGap', 'mobileFontSizeCompress'
 ]);
 
 const LM_EDITOR_ADVANCED_USER_COPY = {
@@ -128,6 +129,7 @@ const LM_EDITOR_ADVANCED_USER_COPY = {
 };
 
 const LM_EDITOR_ADVANCED_HINDI_EXPLANATIONS = {
+  mobileFontSizeCompress: ['940px तक मोबाइल स्क्रीन पर एडिटर का दिखने वाला फॉन्ट इतने पिक्सल छोटा होगा। 0 पर मूल आकार रहेगा। न्यूनतम आकार 8px है; दस्तावेज़ में सेव फॉन्ट नहीं बदलता।', 'केवल मोबाइल पर टेक्स्ट छोटा दिखेगा।', 'मोबाइल पर टेक्स्ट मूल फॉन्ट आकार के करीब बड़ा दिखेगा।'],
   virtualWordThreshold: ['इतने शब्द या अधिक होने पर document पूरा DOM में रखने के बजाय तेज़ virtual editor इस्तेमाल करता है।', 'Virtual mode केवल बड़े manuscripts पर शुरू होगा; मध्यम documents पूरी तरह render होंगे और typing भारी हो सकती है।', 'Virtual mode छोटे documents पर भी जल्दी शुरू होगा; DOM हल्का रहेगा, लेकिन scrolling और Worker coordination बढ़ेगा।'],
   virtualWindowSize: ['Virtual editor में caret के आसपास अधिकतम इतने paragraphs DOM में सक्रिय रखे जाते हैं।', 'आस-पास का अधिक text तैयार रहेगा और long scrolling smooth होगी, पर DOM layout तथा typing पर load बढ़ेगा।', 'DOM updates हल्के होंगे, पर paragraph window अधिक बार बदलेगी।'],
   workerWindowMaximum: ['Background Bridge Worker एक बार में अधिकतम इतने paragraphs का window तैयार कर सकता है।', 'Worker बड़े windows भेज सकेगा, जिससे memory और data-transfer का काम बढ़ेगा।', 'Memory cap सख्त होगा, लेकिन बड़े requested windows काटे जा सकते हैं।'],
@@ -435,6 +437,30 @@ function selectAdvancedEditorSettingsCategory(index, options = {}) {
   }
 }
 
+let advancedEditorMobileView = 'sections';
+
+function syncAdvancedEditorMobileNavigation() {
+  const modal = document.getElementById('advancedEditorSettingsModal');
+  if (!modal) return;
+  modal.dataset.mobileView = advancedEditorMobileView;
+  const listing = window.innerWidth <= 940 && advancedEditorMobileView === 'sections';
+  const back = document.getElementById('advancedEditorMobileBackBtn');
+  if (back) back.hidden = window.innerWidth > 940 || listing;
+  modal.querySelectorAll('[data-advanced-settings-nav]').forEach(button => {
+    button.tabIndex = listing || button.dataset.advancedSettingsNav === activeAdvancedEditorSettingsTopSection ? 0 : -1;
+  });
+}
+
+function showAdvancedEditorMobileSections() {
+  closeAdvancedEditorSettingInfo();
+  advancedEditorMobileView = 'sections';
+  syncAdvancedEditorMobileNavigation();
+  const modal = document.getElementById('advancedEditorSettingsModal');
+  modal?.querySelector(`[data-advanced-settings-nav="${activeAdvancedEditorSettingsTopSection}"]`)?.focus({ preventScroll: true });
+}
+
+window.addEventListener('resize', syncAdvancedEditorMobileNavigation, { passive: true });
+
 function selectAdvancedEditorTopSection(key, options = {}) {
   const safeKey = LM_EDITOR_ADVANCED_TOP_SECTIONS.some(section => section.key === key) ? key : 'autoscroll';
   activeAdvancedEditorSettingsTopSection = safeKey;
@@ -448,6 +474,11 @@ function selectAdvancedEditorTopSection(key, options = {}) {
   document.querySelectorAll('[data-advanced-top-section]').forEach(section => {
     section.hidden = section.dataset.advancedTopSection !== safeKey;
   });
+  if (window.innerWidth <= 940) {
+    advancedEditorMobileView = 'settings';
+    syncAdvancedEditorMobileNavigation();
+    document.getElementById('advancedEditorMobileBackBtn')?.focus({ preventScroll: true });
+  }
   if (safeKey === 'advanced-word-editing') {
     window.LmWorkspaceSectionLoader?.ensureWordEditingData?.()
       .catch(error => console.warn('Word dictionary load failed:', error));
@@ -591,7 +622,7 @@ function advancedRuntimeSettingCopy(title, description, quickPin = null) {
 function decorateAdvancedEditorSettingsIcons() {
   const modal = document.getElementById('advancedEditorSettingsModal');
   if (!modal || typeof window.lmIcon !== 'function') return;
-  const closeButton = modal.querySelector('.advanced-editor-settings-header > button');
+  const closeButton = modal.querySelector('.advanced-editor-settings-header > button[aria-label="Close"]');
   if (closeButton) closeButton.innerHTML = window.lmIcon('close', 'advanced-editor-settings-close-icon');
   modal.querySelectorAll('.advanced-editor-setting-info-button').forEach(button => {
     const open = button.getAttribute('aria-expanded') === 'true';
@@ -622,7 +653,8 @@ function advancedStoredPercent(key, fallback) {
 }
 
 function advancedFeatureSection(key, meta, body, countLabel = '', quickPins = [], extraTools = '') {
-  const tools = `${countLabel ? `<strong class="advanced-feature-count">${countLabel}</strong>` : ''}${quickPins.map(pin => advancedQuickPinButton(pin.key, pin.label)).join('')}${extraTools}`;
+  const pins = quickPins.map(pin => advancedQuickPinButton(pin.key, pin.label)).join('');
+  const tools = `${countLabel ? `<strong class="advanced-feature-count">${countLabel}</strong>` : ''}${pins ? `<div class="advanced-feature-pin-actions">${pins}</div>` : ''}${extraTools}`;
   const sectionHead = key === 'advanced-word-editing'
     ? `<div class="advanced-editor-settings-section-head is-heading-only"><h3>${meta.label}</h3></div>`
     : `<div class="advanced-editor-settings-section-head"><div><span>Advanced editor</span><h3>${meta.label}</h3><p>${meta.description}</p></div>${tools ? `<div class="advanced-feature-head-tools">${tools}</div>` : ''}</div>`;
@@ -801,7 +833,7 @@ function renderAdvancedEditorSettings() {
   ].join('');
 
   modal.innerHTML = `<section class="advanced-editor-settings-card" role="dialog" aria-modal="true" aria-labelledby="advancedEditorSettingsTitle">
-    <header class="advanced-editor-settings-header"><div><h2 id="advancedEditorSettingsTitle">Advanced settings</h2><p>Detailed controls for editor systems. Normal Editor Settings remain unchanged.</p></div><button type="button" onclick="closeAdvancedEditorSettings()" aria-label="Close">${window.lmIcon('close', 'advanced-editor-settings-close-icon')}</button></header>
+    <header class="advanced-editor-settings-header"><button id="advancedEditorMobileBackBtn" class="advanced-mobile-back" type="button" onclick="showAdvancedEditorMobileSections()" aria-label="All settings sections" hidden>${window.lmIcon('chevronLeft', 'advanced-mobile-back-icon')}</button><div><h2 id="advancedEditorSettingsTitle">Advanced settings</h2><p>Detailed controls for editor systems. Normal Editor Settings remain unchanged.</p></div><button type="button" onclick="closeAdvancedEditorSettings()" aria-label="Close">${window.lmIcon('close', 'advanced-editor-settings-close-icon')}</button></header>
     <div class="advanced-editor-settings-shell"><aside class="advanced-editor-settings-nav" aria-label="Advanced setting sections"><span class="advanced-editor-settings-nav-label">Advanced settings</span>${navigation}<div class="advanced-editor-settings-nav-note">Changes are saved from the action bar.</div></aside><main class="advanced-editor-settings-content" onscroll="closeAdvancedEditorSettingInfo()">${sections}</main></div>
     <footer class="advanced-settings-footer" data-advanced-settings-footer hidden><button class="advanced-settings-reset-all" type="button" onclick="resetAllAdvancedEditorSettings()">Reset all</button><button class="is-primary" type="button" onclick="saveAdvancedEditorSettings()">Save & Reload</button></footer>
   </section>`;
@@ -812,6 +844,7 @@ function renderAdvancedEditorSettings() {
   window.lmAdvancedWordEditing?.mount?.(modal);
   window.LmAdvancedImportPromoteSettings?.syncImportCustomWordVisibility?.();
   updateAdvancedEditorRiskIndicators();
+  syncAdvancedEditorMobileNavigation();
 }
 
 let advancedEditorSettingsBaseline = {};
@@ -863,6 +896,7 @@ function checkAdvancedEditorSettingsDirty() {
 }
 
 function openAdvancedEditorSettings() {
+  advancedEditorMobileView = 'sections';
   let modal = document.getElementById('advancedEditorSettingsModal');
   if (!modal) {
     modal = document.createElement('div');

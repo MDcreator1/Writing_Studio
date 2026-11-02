@@ -1301,7 +1301,7 @@ function toggleFocus(options = {}) {
   hideFocusScrollStats();
   syncFocusSaveStatusIndicator();
   if (isFocus) {
-    setFocusEditorWidthPercent(storedFocusEditorWidthPercent(), { persist: false });
+    initFocusEditorWidthControl();
     setFindPanel(false);
     setToolDock(false);
     editor?.focus();

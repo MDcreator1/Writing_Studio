@@ -451,6 +451,10 @@ function setFocusEditorWidthPercent(value, options = {}) {
 
   document.documentElement.style.setProperty('--focus-editor-width', widthText);
   if (range) {
+    range.min = '0';
+    range.max = '100';
+    range.setAttribute('aria-label', 'Focus editor width');
+    document.getElementById('focusWidthControl')?.setAttribute('aria-label', 'Focus editor width control');
     range.value = String(percent);
     range.setAttribute('aria-valuetext', `${percent}% (${Math.round(width)}% viewport width)`);
   }
@@ -471,10 +475,50 @@ function setFocusEditorWidthPercent(value, options = {}) {
 
 function initFocusEditorWidthControl() {
   const range = document.getElementById('focusWidthRange');
-  setFocusEditorWidthPercent(storedFocusEditorWidthPercent(), { persist: false });
-  if (!range || range.dataset.widthControlBound === 'true') return;
+  if (!range) return;
+  if (range.dataset.widthControlBound === 'true') {
+    range.syncFocusSizeControl?.();
+    return;
+  }
   range.dataset.widthControlBound = 'true';
-  range.addEventListener('input', () => setFocusEditorWidthPercent(range.value));
+  const mobile = window.matchMedia('(max-width: 940px)');
+  const fontStorageKey = 'lm-focus-mobile-font-size';
+  const setMobileFontSize = (value, persist = false) => {
+    const size = Math.max(8, Math.min(32, Math.round(Number(value) || 16)));
+    document.documentElement.style.setProperty('--focus-mobile-font-size', `${size}px`);
+    range.min = '8';
+    range.max = '32';
+    range.value = String(size);
+    range.setAttribute('aria-label', 'Focus editor font size');
+    range.setAttribute('aria-valuetext', `${size} pixels`);
+    range.title = `${size}px`;
+    document.getElementById('focusWidthControl')?.setAttribute('aria-label', 'Focus editor font size control');
+    const label = document.getElementById('focusWidthPercent');
+    if (label) label.textContent = String(size);
+    if (persist) localStorage.setItem(fontStorageKey, String(size));
+    requestAnimationFrame(() => {
+      if (typeof renderFindMarkerRail === 'function') renderFindMarkerRail();
+      if (typeof scheduleEditorAutoScrollDepthMarkerReposition === 'function') scheduleEditorAutoScrollDepthMarkerReposition();
+      if (typeof updateEditorScrollThumb === 'function') updateEditorScrollThumb(document.getElementById('editor')?.classList.contains('is-scrolling'));
+    });
+  };
+  const syncControl = () => {
+    if (mobile.matches) {
+      const editor = document.getElementById('editor');
+      const initialSize = editor ? parseFloat(getComputedStyle(editor).fontSize) : 16;
+      setMobileFontSize(localStorage.getItem(fontStorageKey) ?? initialSize);
+    } else {
+      range.removeAttribute('title');
+      setFocusEditorWidthPercent(storedFocusEditorWidthPercent(), { persist: false });
+    }
+  };
+  range.syncFocusSizeControl = syncControl;
+  syncControl();
+  mobile.addEventListener('change', syncControl);
+  range.addEventListener('input', () => {
+    if (mobile.matches) setMobileFontSize(range.value, true);
+    else setFocusEditorWidthPercent(range.value);
+  });
 }
 
 function hideFocusScrollStats() {
@@ -1073,8 +1117,9 @@ function applyEditorSpacing(lineHeight, paragraphGap, paragraphMargin, options =
   else editor.style.removeProperty('--editor-line-height');
   if (hasParagraphMarginValue && !plainTextMode) editor.style.setProperty('--editor-paragraph-margin', `${safeParagraphMargin}px`);
   else editor.style.removeProperty('--editor-paragraph-margin');
-  if (hasParagraphMarginValue && safeParagraphMargin > 0 && !plainTextMode) normalizeEditorParagraphBlocks(editor);
-  if (options.applyParagraphGap !== false) {
+  const virtualReview = editor.classList.contains('is-virtual-review-text');
+  if (hasParagraphMarginValue && safeParagraphMargin > 0 && !plainTextMode && !virtualReview) normalizeEditorParagraphBlocks(editor);
+  if (options.applyParagraphGap !== false && !virtualReview) {
     if (plainTextMode && typeof applyPlainTextParagraphGapToEditor === 'function') {
       applyPlainTextParagraphGapToEditor(editor, hasParagraphGapValue ? safeParagraphGap : 0);
     } else {
@@ -1148,17 +1193,18 @@ function changeParagraphGap() {
 
 function changeParagraphMargin() {
   const editor = document.getElementById('editor');
-  const reviewMode = typeof isEditorReviewMode === 'function' && isEditorReviewMode(editor);
+  const reviewMode = (typeof isEditorReviewMode === 'function' && isEditorReviewMode(editor)) ||
+    (typeof isChapterReviewModeForEditorSettings === 'function' && isChapterReviewModeForEditorSettings());
   if (!reviewMode) return;
   ensureChapters();
   const safeParagraphMargin = normalizeEditorParagraphMargin(document.getElementById('paragraphMarginSel')?.value);
   setParagraphMarginSelectValue(safeParagraphMargin);
-  clearEditorScopedStyleProperties(['--editor-paragraph-margin']);
+  if (!editor.classList.contains('is-virtual-review-text')) clearEditorScopedStyleProperties(['--editor-paragraph-margin']);
   const reviewMargin = typeof setEditorReviewModeMarginDefault === 'function'
     ? setEditorReviewModeMarginDefault(safeParagraphMargin)
     : safeParagraphMargin;
   const doc = activeEditorDocument();
-  applyEditorSpacing(doc?.lineHeight, doc?.paragraphGap, reviewMargin);
+  applyEditorSpacing(doc?.lineHeight, doc?.paragraphGap, reviewMargin, { applyParagraphGap: false });
   if (typeof updateEditorSettingsUI === 'function') updateEditorSettingsUI();
   editor?.focus({ preventScroll: true });
 }

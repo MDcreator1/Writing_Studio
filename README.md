@@ -114,13 +114,10 @@ Scripts ES modules नहीं हैं। HTML में उनका numeric
 
 ## Tests
 
-कोई `package.json` test runner नहीं है। Tests सीधे Node से चलती हैं:
+पुरानी test suites हटाई गई हैं। बचा हुआ draft merge safety test सीधे Node से चलाएँ; बाकी flows के लिए WORKING.md की manual regression checklist उपयोग करें:
 
 ```powershell
-node tests/editor-history-policy.test.js
-node tests/workspace-section-loading.test.js
-node tests/naming-file-safety.test.js
-node tests/advanced-import-promote-settings.test.js
+node tests/draft-merge-safety.test.js
 ```
 
 सभी JavaScript files का syntax check PowerShell से:

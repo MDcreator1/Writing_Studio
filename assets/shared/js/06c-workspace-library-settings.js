@@ -1601,7 +1601,8 @@ function updatePasteSettingsUI() {
 
   // ── Sync active margin button ─────────────────────────────────
   if (isReviewMode) {
-    const activeMargin = String(typeof editorReviewModeMarginDefault === 'function' ? editorReviewModeMarginDefault() : 0);
+    const rawMargin = typeof editorReviewModeMarginDefault === 'function' ? editorReviewModeMarginDefault() : 0;
+    const activeMargin = String(Number.isFinite(Number(rawMargin)) ? Math.max(0, Number(rawMargin)) : 0);
     const customMarginButton = document.getElementById('reviewMarginBtnCustom');
     const hasPresetMargin = ['0', '8', '16', '24'].includes(activeMargin);
     if (customMarginButton) {

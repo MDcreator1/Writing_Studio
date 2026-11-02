@@ -1,0 +1,232 @@
+.advanced-editor-settings-header .advanced-mobile-back { display: none; }
+
+@media (max-width: 940px) {
+  #editorSettingsPanel {
+    width: min(280px, calc(100vw - 16px));
+    padding: 8px;
+  }
+  #editorSettingsPanel .editor-settings-title-row { gap: 6px; margin-bottom: 6px; }
+  #editorSettingsPanel .editor-settings-title { font-size: 14px; margin-bottom: 5px; }
+  #editorSettingsPanel .editor-advanced-settings-icon-btn { width: 28px; height: 28px; min-width: 28px; }
+  #editorSettingsPanel .editor-advanced-settings-icon-btn svg { width: 20px; height: 20px; }
+  #editorSettingsPanel .editor-setting-row { min-height: 32px; padding: 5px 7px; font-size: 14px; gap: 6px; }
+  #editorSettingsPanel .editor-setting-row + .editor-setting-row,
+  #editorSettingsPanel .status-selector-panel + .editor-setting-row { margin-top: 4px; }
+  #editorSettingsPanel .setting-state { font-size: 11px; }
+  #editorSettingsPanel .status-selector-panel { margin-top: 4px; padding: 5px; }
+  #editorSettingsPanel .status-option-row { min-height: 28px; padding: 4px 6px; font-size: 12px; }
+
+  #advancedEditorSettingsModal { padding: 8px; }
+  #advancedEditorSettingsModal .advanced-editor-settings-card {
+    width: min(600px, calc(100vw - 16px));
+    height: calc(100dvh - 16px);
+    overflow: hidden;
+    border-radius: 14px;
+  }
+  #advancedEditorSettingsModal .advanced-editor-settings-header {
+    min-height: 48px;
+    padding: 7px 10px;
+    gap: 8px;
+  }
+  #advancedEditorSettingsModal .advanced-editor-settings-header > div { min-width: 0; flex: 1; }
+  #advancedEditorSettingsModal .advanced-editor-settings-header h2 { font-size: 16px; }
+  #advancedEditorSettingsModal .advanced-editor-settings-header > button { width: 30px; height: 30px; flex-basis: 30px; font-size: 23px; }
+  #advancedEditorSettingsModal .advanced-mobile-back { padding: 0; place-items: center; }
+  #advancedEditorSettingsModal .advanced-mobile-back-icon,
+  #advancedEditorSettingsModal .advanced-editor-settings-close-icon { width: 18px; height: 18px; }
+  #advancedEditorSettingsModal .advanced-editor-settings-header p,
+  #advancedEditorSettingsModal .advanced-editor-settings-nav-label,
+  #advancedEditorSettingsModal .advanced-editor-settings-nav-note,
+  #advancedEditorSettingsModal .advanced-editor-settings-content p { display: none; }
+  #advancedEditorSettingsModal .advanced-editor-settings-content :is([role="dialog"], [role="alertdialog"]) p { display: block; }
+  #advancedEditorSettingsModal .advanced-editor-settings-shell { display: block; min-height: 0; overflow: hidden; }
+
+  #advancedEditorSettingsModal .advanced-editor-settings-nav {
+    height: 100%;
+    padding: 8px;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+    border: 0;
+    gap: 0;
+  }
+  #advancedEditorSettingsModal .advanced-editor-settings-nav > button {
+    width: 100%;
+    min-width: 0;
+    min-height: 54px;
+    padding: 9px 8px;
+    grid-template-columns: 28px minmax(0, 1fr) 12px;
+    border-radius: 0;
+    border-bottom: 1px solid var(--border);
+    gap: 8px;
+  }
+  #advancedEditorSettingsModal .advanced-editor-settings-nav > button::after { content: '›'; color: var(--muted); font-size: 22px; }
+  #advancedEditorSettingsModal .advanced-editor-settings-nav > button strong { width: 100%; white-space: normal; overflow-wrap: normal; word-break: normal; font-size: 15px; }
+  #advancedEditorSettingsModal .advanced-editor-settings-nav > button small { display: none; }
+  #advancedEditorSettingsModal .advanced-editor-settings-nav-icon { width: 28px; height: 28px; }
+  #advancedEditorSettingsModal .advanced-editor-settings-content { height: 100%; padding: 10px; }
+
+  #advancedEditorSettingsModal[data-mobile-view="sections"] .advanced-editor-settings-content,
+  #advancedEditorSettingsModal[data-mobile-view="settings"] .advanced-editor-settings-nav { display: none; }
+  #advancedEditorSettingsModal[data-mobile-view="settings"] .advanced-mobile-back { display: grid; }
+
+  #advancedEditorSettingsModal .advanced-editor-settings-section-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) fit-content(55%);
+    align-items: start;
+    gap: 2px 8px;
+    padding: 0 0 4px;
+    margin: 0 0 2px;
+  }
+  #advancedEditorSettingsModal .advanced-editor-settings-section-head > div { min-width: 0; }
+  #advancedEditorSettingsModal .advanced-editor-settings-section-head > div:not(.advanced-feature-head-tools) { display: contents; }
+  #advancedEditorSettingsModal .advanced-editor-settings-section-head h3 { margin: 0; font-size: 17px; line-height: 1.35; }
+  #advancedEditorSettingsModal .advanced-editor-settings-section-head h3 { grid-column: 1; grid-row: 1; align-self: center; }
+  #advancedEditorSettingsModal .advanced-editor-settings-section-head:not(:has(.advanced-feature-pin-actions)) h3 { grid-column: 1 / -1; }
+  #advancedEditorSettingsModal .advanced-editor-settings-section-head > div > span { display: none; }
+  #advancedEditorSettingsModal .advanced-feature-head-tools {
+    display: contents;
+  }
+  #advancedEditorSettingsModal .advanced-feature-head-tools .advanced-feature-pin-actions {
+    display: flex;
+    grid-column: 2;
+    grid-row: 1;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    min-width: 0;
+    gap: 5px;
+  }
+  #advancedEditorSettingsModal .advanced-feature-head-tools .advanced-feature-count {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: start;
+    margin: 0;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 650;
+    line-height: 1.4;
+  }
+  #advancedEditorSettingsModal .advanced-feature-head-tools .advanced-quick-pin-button {
+    min-height: 28px;
+    max-width: 100%;
+    padding: 4px 7px;
+    font-size: 11px;
+  }
+  #advancedEditorSettingsModal .awe-workspace-switcher {
+    gap: 4px;
+    margin-bottom: 7px;
+    padding: 3px;
+    border-radius: 8px;
+  }
+  #advancedEditorSettingsModal .awe-workspace-switcher > button {
+    min-width: 0;
+    min-height: 28px;
+    padding: 0 7px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  #advancedEditorSettingsModal .awe-workspace-head {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 8px 0;
+  }
+  #advancedEditorSettingsModal .awe-workspace-head > span {
+    min-width: 0;
+    font-size: 13px;
+    letter-spacing: 0;
+  }
+  #advancedEditorSettingsModal .awe-workspace-head > [data-awe-rule-summary] {
+    flex-shrink: 0;
+    margin-left: auto;
+    font-size: 10px;
+  }
+  #advancedEditorSettingsModal .advanced-feature-pin-actions [data-advanced-quick-pin-label] {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #advancedEditorSettingsModal .advanced-feature-head-tools .advanced-explanation-language-toggle {
+    min-height: 28px;
+    padding: 3px 7px 3px 4px;
+    gap: 4px;
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: end;
+  }
+  #advancedEditorSettingsModal .advanced-explanation-language-toggle > span { min-width: 20px; height: 20px; }
+  #advancedEditorSettingsModal .advanced-runtime-setting-row {
+    min-height: 44px;
+    padding: 8px 0;
+    grid-template-columns: minmax(0, 1fr) fit-content(42%);
+    gap: 8px;
+  }
+  #advancedEditorSettingsModal .advanced-runtime-setting-row > span:first-child { grid-column: 1; width: 100%; min-width: 0; }
+  #advancedEditorSettingsModal .advanced-runtime-title-line { width: 100%; min-width: 0; gap: 5px; }
+  #advancedEditorSettingsModal .advanced-runtime-setting-row > span:first-child .advanced-runtime-title-line > strong {
+    flex: 1 1 auto;
+    font-size: 16px;
+    white-space: normal;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+  #advancedEditorSettingsModal .advanced-runtime-title-line > button { flex-shrink: 0; }
+  #advancedEditorSettingsModal .advanced-runtime-setting-row > :not(:first-child) { grid-column: 2; justify-self: end; max-width: 100%; }
+  #advancedEditorSettingsModal .advanced-runtime-setting-row > span:first-child strong { font-size: 14px; }
+  #advancedEditorSettingsModal .advanced-runtime-setting-row > select,
+  #advancedEditorSettingsModal .advanced-runtime-setting-row > .lm-custom-select { width: max-content; min-width: 0; max-width: 100%; }
+  #advancedEditorSettingsModal .advanced-runtime-setting-row > button { padding: 5px 7px !important; font-size: 11px; }
+  #advancedEditorSettingsModal .advanced-runtime-setting-row .lm-custom-select-trigger { min-height: 30px; padding: 0 6px; font-size: 11px; }
+  #advancedEditorSettingsModal .advanced-runtime-action { flex-direction: row; align-items: center; gap: 8px; }
+  #advancedEditorSettingsModal .advanced-runtime-action button { align-self: center; max-width: 48%; padding: 5px 7px; font-size: 11px; }
+  #advancedEditorSettingsModal .advanced-editor-setting-item { grid-template-columns: minmax(0, 1fr) 84px 24px; gap: 6px; padding: 8px 0; }
+  #advancedEditorSettingsModal .advanced-editor-setting-copy { grid-column: 1; }
+  #advancedEditorSettingsModal .advanced-editor-setting-control { grid-column: 2; min-width: 0; }
+  #advancedEditorSettingsModal .advanced-editor-setting-info-wrap { grid-column: 3; }
+  #advancedEditorSettingsModal .advanced-editor-setting-name { width: 100%; min-width: 0; }
+  #advancedEditorSettingsModal .advanced-editor-setting-name strong { font-size: 16px; line-height: 1.35; white-space: normal; overflow-wrap: normal; word-break: normal; }
+  #advancedEditorSettingsModal .advanced-editor-setting-info-button { width: 24px; height: 24px; }
+  #advancedEditorSettingsModal .advanced-settings-footer { padding: 7px 10px; gap: 6px; }
+  #advancedEditorSettingsModal .advanced-settings-footer button { min-height: 30px; padding: 5px 9px; font-size: 12px; }
+
+  #advancedEditorSettingsModal .awe-work-editor-panel {
+    padding: 0 8px;
+    min-width: 0;
+    max-width: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none;
+  }
+  #advancedEditorSettingsModal .awe-work-editor-panel::-webkit-scrollbar { display: none; }
+  #advancedEditorSettingsModal .awe-editor-setting-row {
+    position: relative;
+    min-height: 48px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 10px 0;
+  }
+  #advancedEditorSettingsModal .awe-editor-setting-row > span:first-child { min-width: 0; gap: 0; }
+  #advancedEditorSettingsModal .awe-editor-setting-row > span:first-child > small { display: none; }
+  #advancedEditorSettingsModal .awe-editor-setting-row > span:first-child > strong { font-size: 16px; line-height: 1.35; overflow-wrap: normal; word-break: normal; }
+  #advancedEditorSettingsModal .awe-editor-setting-row:has(.awe-unmatched-controls) { grid-template-columns: minmax(0, 1fr); gap: 7px; }
+  #advancedEditorSettingsModal .awe-editor-setting-row:has(.awe-unmatched-controls) > span:first-child { padding-right: 46px; }
+  #advancedEditorSettingsModal .awe-unmatched-controls {
+    grid-column: 1 / -1;
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+  #advancedEditorSettingsModal .awe-unmatched-controls > .awe-setting-switch { position: absolute; right: 0; top: 11px; }
+  #advancedEditorSettingsModal .awe-editor-setting-row button:not(.dock-fsize-step) { min-height: 30px; padding: 5px 7px; font-size: 11px; max-width: 100%; }
+  #advancedEditorSettingsModal .awe-editor-setting-row > .awe-apply-editor-button { max-width: 112px; white-space: normal; }
+  #advancedEditorSettingsModal .awe-threshold-field { min-width: 0; height: 32px; padding: 0 4px; gap: 4px; }
+  #advancedEditorSettingsModal .awe-threshold-field > span:first-child { font-size: 10px; }
+  #advancedEditorSettingsModal .awe-threshold-field .awe-threshold-stepper { width: 54px; flex-basis: 54px; height: 28px; }
+  #advancedEditorSettingsModal .awe-threshold-field .awe-threshold-stepper .advanced-number-input { width: 30px; min-width: 0; flex: 1 1 0; padding: 0 4px; font-size: 12px; }
+  #advancedEditorSettingsModal .awe-unmatched-category-field { flex: 1 1 0; max-width: 190px; }
+  #advancedEditorSettingsModal .awe-unmatched-category-field .lm-custom-select { width: 100%; min-width: 0; }
+  #advancedEditorSettingsModal .awe-unmatched-category-field .lm-custom-select-trigger { width: 100%; min-height: 28px; padding: 0 5px; font-size: 11px; }
+}

@@ -319,20 +319,6 @@ async function init() {
     if (dock && dock.contains(document.activeElement) && !dock.contains(e.target)) {
       document.activeElement.blur();
     }
-    if (isToolDockOpen && dock && !dock.contains(e.target)) {
-      setToolDock(false);
-    }
-    if (!e.target.closest('.dock-custom-select')) {
-      closeDockSelects();
-    }
-
-    const findBar = document.getElementById('find-bar');
-    const findTriggers = [document.getElementById('findBtn')].filter(Boolean);
-    const clickedFindTrigger = findTriggers.some(trigger => trigger.contains(e.target)) ||
-      Boolean(e.target.closest?.('.tag-find-btn'));
-    if (isFindOpen && findBar && !findBar.contains(e.target) && !clickedFindTrigger) {
-      setFindPanel(false);
-    }
     const storyLibraryPanel = document.getElementById('storyLibraryPanel');
     const storyLibraryBtn = document.getElementById('storyLibraryBtn');
     if (
@@ -1014,6 +1000,13 @@ function syncActiveEditorEditState() {
   const canEdit = canEditActiveDocument();
   const trashMode = isTrashDraftActive();
   const lockedChapter = !isDraftActive() && !canEdit;
+  const reviewTitleButton = document.getElementById('chapterReviewTitleEditBtn');
+  if (reviewTitleButton) reviewTitleButton.hidden = !lockedChapter || trashMode || isEditingChapterTitle || !chapters[curChap];
+  document.body.classList.toggle('is-chapter-review', lockedChapter);
+  const wordEditingToggle = document.getElementById('wordEditingQuickToggleBtn');
+  if (wordEditingToggle) wordEditingToggle.hidden = lockedChapter || trashMode;
+  if (lockedChapter || trashMode) setWordEditingQuickPanel(false);
+  window.lmAdvancedWordEditing?.syncEditorQuickAction?.();
 
   if (editor) {
     editor.contentEditable = canEdit ? 'true' : 'false';
@@ -1028,7 +1021,7 @@ function syncActiveEditorEditState() {
   }
 
   if (titleInput) {
-    titleInput.disabled = lockedChapter;
+    titleInput.disabled = lockedChapter && !(isEditingChapterTitle && titleInput.dataset.directReviewTitle === 'true');
     titleInput.title = lockedChapter ? text().chapterLockedTitle : text().editChapterTitle;
   }
 
@@ -1255,9 +1248,12 @@ function copyChapterTitleInReviewMode(event) {
 
 window.copyChapterTitleInReviewMode = copyChapterTitleInReviewMode;
 
-function beginChapterTitleEdit() {
+function beginChapterTitleEdit(options = {}) {
   ensureChapters();
-  if (!isDraftActive() && !isChapterEditUnlocked) return;
+  const directReviewTitle = options.reviewTitleOnly === true &&
+    isChapterReviewModeForEditorSettings() && !isProjectDataLoading &&
+    chapters[curChap]?._contentLoadState !== 'quarantined';
+  if (!isDraftActive() && !isChapterEditUnlocked && !directReviewTitle) return;
   const documentItem = activeEditorDocument();
   if (!documentItem) return;
 
@@ -1267,6 +1263,10 @@ function beginChapterTitleEdit() {
 
   const currentTitle = activeEditorDisplayTitle();
   isEditingChapterTitle = true;
+  titleInput.dataset.directReviewTitle = String(directReviewTitle);
+  titleInput.disabled = false;
+  const reviewTitleButton = document.getElementById('chapterReviewTitleEditBtn');
+  if (reviewTitleButton) reviewTitleButton.hidden = true;
   titleInput.value = currentTitle;
   titleInput.dataset.originalValue = currentTitle;
   titleButton.hidden = true;
@@ -1384,6 +1384,8 @@ async function performChapterTitleEditCommit() {
 
   const cleanedTitle = titleInput.value.trim();
   const originalTitle = titleInput.dataset.originalValue || activeEditorDisplayTitle();
+  const directReviewTitle = titleInput.dataset.directReviewTitle === 'true';
+  delete titleInput.dataset.directReviewTitle;
   isEditingChapterTitle = false;
   titleInput.hidden = true;
   titleButton.hidden = false;
@@ -1403,7 +1405,11 @@ async function performChapterTitleEditCommit() {
 
   try {
     let savedDocument = null;
-    if (draftActive) {
+    if (directReviewTitle) {
+      const result = await saveSavedChapterTitle(curChap, cleanedTitle, { syncEditDraft: false });
+      savedDocument = result?.chapter || chapters[curChap];
+      chapterEditActive = false;
+    } else if (draftActive) {
       savedDocument = chapterDrafts[curDraft];
       savedDocument.title = cleanedTitle;
       saveToStorage(false);

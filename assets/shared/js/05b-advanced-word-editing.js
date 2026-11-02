@@ -932,7 +932,8 @@
       button.addEventListener('click', () => applyDictionaryToEditor({ source: 'quick-action' }));
       editorWrap.appendChild(button);
     }
-    button.hidden = !state.showEditorQuickAction;
+    const canEdit = typeof canEditActiveDocument !== 'function' || canEditActiveDocument();
+    button.hidden = !state.showEditorQuickAction || !canEdit;
     button.classList.toggle('is-working', editorDictionaryApplying);
     button.disabled = editorDictionaryApplying;
     button.setAttribute('aria-busy', String(editorDictionaryApplying));

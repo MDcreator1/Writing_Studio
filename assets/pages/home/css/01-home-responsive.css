@@ -1,0 +1,118 @@
+body[data-page="home"] {
+  height: 100dvh;
+}
+
+.home-overview-shell,
+.home-overview-shell > *,
+.home-scenario-hero > *,
+.home-wide-feature > *,
+.home-scenario-card-grid > *,
+.home-lane-grid > *,
+.home-workflow-strip > * {
+  min-width: 0;
+}
+
+.home-menu-panel { scrollbar-width: none; }
+.home-menu-panel::-webkit-scrollbar { display: none; }
+.home-overview-shell { overflow-wrap: anywhere; }
+.home-poetry-card > span { max-width: 100%; }
+
+body[data-page="home"] :is(.story-info-card, .project-gate-card) {
+  max-height: calc(var(--home-visible-height, 100dvh) - 24px);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+body[data-page="home"] :is(.story-info-card, .project-gate-card)::-webkit-scrollbar { display: none; }
+body[data-page="home"] :is(.story-info-head, .story-info-title-row, .story-info-grid > *, .story-info-actions > *) { min-width: 0; }
+body[data-page="home"] .story-info-head h2 { overflow-wrap: anywhere; }
+body[data-page="home"] .story-info-actions { flex-wrap: wrap; }
+body[data-page="home"] .home-recent-projects-list { max-height: calc(var(--home-visible-height, 100dvh) - 150px); }
+body[data-page="home"] :is(.theme-mode-panel, .story-library-panel) {
+  max-width: calc(100vw - 16px);
+  max-height: calc(var(--home-visible-height, 100dvh) - 72px);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+body[data-page="home"] :is(.theme-mode-panel, .story-library-panel)::-webkit-scrollbar { display: none; }
+
+@media (max-width: 1420px) {
+  .home-page { gap: 14px; padding: 14px; }
+  .home-menu-panel { width: 230px; min-width: 220px; padding: 12px; gap: 12px; }
+  .home-menu-brand { padding: 12px; }
+  .home-menu-action { min-height: 40px; padding: 9px 10px; }
+  .home-menu-action span { font-size: 13px; }
+  .home-overview-panel { padding: 8px 4px; }
+  .home-overview-shell { gap: 14px; }
+  .home-scenario-hero { gap: 14px; padding: 20px; grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr); }
+  .home-scenario-hero h2 { font-size: clamp(30px, 3vw, 44px); line-height: 1.12; }
+  .home-workflow-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .home-feature-grid, .home-scenario-card-grid, .home-lane-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .home-wide-feature { grid-template-columns: minmax(0, .45fr) minmax(0, 1fr); }
+}
+
+@media (max-width: 1120px) {
+  .home-scenario-hero, .home-wide-feature { grid-template-columns: minmax(0, 1fr); }
+  .home-scenario-snapshot, .home-novel-stack, .home-news-board,
+  .home-essay-map, .home-poetry-card, .home-screenplay-board { min-height: 180px; }
+}
+
+@media (max-width: 940px) {
+  body[data-page="home"] .lm-id-top-bar { min-height: 46px; padding: 4px 8px; gap: 8px; }
+  body[data-page="home"] .lm-id-top-bar h1 { min-width: 0; flex: 1; font-size: clamp(14px, 3vw, 18px); }
+  body[data-page="home"] .brand-home-link { min-width: 0; max-width: 100%; padding: 3px; gap: 6px; }
+  body[data-page="home"] .brand-mark { flex-shrink: 0; width: 28px; height: 28px; }
+  body[data-page="home"] #brandName { overflow: hidden; text-overflow: ellipsis; }
+  body[data-page="home"] .topbar-actions { flex-shrink: 0; margin-left: auto; gap: 4px; }
+  body[data-page="home"] .tb-icon { min-width: 32px; width: 32px; height: 32px; padding: 4px; }
+  body[data-page="home"] .tb-icon svg { width: 21px; height: 21px; }
+
+  .home-page { flex-direction: column; gap: 12px; padding: 12px; overflow-y: auto; overflow-x: hidden; }
+  .home-menu-panel { flex: 0 0 auto; width: 100%; min-width: 0; height: auto; overflow: visible; padding: 10px; gap: 10px; }
+  .home-menu-brand { padding: 10px 12px; }
+  .home-menu-brand h2 { font-size: 21px; line-height: 1.2; }
+  .home-menu-brand p { font-size: 12px; }
+  .home-menu-extra { display: flex; gap: 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; padding: 2px; }
+  .home-menu-extra::-webkit-scrollbar { display: none; }
+  .home-menu-divider { display: none; }
+  .home-menu-action { flex: 0 0 auto; width: auto; min-height: 36px; padding: 8px 10px; white-space: nowrap; }
+  .home-menu-action span { font-size: 12px; }
+  .home-overview-panel { flex: 0 0 auto; width: 100%; height: auto; overflow: visible; padding: 0; }
+  .home-overview-shell { padding-bottom: 12px; }
+  .home-scenario-hero, .home-wide-feature { grid-template-columns: minmax(0, 1fr); padding: 18px; min-height: 0; }
+  .home-scenario-hero h2 { font-size: clamp(26px, 4.5vw, 38px); line-height: 1.16; }
+  .home-scenario-hero p { font-size: 13px; line-height: 1.6; }
+  .home-overview-actions { gap: 7px; }
+  .home-overview-action { min-width: 0; max-width: 100%; min-height: 36px; padding: 8px 12px; }
+  .home-overview-pill-row { gap: 6px; margin-top: 12px; }
+  .home-overview-pill-row span { padding: 6px 8px; }
+  .home-feature-card, .home-scenario-card, .home-overview-lane, .home-workflow-step { min-height: 0; padding: 14px; }
+  .home-hero h1 { max-width: 100%; font-size: clamp(28px, 6vw, 42px); }
+
+  body[data-page="home"] .story-info-modal {
+    inset: calc(var(--home-visible-top, 0px) + 54px) 8px auto !important;
+    width: min(430px, calc(100vw - 16px)) !important;
+    margin-inline: auto;
+  }
+  body[data-page="home"] .story-info-card { max-height: calc(var(--home-visible-height, 100dvh) - 64px); padding: 8px 12px 12px; }
+  body[data-page="home"] .story-info-head { gap: 8px; }
+  body[data-page="home"] .story-info-head h2 { font-size: 19px; }
+  body[data-page="home"] .story-info-head-actions { gap: 4px; flex-shrink: 0; }
+  body[data-page="home"] .story-info-grid { gap: 10px; }
+  body[data-page="home"] .home-recent-projects-count { max-width: 100px; }
+  body[data-page="home"] .project-gate { padding: 8px; }
+  body[data-page="home"] .project-gate-card { padding: 20px 16px; }
+}
+
+@media (max-width: 600px) {
+  .home-page { padding: 8px; gap: 10px; }
+  .home-feature-grid, .home-scenario-card-grid, .home-lane-grid { grid-template-columns: minmax(0, 1fr); }
+  .home-scenario-hero, .home-wide-feature { padding: 14px; }
+  .home-overview-actions > button { flex: 1 1 140px; }
+  .home-scenario-snapshot, .home-novel-stack, .home-news-board,
+  .home-essay-map, .home-poetry-card, .home-screenplay-board { padding: 14px; min-height: 155px; }
+  .snapshot-top, .snapshot-meta { flex-wrap: wrap; gap: 6px; }
+}
+
+@media (max-width: 480px) {
+  .home-workflow-strip { grid-template-columns: minmax(0, 1fr); }
+}

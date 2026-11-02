@@ -243,6 +243,7 @@ function isEditorReviewMode(editor = document.getElementById('editor')) {
 
 function setEditorRenderMode(editor, mode) {
   if (!editor) return;
+  editor.classList.remove('is-virtual-review-text');
   const normalizedMode = mode === 'review' ? 'review' : mode === 'rich' ? 'rich' : 'plain';
   editor.dataset.editorMode = normalizedMode;
   editor.classList.toggle('is-plain-text-mode', normalizedMode === 'plain');

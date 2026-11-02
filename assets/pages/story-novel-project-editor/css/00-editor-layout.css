@@ -2316,6 +2316,36 @@
   color: var(--accent);
 }
 
+.chapter-review-title-edit-btn {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .16s ease, color .16s ease;
+}
+.chapter-review-title-edit-btn[hidden] { display: none !important; }
+.chapter-review-title-edit-btn svg { width: 18px; height: 18px; fill: currentColor; }
+.editor-info-title:hover .chapter-review-title-edit-btn,
+.editor-info-title:focus-within .chapter-review-title-edit-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+.chapter-review-title-edit-btn:hover,
+.chapter-review-title-edit-btn:focus-visible { color: var(--accent); }
+@media (hover: none) {
+  .chapter-review-title-edit-btn { opacity: 1; pointer-events: auto; }
+}
+
 .chapter-title-input {
   min-width: 220px;
   max-width: min(520px, 40vw);
@@ -3157,6 +3187,12 @@
   white-space: pre-wrap;
 }
 
+.virtual-review-separator,
+body.is-chapter-review #aweEditorRefreshQuickBtn,
+body.is-chapter-review #wordEditingQuickToggleBtn {
+  display: none !important;
+}
+
 .hindi-pending-virama-caret {
   position: absolute;
   z-index: 8;
@@ -3498,7 +3534,12 @@ body.focus-mode .lm-id-editor.is-focus-save-saved {
    Review Mode: Margin Setting Row
    ============================================================ */
 
-/* Wrapper for the five margin option buttons */
+/* Match the padding and control height of the other editor setting rows. */
+#reviewMarginSettingRow { padding: 8px 8px 8px 12px; }
+#reviewMarginSettingRow .smart-setting-toggle-label { padding: 0; height: auto; }
+#reviewMarginSettingRow .review-margin-options { padding-right: 0; }
+
+/* Wrapper for the margin option buttons */
 .review-margin-options {
   display: flex;
   align-items: center;
@@ -3651,11 +3692,30 @@ body.focus-mode .lm-id-editor.is-focus-save-saved {
 
 /* "Custom Gap" label */
 #copyParaModeGapLabel {
+  flex: 1 1 auto;
+  min-width: 0;
   font-weight: 850;
   font-size: var(--font-size-sm);
   color: var(--ink);
   cursor: pointer;
 }
+
+.copy-paragraph-gaps-input {
+  flex: 0 0 54px;
+  width: 54px;
+  min-width: 0;
+  height: 28px;
+  padding: 3px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: center;
+}
+.copy-paragraph-gaps-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#copyParagraphGapsRow .copy-custom-settings-btn { flex: 0 0 auto; }
 
 /* Custom Gap On/Off toggle button */
 #copyParaModeGapState {

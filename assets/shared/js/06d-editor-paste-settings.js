@@ -182,6 +182,11 @@ function updateCopySettingsUI() {
   const copyPanel = document.getElementById('copySettingsSelectorPanel');
   const copyState = document.getElementById('copySettingsState');
   const customGapRow = document.getElementById('copyParagraphGapsRow');
+  const gapInput = document.getElementById('copyParagraphGapsInput');
+  if (gapInput) {
+    gapInput.value = String(copyParagraphGaps);
+    gapInput.disabled = !isCopySettingsEnabled;
+  }
   const copy = text();
   const smartCopyPinned = typeof isEditorQuickSettingPinned === 'function' ? isEditorQuickSettingPinned('smartCopy') : true;
 
@@ -217,6 +222,18 @@ function updateCopySettingsUI() {
     }
   }
   if (typeof syncAdvancedQuickControlsFromRuntime === 'function') syncAdvancedQuickControlsFromRuntime();
+}
+
+function setCopyParagraphGaps(value) {
+  if (!isCopySettingsEnabled || String(value).trim() === '') return;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return;
+  const next = Math.max(0, Math.min(4, Math.round(parsed)));
+  if (next !== copyParagraphGaps) {
+    copyParagraphGaps = next;
+    savePasteCopySettings();
+  }
+  updateCopySettingsUI();
 }
 
 function updateCopyParaModeOptionState(mode, stateId) {
@@ -1016,6 +1033,17 @@ function updateCustomSelectMenuHeight(select, shell, trigger, menu) {
     menu.style.setProperty('top', openUpwards ? 'auto' : `calc(100% + ${menuGap}px)`, 'important');
     menu.style.setProperty('bottom', openUpwards ? `calc(100% + ${menuGap}px)` : 'auto', 'important');
     menu.style.setProperty('left', `${relativeLeft}px`, 'important');
+    const mobileQuickPanel = window.innerWidth <= 940 ? select.closest('.word-editing-quick-panel') : null;
+    if (mobileQuickPanel) {
+      // Escape the horizontal strip's clipping while keeping the menu and its
+      // event handlers inside the original custom-select shell.
+      const quickRect = mobileQuickPanel.getBoundingClientRect();
+      const viewportTop = openUpwards ? shellRect.top - menuGap - usedHeight : shellRect.bottom + menuGap;
+      menu.style.setProperty('position', 'fixed', 'important');
+      menu.style.setProperty('top', `${viewportTop - quickRect.top}px`, 'important');
+      menu.style.setProperty('bottom', 'auto', 'important');
+      menu.style.setProperty('left', `${viewportLeft - quickRect.left}px`, 'important');
+    }
     menu.style.setProperty('right', 'auto', 'important');
     menu.style.setProperty('width', `${usedWidth}px`, 'important');
     menu.style.setProperty('min-width', `${shellRect.width}px`, 'important');

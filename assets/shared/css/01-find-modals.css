@@ -875,7 +875,6 @@ select.lm-native-select:not(.dock-native-select) {
   color: var(--muted);
 }
 
-.lm-id-find-bar.is-find-readonly .replace-toggle-btn,
 .lm-id-find-bar.is-find-readonly .replace-section {
   display: none !important;
 }

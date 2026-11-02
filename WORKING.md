@@ -243,22 +243,13 @@ News Desk का primary state `NewsDesk_Articles.json` है। इसका c
 
 ## 14. Tests
 
-Focused suites:
+पुरानी focused suites हटाई गई हैं। बचा हुआ merge safety test:
 
 ```powershell
-node tests/editor-history-policy.test.js
-node tests/workspace-section-loading.test.js
-node tests/naming-file-safety.test.js
-node tests/naming-source-v2.test.js
-node tests/advanced-import-promote-settings.test.js
+node tests/draft-merge-safety.test.js
 ```
 
-इनका coverage:
-
-- Editor history grouping, Unicode/paste losslessness और structural safety contracts
-- Lazy workspace sections, rendering snapshots, Naming projections और UI source contracts
-- Naming backup, rollback, record preservation और project isolation
-- Advanced Import/Promote defaults, split behavior और settings persistence
+यह Merge/Copy & Merge में active draft save, chapter edit draft save, failed flush/write, project switch, rollback और rendering failure के 24 scenarios जाँचता है। दूसरे workflows की जाँच नीचे दी manual regression checklist से करें।
 
 सभी JavaScript syntax:
 

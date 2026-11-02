@@ -1251,6 +1251,7 @@ async function deletePartKeepingChapters(partIndex) {
 }
 
 function togglePartExpansion(partIndex) {
+  if (window.innerWidth <= 940 && expandedPartIndex === partIndex) return;
   const willExpand = expandedPartIndex !== partIndex;
   expandedPartIndex = willExpand ? partIndex : -1;
   if (willExpand) {

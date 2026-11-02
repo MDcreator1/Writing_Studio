@@ -1,3 +1,31 @@
+function renderVirtualEditorTextValue(editor, value) {
+  const canEdit = typeof canEditActiveDocument !== 'function' || canEditActiveDocument();
+  setEditorRenderMode(editor, canEdit ? 'plain' : 'review');
+  editor.classList.toggle('is-virtual-review-text', !canEdit);
+  if (canEdit) return setPlainTextEditorValue(editor, value);
+  // Keep worker/find text offsets exact while giving each review paragraph
+  // a real block on which the reading margin can act.
+  const lines = String(value || '').replace(/\r\n?/g, '\n').split('\n');
+  const fragment = document.createDocumentFragment();
+  lines.forEach((line, index) => {
+    if (index) {
+      const separator = document.createElement('span');
+      separator.hidden = true;
+      separator.className = 'virtual-review-separator';
+      separator.textContent = '\n';
+      fragment.appendChild(separator);
+    }
+    const paragraph = document.createElement('p');
+    paragraph.textContent = line;
+    if (!line) paragraph.appendChild(document.createElement('br'));
+    fragment.appendChild(paragraph);
+  });
+  editor.replaceChildren(fragment);
+  const margin = typeof editorReviewModeMarginDefault === 'function' ? editorReviewModeMarginDefault() : 0;
+  editor.style.setProperty('--editor-paragraph-margin', `${margin}px`);
+  if (typeof syncEditorPlaceholderState === 'function') syncEditorPlaceholderState();
+}
+
 function queueVirtualEditorPatchBatch(editor, state, inputSequence, documentSequence) {
   const patch = virtualEditorPatchPayload(editor, state);
   if (Array.isArray(state.sessionParagraphs)) {
@@ -410,8 +438,7 @@ function applyVirtualEditorWindow(result, options = {}) {
   // Keep the live editing coordinates lossless: the HTML export converter
   // trims paragraph-end spaces and skips leading empty paragraphs.
   const windowText = windowParagraphs.join(virtualEditorParagraphSeparator(activeVirtualEditorDocument));
-  setEditorRenderMode(editor, 'plain');
-  setPlainTextEditorValue(editor, windowText);
+  renderVirtualEditorTextValue(editor, windowText);
   if (options.caretAnchor && Number.isFinite(options.caretAnchor.paragraph)) {
     const localCaretParagraph = Math.max(0, options.caretAnchor.paragraph - safeStart);
     const localParagraphStart = virtualEditorParagraphStartOffset(editor.textContent || '', localCaretParagraph);
@@ -477,7 +504,7 @@ function startVirtualEditorDocument(documentItem, sequence, sourceHTML = documen
     workerReady: false,
     sessionParagraphs
   };
-  setEditorRenderMode(editor, 'plain');
+  setEditorRenderMode(editor, canEditActiveDocument() ? 'plain' : 'review');
   activeVirtualEditorDocument.html = sourceHTML;
   const preservePaintedInputDOM = isRestrictedInputRenderingActive || options.preservePaintedDOM === true;
   // During an input event Chromium's live Range must not be replaced. On an
@@ -628,7 +655,7 @@ function applyTemporaryVirtualEditorFullDOM(state, editor, reason = 'scroll') {
   const selectionTransaction = ++virtualEditorDOMSelectionTransactionSequence;
   isVirtualEditorDOMSelectionTransaction = true;
   cancelEditorCaretAutoScroll();
-  setPlainTextEditorValue(editor, fullText);
+  renderVirtualEditorTextValue(editor, fullText);
   if (preservedSelection) restoreVirtualEditorGlobalSelection(editor, preservedSelection);
   virtualEditorProgrammaticScrollGuard = Date.now() + 120;
   if (viewportAnchor && Number.isFinite(viewportAnchor.paragraph) && Number.isFinite(viewportAnchor.top)) {

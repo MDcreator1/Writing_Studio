@@ -331,7 +331,10 @@ function toggleFontTools() {
 
 function resolveToolDockMode() {
   const editor = document.getElementById('editor');
-  const reviewMode = typeof isEditorReviewMode === 'function' && isEditorReviewMode(editor);
+  // Virtual/full-text rendering may use a plain DOM even for a locked chapter.
+  // Tool permissions follow the document, rather than that rendering detail.
+  const reviewMode = (typeof isEditorReviewMode === 'function' && isEditorReviewMode(editor)) ||
+    (!isDraftActive() && !canEditActiveDocument());
   return reviewMode ? 'review' : 'edit';
 }
 
@@ -393,7 +396,7 @@ function setWordEditingQuickPanel(open) {
   const panel = document.getElementById('wordEditingQuickPanel');
   const toggle = document.getElementById('wordEditingQuickToggleBtn');
   if (!panel || !toggle) return;
-  const shouldOpen = Boolean(open);
+  const shouldOpen = Boolean(open && canEditActiveDocument());
   panel.hidden = !shouldOpen;
   if (!shouldOpen) setWordEditingCollectMiniPanel(false);
   toggle.setAttribute('aria-expanded', String(shouldOpen));
@@ -424,6 +427,7 @@ function positionWordEditingCollectMiniPanel() {
   const button = document.getElementById('wordEditingCollectSettingsBtn');
   if (!miniPanel || miniPanel.hidden || !button) return;
   miniPanel.classList.remove('opens-left');
+  if (window.innerWidth <= 940) return;
   const buttonRect = button.getBoundingClientRect();
   const panelRect = miniPanel.getBoundingClientRect();
   const gap = 10;
@@ -899,7 +903,8 @@ function floatingPanelBounds(panel) {
   const topBarRect = topBar?.getBoundingClientRect();
   const chapterVisible = chapterRect && chapterRect.width > 0 && chapterRect.height > 0;
   const topHeadBottom = Math.max(topBarRect?.bottom || 0, mainRect?.top || 0);
-  const leftBoundary = chapterVisible
+  // At the stacked breakpoint chapters occupy the top row, not a left rail.
+  const leftBoundary = chapterVisible && window.innerWidth > 940
     ? Math.max(gap, Math.round(chapterRect.right + gap))
     : gap;
   const topBoundary = Math.max(gap, Math.round(topHeadBottom + gap));
@@ -1011,6 +1016,18 @@ function toggleFind() {
   setFindPanel(!isFindOpen);
 }
 
+function handleToolDockOutsidePointerDown(event) {
+  const target = event.target;
+  if (!target?.closest) return;
+  const dock = document.getElementById('floating-tools');
+  const findBar = document.getElementById('find-bar');
+  const findTrigger = target.closest('#findBtn, .tag-find-btn');
+  if (isFindOpen && findBar && !findBar.contains(target) && !findTrigger) setFindPanel(false);
+  if (isToolDockOpen && dock && !dock.contains(target)) setToolDock(false);
+  if (!target.closest('.dock-custom-select')) closeDockSelects();
+}
+document.addEventListener('pointerdown', handleToolDockOutsidePointerDown, true);
+
 function handleFindPanelKey(event) {
   if (event.isComposing) return;
   if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
@@ -1119,12 +1136,13 @@ function syncFindReplaceAvailability() {
   const toggle = document.getElementById('replaceToggleBtn');
   const canReplace = canEditActiveDocument();
   const query = document.getElementById('findInp')?.value || '';
-  const canShowReplaceToggle = Boolean(canReplace && query && findMatches.length > 1);
+  const canShowReplaceToggle = Boolean(query && findMatches.length > 1);
   const canKeepReplacePanelOpen = Boolean(canReplace && query && findMatches.length > 0);
   if (findBar) findBar.classList.toggle('is-find-readonly', !canReplace);
   if (toggle) {
     toggle.hidden = !canShowReplaceToggle;
-    toggle.disabled = !canShowReplaceToggle;
+    toggle.disabled = !canShowReplaceToggle || !canReplace;
+    toggle.title = canReplace ? (isReplaceOpen ? text().hideReplace : text().showReplace) : text().chapterLockedTitle;
     toggle.setAttribute('aria-hidden', String(!canShowReplaceToggle));
   }
   if (!canKeepReplacePanelOpen && isReplaceOpen) setReplacePanel(false);

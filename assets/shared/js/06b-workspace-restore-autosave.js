@@ -576,6 +576,12 @@ function positionStorySummaryMenuPanel() {
   }
 
   const panelHeight = panel.offsetHeight || 50;
+  if (window.innerWidth <= 940 && button.closest('#top-bar')) {
+    left = Math.max(viewportPadding, Math.min(buttonRect.left, window.innerWidth - panelWidth - viewportPadding));
+    const mobileTop = Math.max(viewportPadding, Math.min(buttonRect.bottom + 8, window.innerHeight - panelHeight - viewportPadding));
+    panel.style.inset = `${mobileTop}px auto auto ${left}px`;
+    return;
+  }
   let top = buttonRect.top + topOffset;
   top = Math.max(viewportPadding, Math.min(top, window.innerHeight - panelHeight - viewportPadding));
   panel.style.inset = `${top}px auto auto ${left}px`;
