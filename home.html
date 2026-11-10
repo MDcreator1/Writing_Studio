@@ -113,6 +113,7 @@
         </button>
       </div>
       <div class="home-menu-status lm-id-homeMenuStatus" id="homeMenuStatus" hidden></div>
+      <p id="homeWorkspaceFolderDropTarget" class="workspace-folder-drop-target">Or drag your workspace folder here from File Explorer.</p>
     </aside>
 
     <section class="home-overview-panel" id="homeOverviewPanel" aria-live="polite"></section>
@@ -123,11 +124,13 @@
       <div class="project-gate-icon">📁</div>
       <h2 id="projectGateTitle" class="lm-id-projectGateTitle">Choose a workspace folder</h2>
       <p id="projectGateBody" class="lm-id-projectGateBody">
-        Select an empty local folder. Lekhak Manch will keep it empty until you create or open a story.
+        Select a new or existing workspace folder. Allow folder editing when prompted so your writing can be saved.
       </p>
       <button id="projectSelectBtn" class="lm-id-projectSelectBtn" type="button" onclick="selectLocalProjectFolder()">Choose Folder</button>
+      <button id="workspacePermissionBtn" class="lm-id-projectSelectBtn" type="button" onclick="allowSelectedWorkspaceFolder()" hidden>Allow folder editing</button>
+      <p id="workspaceFolderDropTarget" class="workspace-folder-drop-target">Or drag your workspace folder here from File Explorer.</p>
       <p class="project-gate-note lm-id-projectGateNote" id="projectGateNote">
-        Your browser will ask permission once. After that this project can reopen automatically.
+        Choose a folder first, then allow editing if requested. Your existing projects stay in their folders.
       </p>
     </div>
   </div>
@@ -229,7 +232,7 @@
   <script src="assets/shared/js/05-floating-panel-positions.js?v=20260610-ai-connection-floating"></script>
   <script src="assets/shared/js/06a-project-storage-foundation.js?v=20260904-naming-data-safety"></script>
   <script src="assets/shared/js/06aa-naming-file-safety.js?v=20260905-authoritative-import"></script>
-  <script src="assets/shared/js/06b-workspace-restore-autosave.js?v=20260903-js-module-split"></script>
+  <script src="assets/shared/js/06b-workspace-restore-autosave.js?v=20261110-workspace-library"></script>
   <script src="assets/shared/js/06c-workspace-library-settings.js?v=20260903-js-module-split"></script>
   <script src="assets/shared/js/06d-editor-paste-settings.js?v=20260905-portable-naming-selects"></script>
   <script src="assets/pages/home/js/overview/00-home-overview-utils.js?v=20260610-scenario-overview"></script>

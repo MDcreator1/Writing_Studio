@@ -1359,33 +1359,136 @@ async function manualSave() {
   }
 }
 
+let workspacePickerPending = false;
+let workspaceFolderAwaitingPermission = null;
+
+function setWorkspaceFolderFeedback(message, needsPermission = false) {
+  if (isHomePage()) setHomeMenuStatus(message);
+  const button = document.getElementById('workspacePermissionBtn');
+  if (button) button.hidden = !needsPermission;
+  showProjectGate(message);
+}
+
+async function connectSelectedWorkspaceFolder(handle) {
+  showAppLoader(text().loadingProject);
+  await loadWorkspaceFolder(handle);
+  workspaceFolderAwaitingPermission = null;
+  const button = document.getElementById('workspacePermissionBtn');
+  if (button) button.hidden = true;
+  hideProjectGate();
+  refreshProjectUI();
+  if (isHomePage()) {
+    try {
+      await renderHomeRecentProjectsList();
+    } catch (error) {
+      console.warn('Workspace project list failed:', error);
+      closeHomeRecentProjectsPanel();
+      setHomeMenuStatus(`Workspace ready: ${handle.name}. Could not load the project list. Open Recent Project to try again.`);
+    }
+  }
+}
+
+async function prepareSelectedWorkspaceFolder(handle) {
+  workspaceFolderAwaitingPermission = handle;
+  if (!(await verifyProjectPermission(handle, false))) {
+    setWorkspaceFolderFeedback(`Folder selected: "${handle.name}". Click Allow folder editing, then approve the browser request so your writing can be saved.`, true);
+    return;
+  }
+  await connectSelectedWorkspaceFolder(handle);
+}
+
+async function receiveWorkspaceFolderDrop(event) {
+  event.preventDefault();
+  if (workspacePickerPending) return;
+  const items = Array.from(event.dataTransfer?.items || []).filter(item => item.kind === 'file');
+  if (items.length !== 1 || typeof items[0].getAsFileSystemHandle !== 'function') {
+    setWorkspaceFolderFeedback('Drag one workspace folder from File Explorer, rather than individual files.');
+    return;
+  }
+  workspacePickerPending = true;
+  try {
+    // Capture the handle in the drop event; the drag data expires after this event.
+    const handlePromise = items[0].getAsFileSystemHandle();
+    const handle = await handlePromise;
+    if (!handle || handle.kind !== 'directory') {
+      setWorkspaceFolderFeedback('Choose a folder, rather than an individual file.');
+      return;
+    }
+    await prepareSelectedWorkspaceFolder(handle);
+  } catch (error) {
+    console.warn('Dropped workspace connection failed:', error.name, error.message);
+    setWorkspaceFolderFeedback(`Could not connect the dropped folder (${error.name}): ${error.message}`);
+  } finally {
+    workspacePickerPending = false;
+    hideAppLoader();
+  }
+}
+
+function initWorkspaceFolderDropTarget() {
+  ['workspaceFolderDropTarget', 'homeWorkspaceFolderDropTarget'].forEach(id => {
+    const target = document.getElementById(id);
+    if (!target) return;
+    target.addEventListener('dragover', event => {
+      if (!Array.from(event.dataTransfer?.items || []).some(item => item.kind === 'file')) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+    });
+    target.addEventListener('drop', receiveWorkspaceFolderDrop);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', initWorkspaceFolderDropTarget);
+
+async function allowSelectedWorkspaceFolder() {
+  const handle = workspaceFolderAwaitingPermission;
+  if (!handle || workspacePickerPending) return;
+  workspacePickerPending = true;
+  try {
+    // Request directly from this button click, before awaiting any other work.
+    const permission = await handle.requestPermission({ mode: 'readwrite' });
+    if (permission !== 'granted') {
+      setWorkspaceFolderFeedback(`Editing access was not granted for "${handle.name}". Allow this site's file editing request in the browser, then try again.`, true);
+      return;
+    }
+    await connectSelectedWorkspaceFolder(handle);
+  } catch (error) {
+    console.warn('Workspace connection failed:', error.name, error.message);
+    setWorkspaceFolderFeedback(`Could not connect "${handle.name}" (${error.name}): ${error.message}`, true);
+  } finally {
+    workspacePickerPending = false;
+    hideAppLoader();
+  }
+}
+
 async function selectLocalProjectFolder() {
+  if (workspacePickerPending) return;
   if (!supportsLocalProjectFolders()) {
     showProjectGate(text().projectUnsupported);
     return;
   }
 
+  workspacePickerPending = true;
+  workspaceFolderAwaitingPermission = null;
+  const permissionButton = document.getElementById('workspacePermissionBtn');
+  if (permissionButton) permissionButton.hidden = true;
+  let stage = 'folder selection';
   try {
+    if (isHomePage()) setHomeMenuStatus('Choose your workspace in the folder selection window.');
     const handle = await window.showDirectoryPicker({
       id: 'lekhak-manch-story',
       mode: 'readwrite'
     });
 
-    if (!(await verifyProjectPermission(handle, true))) {
-      showProjectGate(text().projectPermissionNeeded);
-      return;
-    }
-
-    showAppLoader(text().loadingProject);
-    await loadWorkspaceFolder(handle);
-    hideProjectGate();
-    refreshProjectUI();
+    stage = 'workspace connection';
+    await prepareSelectedWorkspaceFolder(handle);
   } catch (error) {
-    if (error.name !== 'AbortError') {
-      console.warn('Story folder selection failed:', error);
-      showProjectGate(text().projectPermissionNeeded);
-    }
+    console.warn(`Workspace ${stage} failed:`, error.name, error.message);
+    const message = stage === 'folder selection' && error.name === 'AbortError'
+      ? 'No folder was selected. Try Choose Folder again, or drag your workspace folder from File Explorer onto the box below.'
+      : `Could not complete ${stage} (${error.name}): ${error.message || 'Please try again.'}`;
+    setWorkspaceFolderFeedback(message);
   } finally {
+    workspacePickerPending = false;
     hideAppLoader();
   }
 }
