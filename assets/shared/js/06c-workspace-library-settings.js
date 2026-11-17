@@ -143,7 +143,7 @@ function navigateToHomePage() {
 function openNewStoryPanel(anchorId = 'storyLibraryBtn') {
   if (typeof anchorId !== 'string') anchorId = 'storyLibraryBtn';
   if (typeof closeHomeRecentProjectsPanel === 'function') closeHomeRecentProjectsPanel();
-  if (!workspaceDirectoryHandle) {
+  if (!workspaceDirectoryHandle && !isHomePage()) {
     setHomeMenuStatus(text().chooseWorkspaceFirst);
     showProjectGate(text().chooseWorkspaceFirst);
     return;
@@ -151,6 +151,14 @@ function openNewStoryPanel(anchorId = 'storyLibraryBtn') {
   closeStoryLibraryPanel();
   setHomeMenuStatus('');
   openStoryInfoModal({ mode: 'create', anchorId });
+  const storage=document.getElementById('homeNewProjectStorage');
+  if(storage){
+    const cloud=Boolean(window.LmDatabasePanel?.homeConnection());
+    const synced=Boolean(window.LmDatabasePanel?.homeSynced());
+    storage.value=synced?'synced':cloud?'cloud':'local';
+    storage.closest('label').hidden=Boolean(workspaceDirectoryHandle||cloud)&&!synced;
+  }
+
 }
 
 async function listWorkspaceStories() {
@@ -303,7 +311,102 @@ function homeRecentProjectsEmptyHtml(title, body, actionHtml = '') {
     </div>`;
 }
 
-async function renderHomeRecentProjectsPanel() {
+let homeRecentStorage='local';
+let homeRecentRequest=0;
+async function openSyncedDatabaseSetup() {
+  try {
+    if(!workspaceDirectoryHandle)await selectLocalProjectFolder();
+    if(!workspaceDirectoryHandle)return;
+    let prefill;
+    try {
+      const file=await workspaceDirectoryHandle.getFileHandle('Lekhak_Database.json');
+      const config=JSON.parse(await (await file.getFile()).text());
+      if(typeof config.baseUrl==='string'){
+        prefill={name:typeof config.name==='string'?config.name:'',baseUrl:window.LmRemoteAdapter.normalizeUrl(config.baseUrl)};
+      }
+    } catch(error) {
+      if(error.name!=='NotFoundError')showMiniReminder('Folder connection details: '+error.message);
+    }
+    openDatabaseConnectionPanel(prefill);
+  }catch(error){showMiniReminder(error.message);}
+}
+
+async function linkedHomeProjects(connection) {
+  const linked=new Map();
+  if(!connection||!workspaceDirectoryHandle)return linked;
+  for(const local of await listWorkspaceRecentProjects()){
+    const reference=local.projectPath||local.folderName;
+    try{
+      const {handle}=await resolveWorkspaceStoryHandle(reference);
+      const link=await window.LmFolderSync.create(handle,connection).readLink();
+      if(link&&!link.initializing)linked.set(link.projectId,{reference,handle});
+    }catch(error){if(error.name!=='NotFoundError')console.warn(error.message);}
+  }
+  return linked;
+}
+
+async function removeHomeProject(local, project) {
+  try{
+    const choice=local&&project ? await new Promise(resolve=>{
+      const dialog=window.LmAppPanel.create('Remove synced project');
+      const title=document.createElement('h3');
+      title.textContent='Remove synced project?';
+      const form=document.createElement('form');
+      form.addEventListener('submit',event=>event.preventDefault());
+      for(const [value,label] of [['cancel','Cancel'],['local','Local only'],['cloud','Cloud only'],['both','Both']]){
+        const button=document.createElement('button');
+        button.type='button';button.value=value;button.textContent=label;
+        button.onclick=()=>{dialog.returnValue=value;dialog.close();};
+        form.append(button);
+      }
+      dialog.append(title,form);
+      dialog.addEventListener('close',()=>{resolve(dialog.returnValue);dialog.remove();},{once:true});
+      document.body.append(dialog);dialog.focus();
+    }) : local?'local':'cloud';
+    if(!['local','cloud','both'].includes(choice))return;
+    const removeLocal=choice==='local'||choice==='both';
+    const removeCloud=choice==='cloud'||choice==='both';
+    await window.LmDatabasePanel.withFolderSyncPaused(project?.id,async()=>{
+      let parent=workspaceDirectoryHandle;
+      let name;
+      if(removeLocal){
+        const path=splitProjectPath(local.reference);
+        name=path.pop();
+        if(!name)throw new Error('Project folder is unavailable.');
+        for(const part of path)parent=await parent.getDirectoryHandle(part);
+        const actual=await parent.getDirectoryHandle(name);
+        if(!project){
+          try{
+            const journal=await actual.getDirectoryHandle('.lekhak-sync');
+            await journal.getFileHandle('folder-link.json');
+            throw new Error('Connect this project’s Database account before deleting a linked folder.');
+          }catch(error){if(error.name!=='NotFoundError')throw error;}
+        }
+        if(local.handle&&!(await actual.isSameEntry(local.handle)))throw new Error('Project folder changed.');
+      }
+      if(removeCloud)await window.LmDatabasePanel.deleteHomeProject(project);
+      if(removeLocal)await parent.removeEntry(name,{recursive:true});
+      if(removeCloud&&!removeLocal&&local){
+        const journal=await local.handle.getDirectoryHandle('.lekhak-sync');
+        await journal.removeEntry('folder-link.json');
+      }
+    });
+    await renderHomeRecentProjectsPanel();
+  }catch(error){showMiniReminder(error.message);}
+}
+
+function homeProjectDeleteButton(local,project){
+  const button=document.createElement('button');
+  button.type='button';button.textContent='×';button.setAttribute('aria-label','Delete project');
+  button.onclick=()=>void removeHomeProject(local,project);
+  return button;
+}
+
+async function renderHomeRecentProjectsPanel(storage = homeRecentStorage) {
+  if(!window.LmDatabasePanel?.homeSynced())storage=window.LmDatabasePanel?.homeConnection()?'cloud':'local';
+  window.LmDatabasePanel?.updateHomeStorage();
+  homeRecentStorage=storage;
+  const request=++homeRecentRequest;
   const list = document.getElementById('homeRecentProjectsPanelList');
   const count = document.getElementById('homeRecentProjectsCount');
   if (!list) return false;
@@ -318,6 +421,36 @@ async function renderHomeRecentProjectsPanel() {
   list.innerHTML = homeRecentProjectsEmptyHtml(text().loading, 'Project list is loading...');
   setHomeRecentProjectsPanel(true);
 
+  document.querySelectorAll('[data-recent-storage]').forEach(button =>
+    button.setAttribute('aria-pressed',String(button.dataset.recentStorage===storage)));
+  if(storage!=='local'){
+    const connection=window.LmDatabasePanel?.homeConnection();
+    if(!connection){
+      list.innerHTML=homeRecentProjectsEmptyHtml('Database connection','Connect to see projects.',
+        storage==='synced'
+          ? '<button type="button" onclick="openSyncedDatabaseSetup()">Synced Database</button>'
+          : '<button type="button" onclick="openDatabaseConnectionPanel()">Database</button>');
+      return true;
+    }
+    try{
+      let projects=await window.LmDatabasePanel.homeProjects();
+      const linked=await linkedHomeProjects(connection);
+      if(storage==='synced')projects=projects.filter(project=>linked.has(project.id));
+      if(request!==homeRecentRequest)return true;
+      list.replaceChildren();
+      count.textContent=projects.length+' projects';
+      for(const project of projects){
+        const button=document.createElement('button');
+        button.type='button';button.className='story-library-item';button.textContent=project.title;
+        button.onclick=()=>window.LmDatabasePanel.openHomeProject(project.id,project.type).catch(error=>showMiniReminder(error.message));
+        const row=document.createElement('div');
+        row.append(button,homeProjectDeleteButton(linked.get(project.id),project));
+        list.append(row);
+      }
+    }catch(error){if(request===homeRecentRequest)list.textContent=error.message;}
+    positionHomeRecentProjectsPanel();
+    return true;
+  }
   if (!workspaceDirectoryHandle) {
     if (count) count.textContent = text().chooseWorkspaceFirst;
     list.innerHTML = homeRecentProjectsEmptyHtml(
@@ -331,11 +464,30 @@ async function renderHomeRecentProjectsPanel() {
   }
 
   const stories = await listWorkspaceRecentProjects();
+  if(request!==homeRecentRequest)return true;
   if (count) count.textContent = stories.length ? `${stories.length} project${stories.length === 1 ? '' : 's'}` : text().noExistingStoriesFound;
   list.innerHTML = stories.length
     ? `<div class="story-library-kicker">${escapeHtml(text().existingStoriesTitle)}</div>
       ${stories.map(story => recentProjectButtonHtml(story, 'data-home-recent-story-folder')).join('')}`
     : homeRecentProjectsEmptyHtml(text().noExistingStoriesFound, 'No project has been created in this workspace yet.');
+  const connection=window.LmDatabasePanel?.homeConnection();
+  const linked=await linkedHomeProjects(connection);
+  if(request!==homeRecentRequest)return true;
+  const byReference=new Map([...linked].map(([id,local])=>[local.reference,{id,local}]));
+  for(const button of list.querySelectorAll('[data-home-recent-story-folder]')){
+    const reference=button.dataset.homeRecentStoryFolder;
+    const match=byReference.get(reference);
+    const row=document.createElement('div');
+    button.before(row);row.append(button);
+    const remove=homeProjectDeleteButton({reference},null);
+    if(match)remove.onclick=async()=>{
+      try{
+        const project=(await connection.adapter.manifest(match.id)).project;
+        await removeHomeProject(match.local,project);
+      }catch(error){showMiniReminder(error.message);}
+    };
+    row.append(remove);
+  }
   positionHomeRecentProjectsPanel();
   return true;
 }
@@ -476,6 +628,28 @@ async function openWorkspaceStory(folderName) {
 }
 
 async function createStoryFromInfoForm() {
+  const storage=document.getElementById('homeNewProjectStorage')?.value||'local';
+  if(storage!=='local'&&!window.LmDatabasePanel.homeConnection()){
+    if(storage==='synced')await openSyncedDatabaseSetup();
+    else openDatabaseConnectionPanel();
+    return;
+  }
+  if(storage==='cloud'){
+    try{
+      await window.LmDatabasePanel.createHomeProject({
+        title:document.getElementById('storyTitleInp').value.trim()||'Untitled Story',
+        type:document.getElementById('storyTypeInp').value,
+        language:document.getElementById('storyLanguageInp').value==='hi'?'hi':'en',
+        author:document.getElementById('storyAuthorInp').value.trim(),
+        synopsis:document.getElementById('storySynopsisInp').value.trim()
+      });
+    }catch(error){showMiniReminder(error.message);}
+    return;
+  }
+  if (!workspaceDirectoryHandle && isHomePage()) {
+    await selectLocalProjectFolder();
+    if(!workspaceDirectoryHandle)return;
+  }
   if (!workspaceDirectoryHandle) {
     showProjectGate(text().chooseWorkspaceFirst);
     return;
@@ -496,11 +670,11 @@ async function createStoryFromInfoForm() {
     return;
   }
   if (isNewsProjectType(storyType)) {
-    await createNewsProjectFromInfoForm(storyTitle, typeFolderName);
+    await createNewsProjectFromInfoForm(storyTitle, typeFolderName, {sync:storage==='synced'});
     return;
   }
   const storyHandle = await createUniqueStoryDirectory(storyTitle, storyType);
-  projectDirectoryHandle = storyHandle;
+  setActiveProjectFolder(storyHandle);
   setActiveProjectTypeFolderName(typeFolderName);
   projectManifest = createProjectManifest(storyTitle);
   projectManifest.type = storyType;
@@ -551,6 +725,10 @@ async function createStoryFromInfoForm() {
     if (typeof window.lmAdvancedWordEditing.flush === 'function') await window.lmAdvancedWordEditing.flush();
   }
 
+  if(storage==='synced'){
+    try{await window.LmDatabasePanel.linkNewHomeProject(storyHandle);}
+    catch(error){showMiniReminder('Local project created. Sync: '+error.message);return;}
+  }
   closeStoryInfoModal();
   hideProjectGate();
   if (typeof saveToStorage === 'function') saveToStorage(false);
@@ -1035,9 +1213,35 @@ function isEditorFindModeSystemActive() {
   return true;
 }
 
+// Browsers do not expose a reliable physical keyboard connection event.
+const editorTouchInput = matchMedia('(pointer: coarse)');
+let editorPhysicalKeyboardUsed = false;
+function editorAutoScrollAvailable() {
+  return !editorTouchInput.matches || editorPhysicalKeyboardUsed;
+}
+function updateEditorAutoScrollAvailability() {
+  const available = editorAutoScrollAvailable();
+  document.documentElement.classList.toggle('editor-touch-autoscroll-hidden', !available);
+  if (!available) {
+    if (typeof cancelEditorCaretAutoScroll === 'function') cancelEditorCaretAutoScroll();
+    if (typeof selectAdvancedEditorTopSection === 'function' &&
+        document.querySelector('#advancedEditorSettingsModal:not([hidden]) [data-advanced-settings-nav="autoscroll"].is-active')) {
+      selectAdvancedEditorTopSection('global');
+    }
+  }
+}
+editorTouchInput.addEventListener('change', updateEditorAutoScrollAvailability);
+document.addEventListener('keydown', event => {
+  if (!editorTouchInput.matches || editorPhysicalKeyboardUsed || !event.isTrusted || event.isComposing ||
+      !['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) return;
+  editorPhysicalKeyboardUsed = true;
+  updateEditorAutoScrollAvailability();
+}, true);
+updateEditorAutoScrollAvailability();
+
 function isEditorAutoScrollSystemActive() {
   return Boolean(
-    isEditorAutoScrollEnabled &&
+    editorAutoScrollAvailable() && isEditorAutoScrollEnabled &&
     !(typeof isChapterReviewModeForEditorSettings === 'function' && isChapterReviewModeForEditorSettings()) &&
     (typeof canEditActiveDocument !== 'function' || canEditActiveDocument())
   );
@@ -1138,6 +1342,7 @@ function syncFocusSaveStatusIndicator(state = currentSaveStatusState(), label = 
 }
 
 function setSaveStatusDot(state = 'idle', label = defaultSaveStatusText()) {
+  if (window.LmDatabaseEditor?.active() && (state === 'saved' || state === 'idle')) label = window.LmDatabaseEditor.label();
   const statusDot = document.getElementById('save-status');
   if (!statusDot) return;
 
@@ -1168,6 +1373,7 @@ function setSaveStatusDot(state = 'idle', label = defaultSaveStatusText()) {
 }
 
 function setSidePanelSaveLine(state = 'idle', label = text().saved) {
+  if (window.LmDatabaseEditor?.metadataBusy()) { state='busy';label='Metadata इस डिवाइस पर save हो रही है'; }
   const saveLine = document.getElementById('side-panel-save-line');
   if (!saveLine) return;
 

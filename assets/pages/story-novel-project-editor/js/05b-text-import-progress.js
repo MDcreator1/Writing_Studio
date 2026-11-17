@@ -5,8 +5,8 @@
     const action = promoting ? 'promotion' : 'import';
     const completedLabel = promoting ? 'chapters promoted' : 'documents saved';
     const previousFocus = document.activeElement;
-    const dialog = document.createElement('dialog');
-    dialog.className = 'text-import-progress';
+    const dialog = window.LmAppPanel.create('Text import progress');
+    dialog.classList.add('text-import-progress');
     dialog.setAttribute('aria-labelledby', 'textImportProgressTitle');
     dialog.innerHTML = `
       <div class="text-import-progress-heading"><span class="text-import-progress-spinner" aria-hidden="true"></span>
@@ -22,7 +22,7 @@
     const percent = dialog.querySelector('.text-import-progress-count strong');
     const button = dialog.querySelector('button');
     const operation = {
-      project: projectDirectoryHandle, cancelled: false, committed: false, rollingBack: false,
+      project: window.LmDatabaseEditor?.projectIdentity() || projectDirectoryHandle, cancelled: false, committed: false, rollingBack: false,
       update(message, value, saved = 0) {
         if (operation.cancelled || operation.rollingBack) return;
         status.textContent = message;
@@ -42,7 +42,7 @@
       async checkpoint() {
         // Let the progress paint and handle Cancel between preparation/file steps.
         await new Promise(resolve => setTimeout(resolve, 0));
-        if (operation.project !== projectDirectoryHandle) throw new Error(`Project changed during ${action}.`);
+        if (operation.project !== (window.LmDatabaseEditor?.projectIdentity() || projectDirectoryHandle)) throw new Error(`Project changed during ${action}.`);
         if (operation.cancelled) throw Object.assign(new Error(`${promoting ? 'Promotion' : 'Import'} cancelled.`), { name: 'AbortError' });
       },
       commit() {
@@ -73,10 +73,10 @@
     };
     const beforeUnload = event => { event.preventDefault(); event.returnValue = ''; };
     button.addEventListener('click', cancel);
-    dialog.addEventListener('keydown', event => event.stopPropagation());
+
     dialog.addEventListener('cancel', event => { event.preventDefault(); cancel(); });
     window.addEventListener('beforeunload', beforeUnload);
-    dialog.showModal();
+    dialog.focus();
     button.focus();
     return operation;
   }
@@ -95,6 +95,28 @@
     let editorState = null;
     try {
       await operation.checkpoint();
+      if (!promoting && window.LmDatabaseEditor?.active()) {
+        const usedTitles = new Set();
+        const documents = proposedDocuments.map((item, index) => {
+          const title = item.title || advancedImportDocumentTitle(state, index);
+          return {
+            kind: asChapters ? 'chapter' : 'draft',
+            title: asChapters ? advancedPromoteUniqueChapterTitle(title, usedTitles) : title.trim(),
+            text: advancedPromoteNormalizedText(item.text)
+          };
+        });
+        if (remainder) documents.push({
+          kind: 'draft', title: advancedImportDocumentTitle(state, proposedDocuments.length, 'drafts'), text: remainder
+        });
+        operation.update('Saving imported documents…', 65);
+        await window.LmDatabaseEditor.importTextDocuments(documents, {
+          raw: asChapters && state.destination === 'raw' && state.showDestination && hasRawChaptersInPanel(projectManifest),
+          checkpoint: operation.checkpoint,
+          onCommitted: operation.commit
+        });
+        closeAdvancedDraftPromotePanel();
+        return;
+      }
       // Finish any autosave already in flight before taking the rollback baseline.
       while (typeof isAutoSaveRunning !== 'undefined' && isAutoSaveRunning) await operation.checkpoint();
       if (typeof flushEditorHTMLMemoryCommit === 'function') await flushEditorHTMLMemoryCommit();

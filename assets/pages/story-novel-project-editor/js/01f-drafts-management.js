@@ -37,8 +37,9 @@ function openPartDetailsPanel(partIndex, anchor = null) {
   const part = normalizePart(manifest.parts[partIndex], partIndex);
   const partChapters = chapters.filter(chapter => chapter.partIndex === partIndex);
   const partWords = partWordTotal(partIndex);
-  const canDelete = partWords === 0;
-  const canDeleteKeepChapters = partIndex === manifest.parts.length - 1 && partChapters.length > 0 && partWords > 0;
+  const database = window.LmDatabaseEditor?.active();
+  const canDelete = database ? partChapters.length === 0 : partWords === 0;
+  const canDeleteKeepChapters = partIndex === manifest.parts.length - 1 && partChapters.length > 0 && (database || partWords > 0);
   const partTitle = part.title || defaultPartTitle(partIndex);
   const partSynopsis = part.synopsis || '';
   activePartDetailsIndex = partIndex;
@@ -185,6 +186,7 @@ function openDraftActionsPanel(draftIndex, anchor = null) {
   const panel = document.getElementById('draftDetailsPanel');
   const draft = chapterDrafts[draftIndex];
   if (!panel || !draft) return;
+  const databaseMode = window.LmDatabaseEditor?.active();
   const canDeleteDraft = canDeleteDraftIndexes([draftIndex]);
   const deleteTitle = canDeleteDraft ? text().deleteDraft : text().draftDeleteLastDocumentBlocked;
 
@@ -204,8 +206,8 @@ function openDraftActionsPanel(draftIndex, anchor = null) {
     </div>
     <div class="draft-panel-actions">
       <button class="part-save-btn" type="button" onclick="openSidebarDraftPromoteModePanel(${draftIndex}, this)">${escapeHtml(text().saveDraftAsChapter)}</button>
-      <button class="part-delete-btn" type="button" ${canDeleteDraft ? `onclick="deleteDraftWithConfirm(${draftIndex})"` : 'disabled'}
-        title="${escapeHtml(deleteTitle)}" aria-label="${escapeHtml(deleteTitle)}">${escapeHtml(text().deleteDraft)}</button>
+      ${databaseMode ? '' : `<button class="part-delete-btn" type="button" ${canDeleteDraft ? `onclick="deleteDraftWithConfirm(${draftIndex})"` : 'disabled'}
+        title="${escapeHtml(deleteTitle)}" aria-label="${escapeHtml(deleteTitle)}">${escapeHtml(text().deleteDraft)}</button>`}
     </div>`;
 
   panel.hidden = false;
@@ -380,7 +382,7 @@ async function openChapterDetailsPanel(chapterIndex, anchor = null) {
   ensureChapters();
   if (isEditingChapterTitle) commitChapterTitleEdit();
   syncCurrentChapterContentFromEditor();
-  if (!(await ensureChapterContentLoaded(chapterIndex))) return;
+  if (!window.LmDatabaseEditor?.active() && !(await ensureChapterContentLoaded(chapterIndex))) return;
   const panel = document.getElementById('chapterDetailsPanel');
   const chapter = chapters[chapterIndex];
   if (!panel || !chapter) return;
@@ -394,8 +396,12 @@ async function openChapterDetailsPanel(chapterIndex, anchor = null) {
   const part = hasParts ? normalizePart(manifest.parts[partIndex], partIndex) : null;
   const partLabel = part ? part.title || defaultPartTitle(partIndex) : copy.chapters;
   const stats = chapterDetailsStats(chapter);
+  if (window.LmDatabaseEditor?.active() && chapter._contentLoadState === 'unloaded') {
+    stats.words = chapter._wordCount ?? 0;
+    stats.characters = '—';
+  }
   const canDelete = stats.words === 0;
-  const canMoveToDraft = chapterIndex === chapters.length - 1;
+  const canMoveToDraft = window.LmDatabaseEditor?.active() || chapterIndex === chapters.length - 1;
   const chapterTitle = chapterDisplayTitle(chapter, chapterIndex);
   activeChapterDetailsIndex = chapterIndex;
   activeFloatingAnchor = anchor;
@@ -590,6 +596,15 @@ async function savePartDetailsPanel(partIndex) {
     showDuplicateReminder(text().duplicatePartTitle);
     return;
   }
+  if(window.LmDatabaseEditor?.active()){
+    if(saveButton)saveButton.disabled=true;
+    try{
+      await window.LmDatabaseEditor.savePart(partIndex,{title:nextTitle,synopsis:synopsisInput?.value.trim()||''});
+      closePartDetailsPanel();
+    }catch(error){showMiniReminder(error.message);}
+    finally{if(saveButton)saveButton.disabled=false;}
+    return;
+  }
 
   manifest.parts[partIndex] = {
     ...existingPart,
@@ -774,6 +789,7 @@ async function deleteEmptyChaptersByIndexes(chapterIndexes = []) {
 }
 
 async function moveChapterToDraft(chapterIndex) {
+  if (window.LmDatabaseEditor?.active()) return moveChaptersToDraft([chapterIndex]);
   ensureChapters();
   if (chapterIndex !== chapters.length - 1) return;
   if (isEditingChapterTitle && chapterIndex === curChap) {
@@ -936,6 +952,11 @@ function chapterToDraftPayload(chapterIndex, draftIndex, timestamp = new Date().
 }
 
 async function moveChaptersToDraft(chapterIndexes = []) {
+  if (window.LmDatabaseEditor?.active()) {
+    try { await window.LmDatabaseEditor.moveChaptersToDraft(chapterIndexes); }
+    catch (error) { showMiniReminder(error.message); }
+    return;
+  }
   ensureChapters();
   const uniqueIndexes = Array.from(new Set(chapterIndexes))
     .filter(index => Number.isInteger(index) && index >= 0 && index < chapters.length)
@@ -1116,6 +1137,11 @@ function syncSidebarAfterPartKeepDelete(wasDraftActive = false, activeChapterMov
 }
 
 async function deletePartIfEmpty(partIndex) {
+  if (window.LmDatabaseEditor?.active()) {
+    try { await window.LmDatabaseEditor.deletePart(partIndex); closePartDetailsPanel(); }
+    catch (error) { showMiniReminder(error.message); }
+    return;
+  }
   ensureChapters();
   syncCurrentChapterContentFromEditor();
   const manifest = normalizeProjectManifest(projectManifest || createProjectManifest());
@@ -1186,6 +1212,11 @@ async function deletePartIfEmpty(partIndex) {
 }
 
 async function deletePartKeepingChapters(partIndex) {
+  if (window.LmDatabaseEditor?.active()) {
+    try { await window.LmDatabaseEditor.deletePart(partIndex); closePartDetailsPanel(); }
+    catch (error) { showMiniReminder(error.message); }
+    return;
+  }
   ensureChapters();
   syncCurrentChapterContentFromEditor();
   const manifest = normalizeProjectManifest(projectManifest || createProjectManifest());

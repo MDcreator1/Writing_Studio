@@ -5,7 +5,7 @@ async function init() {
   let loadedLocalProject = false;
 
   try {
-    loadedLocalProject = await restoreLocalProject();
+    loadedLocalProject = await window.LmDatabaseEditor?.restore() || await restoreLocalProject();
   } catch (error) {
     console.warn('Saved story folder restore failed:', error);
   }
@@ -32,7 +32,7 @@ async function init() {
     renderNotes();
   }
   loadEditor();
-  if (!supportsLocalProjectFolders()) showProjectGate(projectGateMessage);
+  if (!supportsLocalProjectFolders() && !window.LmDatabaseEditor?.active()) showProjectGate(projectGateMessage);
   else hideProjectGate();
   hideAppLoader(true);
 
@@ -616,6 +616,7 @@ function saveToStorage(updateCurrentContent = true) {
     if (documentItem) documentItem.content = currentContent;
   }
   saveEditorSettings({ persistProject: false });
+  if (window.LmDatabaseEditor?.active()) { window.LmDatabaseEditor.remember(); return; }
   if (!projectDirectoryHandle) {
     localStorage.setItem('lm_chapters', JSON.stringify(chaptersForStorage()));
   }
@@ -731,7 +732,7 @@ function applyLanguage() {
 
   setText('brandName', copy.brand);
   setText('chapterPanelTitle', copy.chapters);
-  setText('addChapterBtn', copy.addChapter);
+  setText('addChapterBtn', window.LmDatabaseEditor?.active() ? copy.addDraft : copy.addChapter);
   setText('partsHeading', copy.parts);
   setText('notePanelTitle', copy.sideNotes);
   setText('tagsTabBtn', copy.tagsTab);
@@ -1074,6 +1075,7 @@ function syncActiveEditorEditState() {
 }
 
 async function unlockChapterEditing() {
+  if (window.LmDatabaseEditor?.active()) return window.LmDatabaseEditor.toggleRecovery();
   if (isChapterEditToggleBusy) return;
   if (isDraftActive()) return;
 
@@ -1375,6 +1377,7 @@ async function commitChapterTitleEdit() {
 }
 
 async function performChapterTitleEditCommit() {
+  if (window.LmDatabaseEditor?.active()) return window.LmDatabaseEditor.commitTitle();
   if (!isEditingChapterTitle) return true;
 
   ensureChapters();

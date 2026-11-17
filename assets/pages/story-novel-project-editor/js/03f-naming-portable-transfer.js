@@ -409,9 +409,13 @@ async function exportPortableNamingData() {
   }
 }
 
+function portableNamingProject() {
+  return window.LmDatabaseEditor?.projectIdentity() || projectDirectoryHandle;
+}
+
 async function loadPortableNamingImportFile(file) {
   if (!file) return;
-  const project = projectDirectoryHandle;
+  const project = portableNamingProject();
   namingPortableTransferState = { stage: 'loading', phase: 'validate', message: 'Checking JSON version and structure…', progress: 0, project };
   renderPortableNamingTransferPanel();
   try {
@@ -422,7 +426,7 @@ async function loadPortableNamingImportFile(file) {
     namingPortableTransferState.message = 'Comparing imported names with this project…';
     renderPortableNamingTransferPanel();
     const fullData = normalizeNamingData(await window.LmInitialRendering?.ensureFullNamingData?.({ forceSource: true }) || namingData);
-    if (project !== projectDirectoryHandle) throw new Error('Project changed while the Naming import was loading.');
+    if (project !== portableNamingProject()) throw new Error('Project changed while the Naming import was loading.');
     namingPortableTransferState = {
       stage: 'review', project, payload, rows: analyzePortableNamingImport(payload, fullData),
       existingCategoryTitles: (fullData.categories || []).map(category => category.title || category.id),
@@ -540,7 +544,7 @@ async function applyPortableNamingImport() {
   try {
     const resolution = namingPortableResolution(state);
     if (resolution.unresolved) throw new Error(`Resolve all ${resolution.unresolved} remaining conflicts before importing.`);
-    if (state.project !== projectDirectoryHandle) throw new Error('Project changed before import could begin.');
+    if (state.project !== portableNamingProject()) throw new Error('Project changed before import could begin.');
     const current = normalizeNamingData(await window.LmInitialRendering?.ensureFullNamingData?.({ forceSource: true }) || namingData);
     const targetValidation = validatePortableNamingImportTargets(state.rows, current);
     if (!targetValidation.valid) throw new Error(targetValidation.reason);
@@ -613,7 +617,7 @@ async function applyPortableNamingImport() {
       sourceIndex = await window.LmNamingDeepScanSource.buildTextIndex({
         onProgress: ({ loaded, total }) => namingPortableSetProgress(`Reading source documents ${loaded}/${total}…`, 12 + (total ? loaded / total * 24 : 24))
       });
-      if (state.project !== projectDirectoryHandle) throw new Error('Project changed during Naming Deep Scan.');
+      if (state.project !== portableNamingProject()) throw new Error('Project changed during Naming Deep Scan.');
       const checkedAt = new Date().toISOString();
       const documents = namingDocumentRegistry(checkedAt).map(item => ({
         ...item,
@@ -629,8 +633,10 @@ async function applyPortableNamingImport() {
     }
 
     namingPortableSetProgress('Saving verified Naming data…', 74);
-    await writeNamingDataToProject({ authoritativeData: working, deduplicateDescriptionHistory: true });
-    if (state.project !== projectDirectoryHandle) throw new Error('Project changed before Naming save completed.');
+    const saved = await writeNamingDataToProject({ authoritativeData: working, deduplicateDescriptionHistory: true });
+    if (saved === false) throw new Error('Naming data could not be saved.');
+    if (window.LmDatabaseEditor?.active()) namingData = working;
+    if (state.project !== portableNamingProject()) throw new Error('Project changed before Naming save completed.');
     let warning = '';
     try {
       namingPortableSetProgress('Rebuilding document Naming snapshots…', 82);

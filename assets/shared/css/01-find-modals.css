@@ -1,4 +1,14 @@
 /* Project setup gate */
+.workspace-folder-drop-target {
+  padding: 16px;
+  margin-top: 12px;
+  border: 2px dashed var(--muted);
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+}
+
 .project-gate {
   position: fixed;
   inset: 0;

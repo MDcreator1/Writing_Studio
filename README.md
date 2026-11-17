@@ -41,6 +41,7 @@ python -m http.server 8000
 
 फिर खोलें:
 
+
 ```text
 http://localhost:8000/home.html
 ```
@@ -92,7 +93,7 @@ Story/Novel project की मुख्य durable files:
 3. `localStorage` preferences, active UI state और fallback/projection caches रखता है।
 4. Editor DOM/Worker state केवल active editing buffer है; save flow इसे document object और project file में commit करता है।
 
-Project text को remote backend पर भेजने वाला production integration इस repository में नहीं है। AI screens local prompt/monitor prototypes हैं।
+Optional storage backend और opt-in Database draft editing अब development में हैं। Default Local only workflow local files उपयोग करता है; Database connection user को अलग configure करना होगा। Live deployment और सभी writing features का server integration अभी पूरा नहीं है।
 
 ## Source layout
 
@@ -114,7 +115,7 @@ Scripts ES modules नहीं हैं। HTML में उनका numeric
 
 ## Tests
 
-पुरानी test suites हटाई गई हैं। बचा हुआ draft merge safety test सीधे Node से चलाएँ; बाकी flows के लिए WORKING.md की manual regression checklist उपयोग करें:
+पुरानी test suites हटाई गई हैं। बचा हुआ draft merge safety test सीधे Node से चलाएँ; बाकी flows के लिए docs/WORKING.md की manual regression checklist उपयोग करें:
 
 ```powershell
 node tests/draft-merge-safety.test.js
@@ -128,8 +129,13 @@ Get-ChildItem assets -Recurse -Filter *.js | ForEach-Object { node --check $_.Fu
 
 ## Documentation
 
-- [ARCHITECTURE.md](./ARCHITECTURE.md) — modules, state, storage, data flow और subsystem boundaries
-- [WORKING.md](./WORKING.md) — user workflows, development workflow, safety invariants, testing और debugging
+- [ARCHITECTURE.md](./docs/ARCHITECTURE.md) — modules, state, storage, data flow और subsystem boundaries
+- [WORKING.md](./docs/WORKING.md) — user workflows, development workflow, safety invariants, testing और debugging
+- [DATABASE_LOCAL_SYNC_IMPLEMENTATION_PLAN_HI.md](./docs/DATABASE_LOCAL_SYNC_IMPLEMENTATION_PLAN_HI.md) — database और local folder sync की योजना
+- [MILESTONE_01_BASELINE_HI.md](./docs/MILESTONE_01_BASELINE_HI.md) — माइलस्टोन प्रगति और baseline
+- [MILESTONE_04_SERVER_API_HI.md](./docs/MILESTONE_04_SERVER_API_HI.md) — अलग PostgreSQL backend, API contract, configuration और tests
+
+`server/` का storage API अब opt-in Database draft workflow से connected है; वर्तमान Local only workflow को server installation की आवश्यकता नहीं है। Backend tests `server` directory में `npm ci` और `npm test` से चलती हैं। [Database editor acceptance](./docs/MILESTONE_05_EDITOR_ACCEPTANCE_HI.md) में setup entry points और feature limitations देखें।
 
 ## Browser support और सीमाएँ
 

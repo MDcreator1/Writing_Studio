@@ -10,6 +10,7 @@ function openDraftMergePanel(anchor = null) {
   closeDraftActionsPanel();
   pendingDraftMerge = {
     project: projectDirectoryHandle,
+    database: window.LmDatabaseEditor?.current() || null,
     sources: indexes.map(index => createNamingSource(chapterDrafts[index], 'draft', index))
   };
   activeDraftDetailsIndex = 'merge:selected';
@@ -53,6 +54,17 @@ function buildDraftMerge(drafts, indexes, copy, contentPath) {
 async function confirmDraftMerge(copy = false) {
   if (activeDraftDetailsIndex !== 'merge:selected' || !pendingDraftMerge) return;
   const request = pendingDraftMerge;
+  if(window.LmDatabaseEditor?.active() || request.database){
+    const target=window.LmDatabaseEditor?.current();
+    if(!target || target.projectId!==request.database?.projectId || target.profileId!==request.database?.profileId){showMiniReminder('Project बदल गया है। Drafts फिर चुनें।');return;}
+    showAppLoader('Merging drafts…');
+    try{
+      await window.LmDatabaseEditor.mergeDrafts(request.sources.map(source=>source.documentId),{copy});
+      pendingDraftMerge=null;closeDraftActionsPanel();showMiniReminder(copy?'Copied and merged drafts.':'Drafts merged.');
+    }catch(error){showMiniReminder(error.message);}
+    finally{hideAppLoader();}
+    return;
+  }
   await runNamingPromotion(async () => {
     if (request.project !== projectDirectoryHandle) return;
     showAppLoader('Merging drafts…');
@@ -212,6 +224,13 @@ async function confirmDraftPromoteDestination(draftIndex, destination = 'part') 
 }
 
 async function requestPromoteDraftToChapter(draftIndex, anchor = null) {
+  if (window.LmDatabaseEditor?.active()) {
+    if(projectManifest?.parts?.length&&hasRawChaptersInPanel(projectManifest)){
+      openDraftPromoteDestinationPanel(draftIndex,anchor||document.getElementById('promoteDraftBtn'));
+      return;
+    }
+    return promoteDraftToChapter(draftIndex,'part');
+  }
   ensureChapters();
   const manifest = normalizeProjectManifest(projectManifest || createProjectManifest());
   if (hasRawChaptersInPanel(manifest)) {
@@ -223,6 +242,7 @@ async function requestPromoteDraftToChapter(draftIndex, anchor = null) {
 }
 
 async function switchDraft(index) {
+  if (window.LmDatabaseEditor?.active()) return window.LmDatabaseEditor.navigate('draft', index).catch(error => showMiniReminder(error.message));
   ensureChapters();
   if (index < 0 || index >= chapterDrafts.length || (isDraftActive() && index === curDraft)) return;
   const navigationStartedAt = performance.now();
@@ -317,6 +337,11 @@ async function runNamingPromotion(operation) {
 }
 
 async function promoteDraftToChapter(draftIndex, destination = 'part') {
+  if(window.LmDatabaseEditor?.active()){
+    try{await window.LmDatabaseEditor.promoteDraft(draftIndex,destination);closeDraftActionsPanel();}
+    catch(error){showMiniReminder(error.message);}
+    return;
+  }
   return runNamingPromotion(() => performDraftToChapterPromotion(draftIndex, destination));
 }
 

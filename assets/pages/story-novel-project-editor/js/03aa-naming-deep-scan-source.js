@@ -4,7 +4,11 @@
     return typeof normalizeScanText === 'function' ? normalizeScanText(text) : text.normalize('NFC').replace(/\s+/g, ' ').trim();
   };
 
-  async function readDocumentSource(documentItem, documentType, index) {
+  async function readDocumentSource(documentItem, documentType, index, databaseProject) {
+    if (databaseProject) {
+      const sourceText = await window.LmDatabaseEditor.readDocumentText(documentItem.id, databaseProject);
+      return { text: scanText(sourceText), contentHash: await window.LmInitialRendering?.sourceContentHash?.(sourceText) };
+    }
     if (projectDirectoryHandle) {
       if (!documentItem?.contentPath) throw new Error(`${documentType} ${index + 1} source path is missing.`);
       const fileHandle = await getProjectFileHandle(documentItem.contentPath);
@@ -25,6 +29,8 @@
   }
 
   async function buildTextIndex(options = {}) {
+    const databaseProject = window.LmDatabaseEditor?.projectIdentity();
+    if (databaseProject) await window.LmDatabaseEditor.save();
     const chapterList = Array.isArray(chapters) ? chapters : [];
     const draftList = Array.isArray(chapterDrafts) ? chapterDrafts : [];
     const chapterTexts = new Array(chapterList.length);
@@ -43,7 +49,7 @@
       const batch = jobs.slice(offset, offset + batchSize);
       await Promise.all(batch.map(async job => {
         try {
-          const source = await readDocumentSource(job.item, job.type, job.index);
+          const source = await readDocumentSource(job.item, job.type, job.index, databaseProject);
           job.textTarget[job.index] = source.text;
           job.hashTarget[job.index] = source.contentHash;
         } catch (error) {

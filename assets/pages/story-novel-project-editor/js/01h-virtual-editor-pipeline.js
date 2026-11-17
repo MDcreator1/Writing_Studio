@@ -1202,6 +1202,7 @@ function runSurfaceEditorWorkerAnalysis(sourceHTML, options = {}) {
 }
 
 function scheduleAdjacentEditorDocumentPrefetch(kind, index, sequence = editorDocumentLoadSequence) {
+  if (window.LmDatabaseEditor?.active()) return;
   const expectedProjectHandle = projectDirectoryHandle;
   const collection = kind === 'draft' ? chapterDrafts : chapters;
   const candidates = [index - 1, index + 1]
@@ -1270,6 +1271,7 @@ function scheduleEditorDocumentPostRender(sequence, documentItem, tasks = {}) {
 }
 
 async function switchChap(index) {
+  if (window.LmDatabaseEditor?.active()) return window.LmDatabaseEditor.navigate('chapter', index).catch(error => showMiniReminder(error.message));
   ensureChapters();
   if (index < 0 || index >= chapters.length || (!isDraftActive() && index === curChap)) return;
   const navigationStartedAt = performance.now();
@@ -1461,6 +1463,7 @@ async function addChapter() {
 }
 
 async function addDraft() {
+  if (window.LmDatabaseEditor?.active()) return window.LmDatabaseEditor.addDraft();
   if (!hasActiveStory()) return;
   showAppLoader(text().creatingChapter);
   const nextIndex = chapterDrafts.length;

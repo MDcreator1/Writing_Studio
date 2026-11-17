@@ -1,0 +1,32 @@
+'use strict';
+const assert = require('node:assert/strict');
+require('../assets/shared/js/06e-storage-contracts.js');
+require('../assets/shared/js/06f-local-folder-adapter.js');
+require('../assets/shared/js/06g-project-repository.js');
+const repo = globalThis.LmProjectRepository;
+const folder = () => ({ getFileHandle: async name => ({ name }) });
+
+(async () => {
+  const a = folder(), b = folder();
+  const active = repo.activateFolder(a);
+  assert.equal(repo.sessions.current(), active);
+  repo.activateFolder(b);
+  assert.equal(repo.sessions.isCurrent(active), false);
+  repo.activateFolder(null);
+  assert.equal(repo.sessions.current(), null);
+  assert.equal(repo.forFolder(a), repo.forFolder(a));
+  assert.notEqual(repo.forFolder(a), repo.forFolder(b));
+  assert.equal((await repo.forFolder(a).getFileHandle('chapter.txt')).name, 'chapter.txt');
+  const controller = repo.createSessionController();
+  const first = controller.activate({ projectId: 'a', folderHandle: a });
+  let release;
+  const pending = controller.run(() => new Promise(resolve => { release = resolve; }));
+  controller.activate({ projectId: 'b', folderHandle: b });
+  release('old project result');
+  await assert.rejects(pending, /session changed/);
+  assert.equal(controller.isCurrent(first), false);
+  assert.equal(await controller.run(session => session.projectId), 'b');
+  controller.clear();
+  await assert.rejects(controller.run(() => 'wrong'), /No active project/);
+  console.log('project repository: folder isolation, reuse and stale session rejection passed');
+})().catch(error => { console.error(error); process.exitCode = 1; });

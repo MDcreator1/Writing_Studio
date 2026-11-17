@@ -453,12 +453,14 @@ function closeChapterEditRecoveryPanel() {
 }
 
 function useChapterEditRecovery() {
+  if (window.LmDatabaseEditor?.active()) return window.LmDatabaseEditor.useRecovery();
   const index = Number.isInteger(pendingChapterEditRecoveryIndex) ? pendingChapterEditRecoveryIndex : curChap;
   closeChapterEditRecoveryPanel();
   activateChapterEditDraft(index);
 }
 
 async function discardChapterEditRecovery() {
+  if (window.LmDatabaseEditor?.active()) return window.LmDatabaseEditor.discardRecovery();
   const index = Number.isInteger(pendingChapterEditRecoveryIndex) ? pendingChapterEditRecoveryIndex : curChap;
   const chapterKey = chapterEditDraftKey(index);
   const chapter = chapters[index];

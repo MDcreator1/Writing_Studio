@@ -48,12 +48,12 @@ async function restoreLocalProject() {
   const handle = await readProjectHandle();
   if (!handle) return restoreProjectFromWorkspaceFolder();
 
-  projectDirectoryHandle = handle;
+  setActiveProjectFolder(handle);
   localStorage.setItem(PROJECT_FOLDER_KEY, handle.name || '');
   activeProjectTypeFolderName = localStorage.getItem(PROJECT_TYPE_FOLDER_KEY) || '';
 
   if (!(await verifyProjectPermission(handle))) {
-    projectDirectoryHandle = null;
+    setActiveProjectFolder(null);
     return restoreProjectFromWorkspaceFolder();
   }
 
@@ -67,7 +67,7 @@ async function restoreLocalProject() {
 
 function clearActiveStoryState() {
   isProjectDataLoading = false;
-  projectDirectoryHandle = null;
+  setActiveProjectFolder(null);
   setActiveProjectTypeFolderName('');
   projectManifest = null;
   chapters = [];
@@ -110,6 +110,7 @@ async function loadWorkspaceFolder(handle) {
   localStorage.setItem(PROJECT_MODE_KEY, 'workspace');
   localStorage.setItem(WORKSPACE_FOLDER_KEY, handle.name || '');
   clearActiveStoryState();
+  window.LmDatabasePanel?.updateHomeStorage();
 }
 
 function chaptersForStorage() {
@@ -620,6 +621,11 @@ function openStoryDetailsFromSummaryMenu() {
   openStoryInfoModal();
 }
 
+function openProjectDetailsFromSummary() {
+  if(window.LmDatabaseEditor?.active())return openStoryInfoModal();
+  window.location.href='project-details.html';
+}
+
 function setStorySummarySaveIndicator(state = 'idle') {
   const summary = document.getElementById('story-summary');
   if (!summary) return;
@@ -757,6 +763,23 @@ async function saveStoryInfo() {
 
   if (!hasActiveStory()) return;
   const saveButton = document.getElementById('storyInfoSaveBtn');
+  if (window.LmDatabaseEditor?.active()) {
+    const values = storyInfoFormValues();
+    if (saveButton) saveButton.disabled = true;
+    setStorySummarySaveIndicator('saving');
+    try {
+      await window.LmDatabaseEditor.saveProjectInfo(values);
+      syncSavedStoryInfoSnapshot(values, projectManifest);
+      closeStoryInfoModal();
+      setStorySummarySaveIndicator('saved');
+    } catch (error) {
+      setStorySummarySaveIndicator('idle');
+      showMiniReminder(error.message);
+    } finally {
+      if (saveButton) saveButton.disabled = false;
+    }
+    return;
+  }
   let manifest = normalizeProjectManifest(projectManifest || createProjectManifest());
   const savedValues = storyInfoFormValues();
   const nextTitle = savedValues.title || manifest.title;
@@ -830,6 +853,14 @@ async function saveStoryInfo() {
 
 async function addPart() {
   if (!hasActiveStory()) return;
+  if(window.LmDatabaseEditor?.active()){
+    try{
+      await window.LmDatabaseEditor.addPart();
+      if(expandedPartIndex!==projectManifest.parts.length-1)togglePartExpansion(projectManifest.parts.length-1);
+    }
+    catch(error){showMiniReminder(error.message);}
+    return;
+  }
   showAppLoader(text().creatingPart);
   const manifest = normalizeProjectManifest(projectManifest || createProjectManifest());
   const targetIndex = manifest.parts.length;
@@ -1018,6 +1049,7 @@ async function chapterEditDraftFileMatchesSavedChapter(index = curChap) {
 }
 
 async function saveCurrentProject(options = {}) {
+  if (window.LmDatabaseEditor?.active()) return window.LmDatabaseEditor.save(options);
   if (!hasActiveStory() || isProjectDataLoading) return;
   if (isTrashDraftActive()) return;
   await window.LmInitialRendering?.ensureFullNamingData?.();
@@ -1036,6 +1068,7 @@ async function saveCurrentProject(options = {}) {
   }
 
   if (isDraftActive()) {
+    await window.LmEditorWorkingCopy?.stageActive?.({ document: activeEditorDocument(), kind: isChapterEditDraftActive() ? 'recovery' : isDraftActive() ? 'draft' : 'chapter', text: getCleanEditorText(), folderHandle: projectDirectoryHandle });
     const namingChanged = scanActiveEditorForNamingUses(new Date().toISOString());
     saveToStorage();
     await writeCurrentDraftToLocalFile();
@@ -1045,6 +1078,7 @@ async function saveCurrentProject(options = {}) {
   }
 
   if (isChapterEditDraftActive()) {
+    await window.LmEditorWorkingCopy?.stageActive?.({ document: activeEditorDocument(), kind: isChapterEditDraftActive() ? 'recovery' : isDraftActive() ? 'draft' : 'chapter', text: getCleanEditorText(), folderHandle: projectDirectoryHandle });
     const namingChanged = scanActiveEditorForNamingUses(new Date().toISOString());
     saveToStorage();
     await writeActiveChapterEditDraftToLocalFile();
@@ -1053,6 +1087,7 @@ async function saveCurrentProject(options = {}) {
     return;
   }
 
+  await window.LmEditorWorkingCopy?.stageActive?.({ document: activeEditorDocument(), kind: isChapterEditDraftActive() ? 'recovery' : isDraftActive() ? 'draft' : 'chapter', text: getCleanEditorText(), folderHandle: projectDirectoryHandle });
   persistProjectManifestSnapshot();
   const chapterSavedAt = new Date().toISOString();
   scanCurrentChapterForNamingUses(curChap, getCleanEditorText(), chapterSavedAt);
@@ -1281,6 +1316,7 @@ function renderCommittedChapterSnapshotInEditor(chapter, editorHTML) {
 }
 
 async function manualSave() {
+  if (window.LmDatabaseEditor?.active()) return window.LmDatabaseEditor.manualSave();
   if (!hasActiveStory()) return;
   if (isTrashDraftActive()) return;
   await window.LmInitialRendering?.ensureFullNamingData?.();
@@ -1359,33 +1395,144 @@ async function manualSave() {
   }
 }
 
+let workspacePickerPending = false;
+let workspaceFolderAwaitingPermission = null;
+
+function setWorkspaceFolderFeedback(message, needsPermission = false) {
+  if (isHomePage()) setHomeMenuStatus(message);
+  const button = document.getElementById('workspacePermissionBtn');
+  if (button) button.hidden = !needsPermission;
+  showProjectGate(message);
+}
+
+async function connectSelectedWorkspaceFolder(handle) {
+  showAppLoader(text().loadingProject);
+  const databaseSession = window.LmDatabaseEditor?.current();
+  if (databaseSession) await window.LmDatabaseEditor.prepareLeave();
+  await loadWorkspaceFolder(handle);
+  if (databaseSession) window.LmDatabaseEditor.leave({ clearRoute: true });
+  workspaceFolderAwaitingPermission = null;
+  const button = document.getElementById('workspacePermissionBtn');
+  if (button) button.hidden = true;
+  hideProjectGate();
+  refreshProjectUI();
+  if (isHomePage()) {
+    try {
+      await renderHomeRecentProjectsList();
+      if (typeof workspaceDirectoryHandle !== 'undefined' && workspaceDirectoryHandle === handle) setHomeMenuStatus(`Workspace ready: ${handle.name || 'Selected folder'}`);
+    } catch (error) {
+      console.warn('Workspace project list failed:', error);
+      closeHomeRecentProjectsPanel();
+      setHomeMenuStatus(`Workspace ready: ${handle.name}. Could not load the project list. Open Recent Project to try again.`);
+    }
+  }
+}
+
+async function prepareSelectedWorkspaceFolder(handle) {
+  workspaceFolderAwaitingPermission = handle;
+  if (!(await verifyProjectPermission(handle, false))) {
+    setWorkspaceFolderFeedback(`Folder selected: "${handle.name}". Click Allow folder editing, then approve the browser request so your writing can be saved.`, true);
+    return;
+  }
+  await connectSelectedWorkspaceFolder(handle);
+}
+
+async function receiveWorkspaceFolderDrop(event) {
+  event.preventDefault();
+  if (workspacePickerPending) return;
+  const items = Array.from(event.dataTransfer?.items || []).filter(item => item.kind === 'file');
+  if (items.length !== 1 || typeof items[0].getAsFileSystemHandle !== 'function') {
+    setWorkspaceFolderFeedback('Drag one workspace folder from File Explorer, rather than individual files.');
+    return;
+  }
+  workspacePickerPending = true;
+  try {
+    // Capture the handle in the drop event; the drag data expires after this event.
+    const handlePromise = items[0].getAsFileSystemHandle();
+    const handle = await handlePromise;
+    if (!handle || handle.kind !== 'directory') {
+      setWorkspaceFolderFeedback('Choose a folder, rather than an individual file.');
+      return;
+    }
+    await prepareSelectedWorkspaceFolder(handle);
+  } catch (error) {
+    console.warn('Dropped workspace connection failed:', error.name, error.message);
+    setWorkspaceFolderFeedback(`Could not connect the dropped folder (${error.name}): ${error.message}`);
+  } finally {
+    workspacePickerPending = false;
+    hideAppLoader();
+  }
+}
+
+function initWorkspaceFolderDropTarget() {
+  ['workspaceFolderDropTarget', 'homeWorkspaceFolderDropTarget'].forEach(id => {
+    const target = document.getElementById(id);
+    if (!target) return;
+    target.addEventListener('dragover', event => {
+      if (!Array.from(event.dataTransfer?.items || []).some(item => item.kind === 'file')) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+    });
+    target.addEventListener('drop', receiveWorkspaceFolderDrop);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', initWorkspaceFolderDropTarget);
+
+async function allowSelectedWorkspaceFolder() {
+  const handle = workspaceFolderAwaitingPermission;
+  if (!handle || workspacePickerPending) return;
+  workspacePickerPending = true;
+  try {
+    // Request directly from this button click, before awaiting any other work.
+    const permission = await handle.requestPermission({ mode: 'readwrite' });
+    if (permission !== 'granted') {
+      setWorkspaceFolderFeedback(`Editing access was not granted for "${handle.name}". Allow this site's file editing request in the browser, then try again.`, true);
+      return;
+    }
+    await connectSelectedWorkspaceFolder(handle);
+  } catch (error) {
+    console.warn('Workspace connection failed:', error.name, error.message);
+    setWorkspaceFolderFeedback(`Could not connect "${handle.name}" (${error.name}): ${error.message}`, true);
+  } finally {
+    workspacePickerPending = false;
+    hideAppLoader();
+  }
+}
+
 async function selectLocalProjectFolder() {
+  if(isHomePage()&&window.LmDatabasePanel?.homeConnection()){
+    showMiniReminder('दूसरा Local workspace खोलने से पहले Database connection बंद करें।');
+    return;
+  }
+  if (workspacePickerPending) return;
   if (!supportsLocalProjectFolders()) {
     showProjectGate(text().projectUnsupported);
     return;
   }
 
+  workspacePickerPending = true;
+  workspaceFolderAwaitingPermission = null;
+  const permissionButton = document.getElementById('workspacePermissionBtn');
+  if (permissionButton) permissionButton.hidden = true;
+  let stage = 'folder selection';
   try {
+    if (isHomePage()) setHomeMenuStatus('Choose your workspace in the folder selection window.');
     const handle = await window.showDirectoryPicker({
       id: 'lekhak-manch-story',
       mode: 'readwrite'
     });
 
-    if (!(await verifyProjectPermission(handle, true))) {
-      showProjectGate(text().projectPermissionNeeded);
-      return;
-    }
-
-    showAppLoader(text().loadingProject);
-    await loadWorkspaceFolder(handle);
-    hideProjectGate();
-    refreshProjectUI();
+    stage = 'workspace connection';
+    await prepareSelectedWorkspaceFolder(handle);
   } catch (error) {
-    if (error.name !== 'AbortError') {
-      console.warn('Story folder selection failed:', error);
-      showProjectGate(text().projectPermissionNeeded);
-    }
+    console.warn(`Workspace ${stage} failed:`, error.name, error.message);
+    const message = stage === 'folder selection' && error.name === 'AbortError'
+      ? 'No folder was selected. Try Choose Folder again, or drag your workspace folder from File Explorer onto the box below.'
+      : `Could not complete ${stage} (${error.name}): ${error.message || 'Please try again.'}`;
+    setWorkspaceFolderFeedback(message);
   } finally {
+    workspacePickerPending = false;
     hideAppLoader();
   }
 }
@@ -1475,7 +1622,7 @@ async function renameActiveStoryFolderIfNeeded(nextTitle, nextType = projectMani
       console.warn('Renamed story folder handle refresh failed:', readError);
     }
     await saveProjectHandle(renamedHandle);
-    projectDirectoryHandle = renamedHandle;
+    setActiveProjectFolder(renamedHandle);
     localStorage.setItem(PROJECT_FOLDER_KEY, renamedHandle.name || nextFolderName);
     setActiveProjectTypeFolderName(nextTypeFolderName);
     migrateActiveEditorStateForStory(

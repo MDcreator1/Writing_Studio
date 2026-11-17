@@ -18,6 +18,7 @@ const LM_EDITOR_QUICK_SETTINGS_PIN_DEFAULTS = Object.freeze({
 });
 
 const LM_EDITOR_ADVANCED_SCHEMA = [
+  { category: 'Layout', key: 'editorBottomPadding', label: 'End of document padding', unit: '%', value: 20, min: 0, max: 75, step: 1, work: 'Adds scrollable space after the final paragraph on every screen.', up: 'More room below the final paragraph.', down: 'Less room below the final paragraph.' },
   { category: 'Large document & workers', key: 'virtualWordThreshold', label: 'Virtual editor threshold', unit: 'words', value: 3000, min: 500, max: 100000, step: 100, work: 'Documents at or above this size use the virtual editor.', up: 'More documents render fully; large documents may type slower.', down: 'Virtual mode starts sooner; switching and scrolling need more Worker coordination.' },
   { category: 'Large document & workers', key: 'virtualWindowSize', label: 'Visible paragraph window', unit: 'paragraphs', value: 25, min: 5, max: 100, step: 1, work: 'Maximum paragraph window kept in the editor DOM.', up: 'Smoother long scrolling, but heavier DOM layout and typing.', down: 'Faster DOM updates, but window changes happen more often.' },
   { category: 'Large document & workers', key: 'workerWindowMaximum', label: 'Worker window maximum', unit: 'paragraphs', value: 40, min: 10, max: 200, step: 1, work: 'Safety cap for paragraph windows returned by the Bridge Worker.', up: 'Allows larger windows and more memory/transfer work.', down: 'Stricter memory cap; requested windows may be clipped.' },
@@ -259,6 +260,8 @@ function lmEditorAdvancedStored() {
   return stored;
 }
 
+document.documentElement.style.setProperty('--editor-padding-bottom', lmEditorAdvancedNumber('editorBottomPadding', 20) + '%');
+
 function lmEditorAdvancedDefinition(key) { return LM_EDITOR_ADVANCED_SCHEMA.find(item => item.key === key); }
 function lmEditorAdvancedNumber(key, fallback) {
   const definition = lmEditorAdvancedDefinition(key);
@@ -419,7 +422,7 @@ const LM_EDITOR_ADVANCED_CATEGORY_META = {
 
 function selectAdvancedEditorSettingsCategory(index, options = {}) {
   closeAdvancedEditorSettingInfo();
-  const categories = [...new Set(LM_EDITOR_ADVANCED_SCHEMA.map(item => item.category)), 'Rendering Snapshots', 'Project Cache & Storage'];
+  const categories = [...new Set(LM_EDITOR_ADVANCED_SCHEMA.map(item => item.category)), 'Rendering Snapshots', 'Project Cache & Storage', 'Storage & Database'];
   const nextIndex = Math.max(0, Math.min(categories.length - 1, Number(index) || 0));
   activeAdvancedEditorSettingsCategoryIndex = nextIndex;
   document.querySelectorAll('[data-advanced-developer-category]').forEach(button => {
@@ -462,7 +465,9 @@ function showAdvancedEditorMobileSections() {
 window.addEventListener('resize', syncAdvancedEditorMobileNavigation, { passive: true });
 
 function selectAdvancedEditorTopSection(key, options = {}) {
-  const safeKey = LM_EDITOR_ADVANCED_TOP_SECTIONS.some(section => section.key === key) ? key : 'autoscroll';
+  const sections = LM_EDITOR_ADVANCED_TOP_SECTIONS.filter(section =>
+    (section.key !== 'developer' || advancedEditorAdmin) && (section.key !== 'autoscroll' || typeof editorAutoScrollAvailable !== 'function' || editorAutoScrollAvailable()));
+  const safeKey = sections.some(section => section.key === key) ? key : sections[0].key;
   activeAdvancedEditorSettingsTopSection = safeKey;
   closeAdvancedEditorSettingInfo();
   document.querySelectorAll('[data-advanced-settings-nav]').forEach(button => {
@@ -666,10 +671,10 @@ function renderAdvancedEditorSettings() {
   if (!modal) return;
   const stored = lmEditorAdvancedStored();
   const baseCategories = [...new Set(LM_EDITOR_ADVANCED_SCHEMA.map(item => item.category))];
-  const categories = [...baseCategories, 'Rendering Snapshots', 'Project Cache & Storage'];
+  const categories = [...baseCategories, 'Rendering Snapshots', 'Project Cache & Storage', 'Storage & Database'];
   activeAdvancedEditorSettingsCategoryIndex = Math.min(activeAdvancedEditorSettingsCategoryIndex, categories.length - 1);
 
-  const navigation = LM_EDITOR_ADVANCED_TOP_SECTIONS.map(section => {
+  const navigation = LM_EDITOR_ADVANCED_TOP_SECTIONS.filter(section=>section.key!=='developer'||advancedEditorAdmin).map(section => {
     const active = section.key === activeAdvancedEditorSettingsTopSection;
     return `<button type="button" role="tab" data-advanced-settings-nav="${section.key}" class="${active ? 'is-active' : ''}" aria-selected="${active}" tabindex="${active ? '0' : '-1'}" onclick="selectAdvancedEditorTopSection('${section.key}')" onkeydown="handleAdvancedEditorSettingsNavKeydown(event, ${LM_EDITOR_ADVANCED_TOP_SECTIONS.indexOf(section)})"><span class="advanced-editor-settings-nav-icon">${section.icon}</span><span><strong>${section.label}</strong><small>${section.note}</small></span></button>`;
   }).join('');
@@ -680,12 +685,14 @@ function renderAdvancedEditorSettings() {
       ? '4'
       : category === 'Project Cache & Storage'
         ? 3
+      : category === 'Storage & Database' ? 1
       : LM_EDITOR_ADVANCED_SCHEMA.filter(item => item.category === category).length;
     return `<button type="button" role="tab" data-advanced-developer-category="${categoryIndex}" class="${active ? 'is-active' : ''}" aria-selected="${active}" tabindex="${active ? '0' : '-1'}" onclick="selectAdvancedEditorSettingsCategory(${categoryIndex})"><strong>${category}</strong><small>${count}</small></button>`;
   }).join('');
 
   const developerSections = categories.map((category, categoryIndex) => {
     const isActive = categoryIndex === activeAdvancedEditorSettingsCategoryIndex;
+    if (category === 'Storage & Database') return window.LmDatabasePanel?.settingsHtml(categoryIndex, isActive) || '';
     if (category === 'Rendering Snapshots') {
       return window.LmRenderingSnapshotTools?.developerSectionHtml?.(categoryIndex, isActive) || '';
     }
@@ -822,7 +829,7 @@ function renderAdvancedEditorSettings() {
     || '<div class="advanced-word-editing-loading">Loading Advanced Import and Promote settings…</div>';
 
   const sections = [
-    advancedFeatureSection('developer', developerMeta, developerBody, `${LM_EDITOR_ADVANCED_SCHEMA.length} settings`, [], developerLanguageToggle),
+    advancedEditorAdmin ? advancedFeatureSection('developer', developerMeta, developerBody, `${LM_EDITOR_ADVANCED_SCHEMA.length} settings`, [], developerLanguageToggle) : '',
     advancedFeatureSection('autoscroll', autoScrollMeta, autoScrollBody, '8 controls', [{ key: 'autoscroll', label: 'Auto-scroll' }]),
     advancedFeatureSection('smart-copy', smartCopyMeta, smartCopyBody, '3 controls', [{ key: 'smartCopy', label: 'Smart Copy' }]),
     advancedFeatureSection('smart-paste', smartPasteMeta, smartPasteBody, '4 controls', [{ key: 'smartPaste', label: 'Smart Paste' }], smartPasteSyncButton),
@@ -895,7 +902,12 @@ function checkAdvancedEditorSettingsDirty() {
   }
 }
 
-function openAdvancedEditorSettings() {
+let advancedEditorAdmin = false;
+async function openAdvancedEditorSettings() {
+  advancedEditorAdmin = (await window.LmDatabaseProfiles?.currentSession())?.role === 'admin';
+  if(!advancedEditorAdmin && activeAdvancedEditorSettingsTopSection==='developer')activeAdvancedEditorSettingsTopSection='global';
+  if (typeof editorAutoScrollAvailable === 'function' && !editorAutoScrollAvailable() &&
+      activeAdvancedEditorSettingsTopSection === 'autoscroll') activeAdvancedEditorSettingsTopSection = 'global';
   advancedEditorMobileView = 'sections';
   let modal = document.getElementById('advancedEditorSettingsModal');
   if (!modal) {
@@ -1169,7 +1181,7 @@ async function saveAdvancedEditorSettings() {
   const next = {};
   for (const item of LM_EDITOR_ADVANCED_SCHEMA) {
     const input = document.querySelector(`[data-advanced-editor-key="${item.key}"]`);
-    const value = Number(input?.value);
+    const value = input ? Number(input.value) : lmEditorAdvancedNumber(item.key,item.value);
     if (!Number.isFinite(value) || value < item.min || value > item.max) { revealAdvancedEditorSetting(item.key); input?.focus(); input?.classList.add('is-invalid'); return; }
     next[item.key] = value;
   }
@@ -1248,6 +1260,7 @@ async function saveAdvancedEditorSettings() {
 
   if (window.LmAdvancedImportPromoteSettings?.saveFromPanel?.() === false) return;
   localStorage.setItem(LM_EDITOR_ADVANCED_SETTINGS_KEY, JSON.stringify(next));
+  document.documentElement.style.setProperty('--editor-padding-bottom', next.editorBottomPadding + '%');
 
   const autoScrollTemplate = advancedAutoScrollTemplateFromPanel();
   if (!autoScrollTemplate) return;
@@ -1262,7 +1275,14 @@ async function saveAdvancedEditorSettings() {
 
   if (typeof saveToStorage === 'function') saveToStorage(true);
 
-  if (projectDirectoryHandle && typeof writeProjectManifest === 'function') {
+  if (window.LmDatabaseEditor?.active()) {
+    try {
+      await window.LmDatabaseEditor.persistAdvancedSettings({ activeSettings: currentEditorSettingsSnapshot() });
+    } catch (error) {
+      notifyAdvancedSettings(error.message, 'error');
+      return;
+    }
+  } else if (projectDirectoryHandle && typeof writeProjectManifest === 'function') {
     try {
       await writeProjectManifest(projectManifest);
     } catch (error) {
@@ -1442,7 +1462,9 @@ async function runAdvancedAutoScrollApplyGlobally() {
   if (typeof saveToStorage === 'function') saveToStorage(true);
 
   try {
-    if (projectDirectoryHandle) {
+    if (window.LmDatabaseEditor?.active()) {
+      await window.LmDatabaseEditor.persistAdvancedSettings({ autoScroll: template });
+    } else if (projectDirectoryHandle) {
       await Promise.all([
         typeof writeProjectManifest === 'function' ? writeProjectManifest() : Promise.resolve(),
         typeof writeDraftsDataToProject === 'function' ? writeDraftsDataToProject() : Promise.resolve(),
@@ -1462,6 +1484,7 @@ async function runAdvancedAutoScrollApplyGlobally() {
 }
 
 function deleteAdvancedSettingsIndexedDB(name) {
+  if (String(name).startsWith('lekhak-sync-working')) return Promise.reject(new Error('Working edits and recovery data cannot be deleted as cache.'));
   return new Promise((resolve, reject) => {
     if (!window.indexedDB || !name) {
       resolve(false);
@@ -1493,10 +1516,18 @@ async function studioIndexedDBNames() {
 }
 
 window.runResetActiveProjectBrowserCache = async function runResetActiveProjectBrowserCache() {
-  const confirmed = await requestAdvancedSettingsDecision({ title: 'Reset project browser cache?', message: 'Disk पर रखी project files (JSON/TXT) सुरक्षित रहेंगी और browser data files से दोबारा sync होगा।', actions: [{ value: false, label: 'Cancel' }, { value: true, label: 'Reset Cache', tone: 'danger' }] });
+  try { await window.LmEditorWorkingCopy?.assertCacheResetSafe?.(); }
+  catch (error) { notifyAdvancedSettings(error.message, 'error'); return; }
+  const database = window.LmDatabaseEditor?.active();
+  const confirmed = await requestAdvancedSettingsDecision({ title: 'Reset project browser cache?', message: database ? 'Project data Database से दोबारा लोड होगा।' : 'Disk पर रखी project files (JSON/TXT) सुरक्षित रहेंगी और browser data files से दोबारा sync होगा।', actions: [{ value: false, label: 'Cancel' }, { value: true, label: 'Reset Cache', tone: 'danger' }] });
   if (!confirmed) return;
 
   try {
+    if (database) {
+      await window.LmDatabaseEditor.refreshProject();
+      notifyAdvancedSettings('Project data refreshed from Database.', 'success');
+      return;
+    }
     const keysToRemove = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -1532,10 +1563,17 @@ window.runResetActiveProjectBrowserCache = async function runResetActiveProjectB
 };
 
 window.runResetWordEditingBrowserCache = async function runResetWordEditingBrowserCache() {
-  const confirmed = await requestAdvancedSettingsDecision({ title: 'Reset word dictionary cache?', message: 'Story_Word_Editing.json से replacement rules दोबारा load किए जाएंगे।', actions: [{ value: false, label: 'Cancel' }, { value: true, label: 'Re-sync Dictionary', tone: 'danger' }] });
+  const database = window.LmDatabaseEditor?.active();
+  const confirmed = await requestAdvancedSettingsDecision({ title: 'Reset word dictionary cache?', message: database ? 'Replacement rules Database से दोबारा लोड होंगे।' : 'Story_Word_Editing.json से replacement rules दोबारा load किए जाएंगे।', actions: [{ value: false, label: 'Cancel' }, { value: true, label: 'Re-sync Dictionary', tone: 'danger' }] });
   if (!confirmed) return;
 
   try {
+    if (database) {
+      await window.LmDatabaseEditor.refreshProject();
+      window.lmAdvancedWordEditing?.loadDictionaryPayload(window.LmDatabaseEditor.dictionaryPayload());
+      notifyAdvancedSettings('Word Editing dictionary refreshed from Database.', 'success');
+      return;
+    }
     if (window.indexedDB) {
       await deleteAdvancedSettingsIndexedDB('lm-advanced-word-editing');
     }
@@ -1551,6 +1589,8 @@ window.runResetWordEditingBrowserCache = async function runResetWordEditingBrows
 };
 
 window.runResetAllStudioBrowserCaches = async function runResetAllStudioBrowserCaches() {
+  try { await window.LmEditorWorkingCopy?.assertCacheResetSafe?.(); }
+  catch (error) { notifyAdvancedSettings(error.message, 'error'); return; }
   const confirmed = await requestAdvancedSettingsDecision({ title: 'Reset all studio browser storage?', message: 'सभी Lekhak Manch browser settings और caches हटेंगे। Disk files सुरक्षित रहेंगी और page refresh होगा।', actions: [{ value: false, label: 'Cancel' }, { value: true, label: 'Reset Everything', tone: 'danger' }] });
   if (!confirmed) return;
 
@@ -1566,7 +1606,9 @@ window.runResetAllStudioBrowserCaches = async function runResetAllStudioBrowserC
       const databaseNames = await studioIndexedDBNames();
       await Promise.all(databaseNames.map(deleteAdvancedSettingsIndexedDB));
     }
-    lmKeys.forEach(k => localStorage.removeItem(k));
+    lmKeys.forEach(k => {
+      if (!window.LmDatabaseEditor?.active() || k !== 'lm_database_profiles_v1') localStorage.removeItem(k);
+    });
     location.reload();
   } catch (err) {
     console.error('Error resetting all studio caches:', err);

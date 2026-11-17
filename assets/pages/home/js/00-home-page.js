@@ -198,8 +198,11 @@ async function initHome() {
 
   try {
     await restoreHomeWorkspaceHandle();
+    await window.LmDatabasePanel?.restoreHomeCloud();
   } catch (error) {
     console.warn('Workspace restore failed:', error);
+  } finally {
+    window.LmDatabasePanel?.updateHomeStorage();
   }
 }
 

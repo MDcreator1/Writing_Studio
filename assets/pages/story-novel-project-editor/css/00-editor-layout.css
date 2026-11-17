@@ -2373,6 +2373,75 @@
   gap: 20px;
 }
 
+.database-save-actions {
+  position: relative;
+  flex: none;
+  font-size: var(--font-size-sm);
+}
+
+.database-save-actions summary {
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.database-save-menu {
+  position: absolute;
+  z-index: 25;
+  inset-inline-end: 0;
+  inset-block-start: calc(100% + 8px);
+  width: max-content;
+  max-width: min(14rem, 85vw);
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface, Canvas);
+  color: var(--ink);
+}
+
+.database-save-menu button {
+  display: block;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.database-save-menu button[hidden] {
+  display: none;
+}
+
+.database-save-menu button:hover,
+.database-save-menu button:focus-visible {
+  background: var(--surface-raised, ButtonFace);
+}
+
+body[data-database-editor] .lm-id-editor-info-panel.is-status-hidden .editor-info-meta,
+body[data-database-editor] .editor-info-meta:has(.database-save-actions):has(.lm-id-stat-bar[hidden]) {
+  display: flex;
+}
+
+body[data-database-editor] .lm-id-editor-info-panel.is-status-hidden .editor-info-meta > :not(.database-save-actions) {
+  display: none;
+}
+
+@media (max-width: 940px) {
+  .database-save-actions {
+    position: static;
+  }
+
+  .database-save-menu {
+    inset-block: auto calc(100% + 8px);
+    inset-inline: 50% auto;
+    transform: translateX(-50%);
+  }
+}
+
 .lm-id-save-status {
   flex-shrink: 0;
   width: 10px;
@@ -3730,4 +3799,15 @@ body.focus-mode .lm-id-editor.is-focus-save-saved {
   align-items: center;
   justify-content: space-between;
   width: 100%;
+}
+
+/* Touch keyboards leave caret visibility to the browser. */
+.editor-touch-autoscroll-hidden :is(
+  #editorAutoScrollModeToggleBtn,
+  #editorAutoScrollModeSelectorPanel,
+  .editor-auto-scroll-depth-marker,
+  [data-advanced-settings-nav="autoscroll"],
+  [data-advanced-top-section="autoscroll"]
+) {
+  display: none !important;
 }

@@ -732,7 +732,7 @@ async function openProjectDetailsWorkspacePicker() {
     }
 
     if (typeof verifyProjectPermission === 'function' && !(await verifyProjectPermission(projectHandle, true))) return;
-    projectDirectoryHandle = projectHandle;
+    setActiveProjectFolder(projectHandle);
     if (typeof saveProjectHandle === 'function') await saveProjectHandle(projectHandle);
     localStorage.setItem(PROJECT_FOLDER_KEY, projectHandle.name || '');
     if (typeof setActiveProjectTypeFolderName === 'function') setActiveProjectTypeFolderName(inferredTypeFolder);

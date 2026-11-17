@@ -250,7 +250,7 @@ async function deepScanAllNamingEntries(buttonElement = null, options = {}) {
 
   setTimeout(async () => {
     try {
-    const scanProject = projectDirectoryHandle;
+    const scanProject = window.LmDatabaseEditor?.projectIdentity() || projectDirectoryHandle;
     // Snapshot loading can replace the global namingData with a document-only
     // projection while the source files are being read. Re-hydrate here, after
     // the asynchronous read, and keep this authoritative object for the whole
@@ -259,7 +259,7 @@ async function deepScanAllNamingEntries(buttonElement = null, options = {}) {
       await window.LmInitialRendering?.ensureFullNamingData?.({ forceSource: true }) || namingData
     );
     namingData = preflightNamingData;
-    if (scanProject !== projectDirectoryHandle) throw new Error('Project changed during Naming scan.');
+    if (scanProject !== (window.LmDatabaseEditor?.projectIdentity() || projectDirectoryHandle)) throw new Error('Project changed during Naming scan.');
     const duplicateGroups = namingDuplicateTitleGroups(namingData.entries);
     if (duplicateGroups.length) {
       setProgress(`${duplicateGroups.length} duplicate title group(s) need review…`, 2);
@@ -271,7 +271,7 @@ async function deepScanAllNamingEntries(buttonElement = null, options = {}) {
       await writeNamingDataToProject({ authoritativeData: namingData, deduplicateDescriptionHistory: true, allowEntryRemoval: true });
     }
     const sourceIndex = await window.LmNamingDeepScanSource.buildTextIndex({
-      tolerateReadErrors: true,
+      tolerateReadErrors: !window.LmDatabaseEditor?.active(),
       onProgress: ({ loaded, total }) => setProgress(`Reading source documents ${loaded}/${total}…`, total ? loaded / total * 12 : 12)
     });
     const skippedSourceCount = Array.isArray(sourceIndex.readErrors) ? sourceIndex.readErrors.length : 0;
@@ -279,7 +279,7 @@ async function deepScanAllNamingEntries(buttonElement = null, options = {}) {
       await window.LmInitialRendering?.ensureFullNamingData?.({ forceSource: true }) || namingData
     );
     namingData = authoritativeNamingData;
-    if (scanProject !== projectDirectoryHandle) throw new Error('Project changed during Naming scan.');
+    if (scanProject !== (window.LmDatabaseEditor?.projectIdentity() || projectDirectoryHandle)) throw new Error('Project changed during Naming scan.');
     const chapterScanTexts = sourceIndex.chapterTexts;
     const draftScanTexts = sourceIndex.draftTexts;
     const checkedAt = new Date().toISOString();
@@ -306,7 +306,7 @@ async function deepScanAllNamingEntries(buttonElement = null, options = {}) {
     try {
       setProgress('Saving Naming metadata and snapshots…', 80);
       {
-        if (scanProject !== projectDirectoryHandle) throw new Error('Project changed during Naming scan.');
+        if (scanProject !== (window.LmDatabaseEditor?.projectIdentity() || projectDirectoryHandle)) throw new Error('Project changed during Naming scan.');
         // Run cleanup on the latest durable history inside the serialized writer,
         // even when every source is already null or unchanged.
         await writeNamingDataToProject({
@@ -1080,6 +1080,7 @@ function findTag(name) {
 }
 
 function saveFacts() {
+  if (window.LmDatabaseEditor?.active()) return window.LmDatabaseEditor.persistFacts(storyFacts).catch(error => console.warn('Database Facts save failed:', error.message));
   storyFacts = normalizeStoryFacts(storyFacts);
   localStorage.setItem(FACTS_STORAGE_KEY, JSON.stringify(storyFacts));
   projectManifest = normalizeProjectManifest({

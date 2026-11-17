@@ -1,0 +1,23 @@
+'use strict';
+const assert = require('node:assert/strict');
+require('../assets/shared/js/06e-storage-contracts.js');
+const c = globalThis.LmStorageContracts;
+const folder = { name: 'Test workspace' };
+
+assert.equal(c.normalizeMode('unknown'), 'local');
+assert.deepEqual(c.destinationsForMode('local'), ['folder']);
+assert.deepEqual(c.destinationsForMode('database'), ['server']);
+assert.deepEqual(c.destinationsForMode('hybrid'), ['folder', 'server']);
+assert.throws(() => c.createSession({ projectId: 'p1', mode: 'local' }), /Folder binding/);
+assert.throws(() => c.createSession({ projectId: 'p1', mode: 'database' }), /Remote project/);
+const local = c.createSession({ projectId: 'p1', folderHandle: folder });
+assert.equal(local.mode, 'local');
+assert.equal(c.saveStatus('local', 'r2', { folder: 'r2' }).synced, true);
+assert.equal(c.saveStatus('hybrid', 'r2', { folder: 'r2', server: 'r1' }).synced, false);
+assert.deepEqual(c.saveStatus('hybrid', 'r2', { folder: 'r2', server: 'r1' }).pending, ['server']);
+assert.equal(c.saveStatus('database', '', { server: '' }).synced, false);
+const remote = c.createSession({ projectId: 'p1', mode: 'database', remoteProjectId: 'r1', accountId: 'a1', profileId: 'v1' });
+assert.equal(remote.folderHandle, null);
+assert.equal(c.sameSession(remote, { ...remote, accountId: 'a2' }), false);
+assert.equal(c.sameSession(remote, { ...remote }), true);
+console.log('storage contracts: modes, bindings, identity and acknowledgements passed');

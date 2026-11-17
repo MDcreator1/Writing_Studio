@@ -9,10 +9,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lekhak Manch — Home</title>
   <link rel="stylesheet" href="assets/shared/css/00-base.css?v=20260906-theme-variants">
-  <link rel="stylesheet" href="assets/shared/css/01-find-modals.css?v=20260905-custom-select-option-borders">
+  <link rel="stylesheet" href="assets/shared/css/01-find-modals.css?v=20261110-workspace-merge-1">
   <link rel="stylesheet" href="assets/pages/home/css/00-home-page.css?v=20260610-scenario-overview">
   <link rel="stylesheet" href="assets/shared/css/99-theme-overrides.css?v=20260906-lagoon-muted">
   <link rel="stylesheet" href="assets/pages/home/css/01-home-responsive.css?v=20261102-home-responsive">
+<style>#storyLibraryBtn[hidden], #projectBtn[hidden], #homeRecentStorageTabs[hidden] { display: none !important; }</style>
+  <link rel="stylesheet" href="assets/shared/css/cloud-login.css?v=20261113-login-card-size">
 </head>
 
 <body data-page="home">
@@ -35,12 +37,13 @@
     </h1>
 
     <div class="tb-group topbar-actions">
-      <button class="tb-icon lm-id-projectBtn" id="projectBtn" type="button" onclick="selectLocalProjectFolder()"
+      <button class="tb-icon lm-id-projectBtn" id="projectBtn" type="button" hidden onclick="LmDatabasePanel.openHomeFolder()"
         title="Open Workspace Folder" aria-label="Open Workspace Folder">
         <span data-lm-icon="projectFolderDefault"></span>
         <span data-lm-icon="projectFolderHover"></span>
       </button>
-      <button class="tb-icon story-library-btn lm-id-storyLibraryBtn" id="storyLibraryBtn" type="button"
+      <button id="homeProfileButton" class="home-profile-button" type="button" onclick="LmDatabasePanel.openHomeProfile()" aria-expanded="false">Login</button>
+      <button class="tb-icon story-library-btn lm-id-storyLibraryBtn" id="storyLibraryBtn" type="button" hidden
         onclick="toggleStoryLibraryPanel(event)" title="Stories" aria-label="Stories" aria-expanded="false"
         aria-controls="storyLibraryPanel">
         <span data-lm-icon="storyLibraryDefault"></span>
@@ -113,27 +116,24 @@
         </button>
       </div>
       <div class="home-menu-status lm-id-homeMenuStatus" id="homeMenuStatus" hidden></div>
+      <button id="workspacePermissionBtn" class="lm-id-projectSelectBtn" type="button" onclick="allowSelectedWorkspaceFolder()" hidden>Allow folder editing</button>
+      <p id="homeWorkspaceFolderDropTarget" class="workspace-folder-drop-target">Or drag your workspace folder here from File Explorer.</p>
     </aside>
 
     <section class="home-overview-panel" id="homeOverviewPanel" aria-live="polite"></section>
+    <section id="homeLoginSection" aria-label="Sign in to Lekhak Manch" hidden></section>
   </main>
 
-  <div id="project-gate" class="project-gate lm-id-project-gate">
-    <div class="project-gate-card">
-      <div class="project-gate-icon">📁</div>
-      <h2 id="projectGateTitle" class="lm-id-projectGateTitle">Choose a workspace folder</h2>
-      <p id="projectGateBody" class="lm-id-projectGateBody">
-        Select an empty local folder. Lekhak Manch will keep it empty until you create or open a story.
-      </p>
-      <button id="projectSelectBtn" class="lm-id-projectSelectBtn" type="button" onclick="selectLocalProjectFolder()">Choose Folder</button>
-      <p class="project-gate-note lm-id-projectGateNote" id="projectGateNote">
-        Your browser will ask permission once. After that this project can reopen automatically.
-      </p>
-    </div>
-  </div>
 
   <div id="story-info-modal" class="story-info-modal lm-id-story-info-modal">
     <div class="story-info-card">
+      <label>Storage
+        <select id="homeNewProjectStorage">
+          <option value="local">Local</option>
+          <option value="cloud">Cloud</option>
+          <option value="synced">Synced</option>
+        </select>
+      </label>
       <div class="story-info-head">
         <div class="story-info-title-row">
           <h2 id="storyInfoTitle" class="lm-id-storyInfoTitle">Story Information</h2>
@@ -216,6 +216,11 @@
           </button>
         </div>
       </div>
+      <div id="homeRecentStorageTabs" role="group" aria-label="Project storage" hidden>
+        <button type="button" data-recent-storage="local" onclick="renderHomeRecentProjectsPanel('local')">Local</button>
+        <button type="button" data-recent-storage="cloud" onclick="renderHomeRecentProjectsPanel('cloud')">Cloud</button>
+        <button type="button" data-recent-storage="synced" onclick="renderHomeRecentProjectsPanel('synced')" aria-label="Synced projects" title="Synced projects">⇄</button>
+      </div>
       <div class="home-recent-projects-list lm-id-homeRecentProjectsPanelList" id="homeRecentProjectsPanelList"></div>
     </div>
   </div>
@@ -224,14 +229,27 @@
   <script src="assets/shared/js/01-shortcut-tooltips.js?v=20260608-file-renames"></script>
   <script src="assets/shared/js/02-floating-panel-focus-return.js?v=20260608-file-renames"></script>
   <script src="assets/shared/js/03-theme-controller.js?v=20260906-theme-variant-switch-final"></script>
-  <script src="assets/shared/js/04a-state-defaults-normalization.js?v=20260905-null-source-orphan"></script>
+  <script src="assets/shared/js/04a-state-defaults-normalization.js?v=20261110-workspace-merge-1"></script>
   <script src="assets/shared/js/04b-editor-document-state.js?v=20260903-js-module-split"></script>
   <script src="assets/shared/js/05-floating-panel-positions.js?v=20260610-ai-connection-floating"></script>
-  <script src="assets/shared/js/06a-project-storage-foundation.js?v=20260904-naming-data-safety"></script>
+  <script src="assets/shared/js/06e-storage-contracts.js?v=20261102-storage"></script>
+  <script src="assets/shared/js/06f-local-folder-adapter.js?v=20261102-storage"></script>
+  <script src="assets/shared/js/06g-project-repository.js?v=20261102-storage"></script>
+  <script src="assets/shared/js/06h-paragraph-model.js?v=20261102-storage"></script>
+  <script src="assets/shared/js/06i-working-store.js?v=20261111-folder-sync"></script>
+  <script src="assets/shared/js/06j-editor-working-copy.js?v=20261110-cache-v4"></script>
+  <script src="assets/shared/js/06k-sync-identity.js?v=20261110-cache-v4"></script>
+  <script src="assets/shared/js/06l-remote-adapter.js?v=20261113-folder-restore"></script>
+  <script src="assets/shared/js/06m-database-profiles.js?v=20261113-cloud-login"></script>
+  <script src="assets/shared/js/06n-remote-workspace.js?v=20261112-advanced-db"></script>
+  <script src="assets/shared/js/06o-database-editor.js?v=20261112-advanced-db"></script>
+  <script src="assets/shared/js/06q-folder-sync.js?v=20261113-folder-recovery"></script>
+  <script src="assets/shared/js/06p-database-panel.js?v=20261113-login-placeholders"></script>
+  <script src="assets/shared/js/06a-project-storage-foundation.js?v=20261113-home-storage"></script>
   <script src="assets/shared/js/06aa-naming-file-safety.js?v=20260905-authoritative-import"></script>
-  <script src="assets/shared/js/06b-workspace-restore-autosave.js?v=20260903-js-module-split"></script>
-  <script src="assets/shared/js/06c-workspace-library-settings.js?v=20260903-js-module-split"></script>
-  <script src="assets/shared/js/06d-editor-paste-settings.js?v=20260905-portable-naming-selects"></script>
+  <script src="assets/shared/js/06b-workspace-restore-autosave.js?v=20261113-local-status"></script>
+  <script src="assets/shared/js/06c-workspace-library-settings.js?v=20261113-app-panels"></script>
+  <script src="assets/shared/js/06d-editor-paste-settings.js?v=20261112-advanced-db"></script>
   <script src="assets/pages/home/js/overview/00-home-overview-utils.js?v=20260610-scenario-overview"></script>
   <script src="assets/pages/home/js/overview/01-story-writing-overview.js?v=20260610-scenario-overview"></script>
   <script src="assets/pages/home/js/overview/02-novel-writing-overview.js?v=20260610-scenario-overview"></script>
@@ -239,7 +257,7 @@
   <script src="assets/pages/home/js/overview/04-essay-longform-overview.js?v=20260610-scenario-overview"></script>
   <script src="assets/pages/home/js/overview/05-poetry-overview.js?v=20260610-scenario-overview"></script>
   <script src="assets/pages/home/js/overview/06-screenplay-overview.js?v=20260610-scenario-overview"></script>
-  <script src="assets/pages/home/js/00-home-page.js?v=20260611-news-project-workspace"></script>
+  <script src="assets/pages/home/js/00-home-page.js?v=20261113-cloud-login"></script>
   <script src="assets/pages/home/js/01-home-responsive.js?v=20261102-home-responsive"></script>
 </body>
 

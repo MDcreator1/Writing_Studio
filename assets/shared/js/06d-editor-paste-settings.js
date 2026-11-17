@@ -142,7 +142,14 @@ async function applySmartPasteStylesGlobally() {
   persistProjectManifestSnapshot();
   saveToStorage(true);
 
-  if (hasActiveStory() && projectDirectoryHandle) {
+  if (window.LmDatabaseEditor?.active()) {
+    try {
+      await window.LmDatabaseEditor.persistAdvancedSettings({ formatting: globalFormatting });
+      showSmartCopyToast("Applied styles globally!");
+    } catch (error) {
+      showMiniReminder(error.message);
+    }
+  } else if (hasActiveStory() && projectDirectoryHandle) {
     try {
       await Promise.all([
         writeProjectManifest(),
@@ -717,7 +724,9 @@ async function applyEditorAutoScrollPanelSettingsToAllDocuments(event) {
   if (typeof saveToStorage === 'function') saveToStorage(false);
 
   try {
-    if (projectDirectoryHandle) {
+    if (window.LmDatabaseEditor?.active()) {
+      await window.LmDatabaseEditor.persistAdvancedSettings({ autoScroll: sourceSettings, autoScrollFields: fields });
+    } else if (projectDirectoryHandle) {
       await Promise.all([
         typeof writeProjectManifest === 'function' ? writeProjectManifest() : Promise.resolve(),
         typeof writeDraftsDataToProject === 'function' ? writeDraftsDataToProject() : Promise.resolve(),

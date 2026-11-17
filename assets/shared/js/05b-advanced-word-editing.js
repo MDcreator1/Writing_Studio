@@ -100,7 +100,12 @@
     status.textContent = message;
     status.dataset.tone = tone; }
   async function persist() { window.clearTimeout(state.persistTimer);
+    state.persistTimer = 0;
     const payload = serializableState();
+    if(window.LmDatabaseEditor?.active()){
+      try{await window.LmDatabaseEditor.persistDictionary(payload);setStorageStatus('Dictionary इस डिवाइस पर सुरक्षित; server status ऊपर देखें','success');return true;}
+      catch(error){setStorageStatus('Dictionary save नहीं हुई: '+error.message,'danger');return false;}
+    }
     const targetHandle = state.projectHandle;
     const activeHandle = typeof projectDirectoryHandle !== 'undefined' ? projectDirectoryHandle : null;
     if (!targetHandle || targetHandle !== activeHandle) { setStorageStatus('Open a project before saving its dictionary', 'danger');
@@ -115,6 +120,7 @@
   function persistSoon() { window.clearTimeout(state.persistTimer);
     setStorageStatus('Saving dictionary…', 'working');
     state.persistTimer = window.setTimeout(persist, 220); }
+  function flushPending(){return state.persistTimer?persist():Promise.resolve(true);}
   function toast(message, type = 'success') { const region = state.root?.querySelector('[data-awe-toast-region]');
     if (region) { const item = document.createElement('div');
       item.className = `awe-toast is-${type}`;
@@ -1122,6 +1128,14 @@
       toast('The replacement dictionary is empty.', 'error');
       return { count: 0, changed: false };
     }
+    if(window.LmDatabaseEditor?.active()){
+      try{
+        const result=await window.LmDatabaseEditor.transformAllDocuments(text=>runReplacementEngine(text));
+        toast(result.changed?`${result.count.toLocaleString()} dictionary replacements saved on this device; server sync queued.`:'No dictionary replacements were found.');
+        window.dispatchEvent(new CustomEvent('lm:advanced-word-editing-all-drafts-applied',{detail:{count:result.count,source:options.source||'settings'}}));
+        return result;
+      }catch(error){toast(error.message,'error');return {count:0,changed:false,error:true};}
+    }
     let totalReplacements = 0;
     // 1. Process in-memory chapterDrafts
     if (typeof chapterDrafts !== 'undefined' && Array.isArray(chapterDrafts)) {
@@ -1816,7 +1830,7 @@
     syncEditorQuickAction, syncEditorDockPanel, editorDockPanelState, getEditorDockPanelState,
     updateCollectSettingsFromDock,
     toggleKeepEditorReplacementsFromDock, openEditorControlsFromDock, openTemporaryCandidatesFromDock,
-    loadDictionaryPayload, resetProjectData, flush: persist
+    loadDictionaryPayload, resetProjectData, flush: persist, flushPending, hasPendingSave:()=>Boolean(state.persistTimer)
   });
   const initializeEditorIntegration = () => Promise.resolve().then(() => {
     syncEditorQuickAction();

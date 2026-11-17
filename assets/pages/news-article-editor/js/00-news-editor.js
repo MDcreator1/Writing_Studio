@@ -8,6 +8,9 @@
   let newsFontToolsOpen = false;
   let newsToolDockDragState = null;
   let newsAutoScrollSuspended = false;
+  let newsDatabase = null;
+  let newsSaveAgain = false;
+  let databaseNewsUnavailable = false;
   const statusLabels = {
     draft: 'Draft',
     review: 'In Review',
@@ -290,6 +293,7 @@
     return projectKey ? `${NEWS_STORAGE_KEY}:${projectKey}` : NEWS_STORAGE_KEY;
   }
   function newsSaveTargetLabel(saved = false) {
+    if (newsDatabase) return saved ? 'Saved to Database' : 'Database project ready';
     if (hasActiveNewsProjectDirectory()) return saved ? 'Saved to project' : 'Project ready';
     if (workspaceDirectoryHandle) return saved ? 'Saved to workspace' : 'Workspace ready';
     return saved ? 'Saved in browser' : 'Browser memory';
@@ -351,6 +355,66 @@
     await writeNewsFileText(handle, JSON.stringify(serializedState(), null, 2));
     return true;
   }
+  async function stageDatabaseNews(session) {
+    const snapshot=structuredClone(serializedState());
+    await session.workspace.putDatasets(session.projectId,window.LmFolderSync.newsDatasets(snapshot));
+  }
+  async function leaveDatabaseNews() {
+    if(!newsDatabase)return;
+    if(newsDeskState.isSaving)throw new Error('मौजूदा article का save पूरा होने दें।');
+    captureCurrentArticle();
+    await stageDatabaseNews(newsDatabase);
+    clearTimeout(newsDeskState.saveTimer);
+    newsDatabase.store.close();
+    newsDatabase=null;
+    const url=new URL(location.href);
+    url.searchParams.delete('databaseProfile');
+    url.searchParams.delete('databaseProject');
+    history.replaceState({},'',url);
+  }
+  async function openDatabaseNews(connection,projectId) {
+    if(newsDeskState.isSaving)throw new Error('मौजूदा article का save पूरा होने दें।');
+    const previous=newsDatabase;
+    if(previous){captureCurrentArticle();await stageDatabaseNews(previous);}
+    else if(!new URLSearchParams(location.search).has('databaseProject')){
+      captureCurrentArticle();
+      writeLocalNewsState();
+      await writeWorkspaceNewsState();
+    }
+    const store=await window.LmWorkingStore.open();
+    const workspace=window.LmRemoteWorkspace.create({connection,store});
+    try{
+      const state=await workspace.openProject(projectId,{lazy:true,refresh:true});
+      if(state.manifest.project.type!=='news')throw new Error('News Article project चुनें।');
+      const data=window.LmFolderSync.newsFromRows(Object.values(state.metadataRows||{}));
+      data.articles=data.articles.length?data.articles.map(normalizeArticle):[createArticle({author:state.manifest.project.metadata?.author||'New Reporter'})];
+      clearTimeout(newsDeskState.saveTimer);
+      previous?.store.close();
+      setActiveProjectFolder(null);
+      projectManifest=state.manifest.project;
+      newsDatabase={connection,projectId,store,workspace};
+      databaseNewsUnavailable=false;
+      const url=new URL(window.location.href);
+      url.searchParams.set('databaseProfile',connection.profile.id);
+      url.searchParams.set('databaseProject',projectId);
+      if(['http:','https:'].includes(url.protocol))history.replaceState({},'',url);
+      applyNewsDeskState(normalizeState(data));
+      renderAll();
+      void workspace.flush(projectId).catch(()=>{});
+    }catch(error){store.close();throw error;}
+  }
+  async function restoreDatabaseNews() {
+    const query=new URLSearchParams(location.search),projectId=query.get('databaseProject');
+    if(!projectId)return false;
+    const profile=window.LmDatabaseProfiles.list().find(item=>item.id===query.get('databaseProfile'));
+    if(!profile)throw new Error('Database profile नहीं मिला।');
+    const offline=async()=>{const error=new Error('Server sync के लिए Database connection खोलें।');error.status=0;throw error;};
+    const connection=(await window.LmDatabaseProfiles.resume(profile.id).catch(()=>null))||{
+      profile,scopeId:JSON.stringify([profile.instanceId,profile.userId,profile.id]),adapter:{manifest:offline,apply:offline}
+    };
+    await openDatabaseNews(connection,projectId);
+    return true;
+  }
   function applyNewsDeskState(state) {
     if (!state) return false;
     newsDeskState.articles = state.articles;
@@ -375,7 +439,9 @@
     if (!handle) return false;
     const manifest = await readNewsProjectManifestFromHandle(handle);
     if (!isNewsProjectManifest(manifest)) return false;
-    projectDirectoryHandle = handle;
+    await leaveDatabaseNews();
+    await window.LmFolderSync?.holdLocalEditor();
+    setActiveProjectFolder(handle);
     projectManifest = manifest;
     if (typeof setActiveProjectTypeFolderName === 'function') {
       setActiveProjectTypeFolderName(options.typeFolderName || localStorage.getItem(PROJECT_TYPE_FOLDER_KEY) || NEWS_WORKSPACE_DIR);
@@ -463,7 +529,7 @@
           <div class="newsdesk-brand-subtitle">Article Workspace</div>
         </div>
         <div class="newsdesk-brand-title">NewsDesk</div>
-        <p class="newsdesk-workspace-line" id="newsWorkspaceLine">${newsWorkspaceLabel()}</p>
+        <p class="newsdesk-workspace-line" id="newsWorkspaceLine">${newsEscape(newsWorkspaceLabel())}</p>
       </div>
       <div class="newsdesk-sidebar-action-row">
         <button class="newsdesk-primary-btn" type="button" onclick="newNewsArticle()">${icon('plus')} New Article</button>
@@ -491,6 +557,7 @@
     renderArticleList();
   }
   function newsWorkspaceLabel() {
+    if(newsDatabase)return 'Database · '+projectManifest.title;
     if (hasActiveNewsProjectDirectory()) {
       const manifest = storedNewsProjectManifest();
       return `News project: ${manifest?.title || projectDirectoryHandle.name || 'Untitled article project'}`;
@@ -1006,11 +1073,21 @@
     newsDeskState.saveTimer = setTimeout(() => saveNewsArticle(false), NEWS_AUTOSAVE_DELAY);
   }
   async function saveNewsArticle(showToast = false) {
-    if (newsDeskState.isSaving) return;
+    if(databaseNewsUnavailable){if(showToast)showNewsToast('पहले Database connection खोलें।');return;}
+    if (newsDeskState.isSaving) { newsSaveAgain=true; return; }
     newsDeskState.isSaving = true;
     captureCurrentArticle();
-    writeLocalNewsState();
     try {
+      if(newsDatabase){
+        const session=newsDatabase;
+        await stageDatabaseNews(session);
+        setSaveState('saved','इस डिवाइस पर सुरक्षित');
+        await session.workspace.flush(session.projectId);
+        setSaveState('saved','Database में सेव');
+        if(showToast)showNewsToast('Saved to Database');
+        return;
+      }
+      writeLocalNewsState();
       const didSync = await writeWorkspaceNewsState();
       setSaveState('saved', newsSaveTargetLabel(didSync));
       renderArticleList();
@@ -1020,10 +1097,11 @@
     } catch (error) {
       console.warn('NewsDesk save failed:', error);
       setSaveState('error', 'Save failed');
-      if (showToast) showNewsToast('Save failed. Browser copy सुरक्षित है।');
+      if (showToast) showNewsToast(savedOnDevice?'Server save बाकी है। इस डिवाइस पर कॉपी सुरक्षित है।':'Save विफल। Editor में बदलाव अभी खुले हैं।');
     } finally {
       newsDeskState.isSaving = false;
       updateNewsStats();
+      if(newsSaveAgain){newsSaveAgain=false;scheduleNewsSave();}
     }
   }
   async function selectNewsWorkspaceFolder() {
@@ -1044,7 +1122,9 @@
         showNewsToast(`News project ready: ${handle.name || 'Selected folder'}`);
         return;
       }
-      projectDirectoryHandle = null;
+      const wasDatabase=Boolean(newsDatabase);
+      await leaveDatabaseNews();
+      setActiveProjectFolder(null);
       projectManifest = null;
       if (typeof setActiveProjectTypeFolderName === 'function') setActiveProjectTypeFolderName('');
       if (typeof deleteStoredDirectoryHandle === 'function') await deleteStoredDirectoryHandle(PROJECT_HANDLE_KEY);
@@ -1056,6 +1136,7 @@
       localStorage.setItem('lm_project_mode', 'workspace');
       localStorage.setItem('lm_workspace_folder_name', handle.name || '');
       const workspaceState = await readWorkspaceNewsState();
+      if(wasDatabase&&!workspaceState)applyNewsDeskState(readLocalNewsState());
       if (workspaceState) {
         applyNewsDeskState(workspaceState);
         writeLocalNewsState();
@@ -1384,7 +1465,16 @@
     newsDeskState.currentArticleId = stored.currentArticleId;
     newsDeskState.wordTarget = stored.wordTarget;
     renderAll();
-    await restoreNewsWorkspace();
+    try{if(!await restoreDatabaseNews())await restoreNewsWorkspace();}
+    catch(error){
+      databaseNewsUnavailable=true;
+      applyNewsDeskState(normalizeState({articles:[createArticle()]}));
+      renderAll();
+      const headline=document.getElementById('newsHeadline');
+      if(headline)headline.readOnly=true;
+      document.getElementById('newsBodyEditor')?.setAttribute('contenteditable','false');
+      showNewsToast(error.message);
+    }
     document.addEventListener('keydown', event => {
       if (event.key === 'Escape') closeNewsdeskSidebarMenu();
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
@@ -1400,6 +1490,10 @@
     document.addEventListener('pointerup', handleNewsToolDockPointerUp);
   }
   window.saveNewsArticle = saveNewsArticle;
+  window.LmNewsDatabaseEditor=Object.freeze({
+    open:openDatabaseNews,leave:leaveDatabaseNews,
+    current:()=>newsDatabase?{profileId:newsDatabase.connection.profile.id,projectId:newsDatabase.projectId}:null
+  });
   window.restoreNewsWorkspace = restoreNewsWorkspace;
   window.toggleNewsdeskSidebarMenu = toggleNewsdeskSidebarMenu;
   window.closeNewsdeskSidebarMenu = closeNewsdeskSidebarMenu;

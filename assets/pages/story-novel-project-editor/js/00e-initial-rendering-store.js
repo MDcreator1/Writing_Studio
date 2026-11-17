@@ -697,6 +697,9 @@
       return { identity, value, matching, documentSource: contentHash ? { contentHash } : undefined };
     });
     namingIndex.storyMentionCounts = storyMentionCounts;
+    if (window.LmDatabaseEditor?.active()) {
+      return { documentStates, scannedDocuments: documents.length, writtenSnapshots: 0, scope: options.scope };
+    }
     const namingSource = await fingerprint(PROJECT_NAMING_FILE, { contentHash: true });
     const scoped = await namingSnapshotDocumentsForScope(documents, options.scope || options);
     const selectedKeys = new Set(scoped.documents.map(({ item, index, kind }) => namingDocumentIdentity(item, kind, index).key));
@@ -721,6 +724,12 @@
   }
 
   async function loadNamingForActiveDocument() {
+    if (window.LmDatabaseEditor?.active()) {
+      fullNamingData=namingData;
+      namingMode='full';
+      namingIndex=createNamingIndex(namingData,{isFull:true,categoryCounts:window.LmDatabaseEditor.namingSummary()?.category_counts});
+      return true;
+    }
     warmNamingChapterOccurrences().catch(error => console.warn('Naming occurrence snapshot warmup failed:', error));
     const identity = namingDocumentIdentity();
     if (await loadNamingSnapshot(identity)) {
@@ -788,6 +797,7 @@
   }
 
   async function ensureFullNamingData(options = {}) {
+    if (window.LmDatabaseEditor?.active()) { if(options.projectHandle)throw new Error('Stale Naming project context.');fullNamingData=namingData;namingMode='full';namingIndex=createNamingIndex(namingData,{isFull:true});return namingData; }
     if (namingMode === 'full' && !options.forceSource) return namingData;
     const projectedDocumentKey = namingMode === 'projection' ? namingProjectionDocumentKey : '';
     const targetHandle = options.projectHandle || projectDirectoryHandle;

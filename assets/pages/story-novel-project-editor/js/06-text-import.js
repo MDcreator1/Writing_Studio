@@ -273,6 +273,13 @@ async function handleTextImportFile(file) {
 
 async function createTextImportDraft() {
   if (!textImportState?.value.trim()) return -1;
+  if (window.LmDatabaseEditor?.active()) {
+    const index = chapterDrafts.length;
+    const title = textImportRawDraftTitle(index, textImportState, createDefaultDraft(index).title);
+    const text = textImportState.value.replace(/\r\n?/g, '\n').trimEnd();
+    const id = await window.LmDatabaseEditor.importTextDocuments([{ kind: 'draft', title, text }]);
+    return chapterDrafts.findIndex(draft => draft.id === id);
+  }
   chapterDrafts = normalizeDrafts(chapterDrafts);
   const index = chapterDrafts.length;
   const sourceText = textImportState.value.replace(/\r\n?/g, '\n').trimEnd();
@@ -310,6 +317,8 @@ async function createTextImportDraft() {
 async function runRawTextImport() {
   if (textImportState?.loading || !textImportActionsAvailable()) return;
   try {
+    textImportState.loading = true;
+    renderTextImportPanel();
     const index = await createTextImportDraft();
     if (index < 0) return;
     closeTextImportPanel();
@@ -317,6 +326,11 @@ async function runRawTextImport() {
   } catch (error) {
     if (textImportState) {
       textImportState.error = error?.message || 'The imported draft could not be saved.';
+      renderTextImportPanel();
+    }
+  } finally {
+    if (textImportState) {
+      textImportState.loading = false;
       renderTextImportPanel();
     }
   }

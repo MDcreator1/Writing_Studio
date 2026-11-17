@@ -1300,7 +1300,7 @@ async function projectDetailsOpenStoryFromLibrary(storyReference = '') {
       throw new Error(`Only ${projectDetailsCurrentProjectTypeLabel().toLowerCase()} projects can be opened from this panel.`);
     }
 
-    projectDirectoryHandle = storyHandle;
+    setActiveProjectFolder(storyHandle);
     projectManifest = normalizeProjectManifest(nextManifest);
     chapters = chaptersFromManifest(projectManifest);
     if (typeof saveProjectHandle === 'function') await saveProjectHandle(storyHandle);

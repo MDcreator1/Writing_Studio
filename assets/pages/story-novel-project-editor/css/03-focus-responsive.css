@@ -1604,3 +1604,26 @@ body.focus-mode .fact-detail-popover.is-focus-center-panel .fact-detail-descript
     pointer-events: all;
   }
 }
+
+/* Preserve the end-of-document gap after responsive padding shorthands. */
+@media (max-width: 1420px) {
+  .lm-id-editor {
+    padding-bottom: max(var(--editor-padding-bottom), var(--editor-auto-scroll-linked-padding, 0px));
+  }
+}
+
+@media (max-width: 940px), (pointer: coarse) and (max-width: 1420px) {
+  .lm-id-editor {
+    margin-bottom: max(5px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .editor-touch-autoscroll-hidden .lm-id-editor {
+    padding-bottom: var(--editor-padding-bottom);
+  }
+}
+
+@media (max-width: 940px) {
+  body:not(.focus-mode) .lm-id-editor {
+    max-height: calc(100% - max(5px, env(safe-area-inset-bottom, 0px)));
+  }
+}

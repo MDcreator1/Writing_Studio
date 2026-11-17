@@ -384,6 +384,11 @@ function rememberCurrentChapterSaved(savedHTML = null) {
 }
 
 function persistActiveDocumentSettings() {
+  if (window.LmDatabaseEditor?.active()) {
+    void window.LmDatabaseEditor.persistAdvancedSettings({ activeSettings: currentEditorSettingsSnapshot() })
+      .catch(error => showMiniReminder(error.message));
+    return;
+  }
   if (!isDraftActive() && isChapterEditUnlocked && !isChapterEditDraftActive()) {
     materializeChapterEditDraftForChange();
   }

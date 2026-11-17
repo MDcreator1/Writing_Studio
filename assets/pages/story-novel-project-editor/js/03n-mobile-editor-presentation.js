@@ -3,59 +3,62 @@
   const header = document.getElementById('editor-info-panel');
   if (!editor || !header) return;
   const mobile = window.matchMedia('(max-width: 940px)');
-  let lastTop = Math.max(0, editor.scrollTop);
-  let hideTimer;
+  const edgeTolerance = 2;
+  const revealDistance = 8;
+  const revealDelay = 500;
+  let lastTop = 0;
+  let upwardDistance = 0;
+  let revealTimer = null;
 
-  function clearHideTimer() {
-    clearTimeout(hideTimer);
-    hideTimer = null;
+  function cancelReveal() {
+    clearTimeout(revealTimer);
+    revealTimer = null;
+    upwardDistance = 0;
   }
 
-  function show() {
-    header.classList.remove('is-mobile-scroll-hidden');
+  function scrollState() {
+    const end = Math.max(0, editor.scrollHeight - editor.clientHeight);
+    const top = Math.min(end, Math.max(0, editor.scrollTop));
+    return { top, atTop: top <= edgeTolerance, atBottom: end > edgeTolerance && end - top <= edgeTolerance };
   }
 
-  function hasOpenHeaderPanel() {
-    return Boolean(header.querySelector('.editor-settings-panel:not([hidden])') ||
-      document.getElementById('chapter-panel')?.classList.contains('is-mobile-open'));
+  function mobileHeaderActive() {
+    return mobile.matches && !document.body.classList.contains('focus-mode');
   }
 
-  function hide() {
-    clearHideTimer();
-    if (!mobile.matches || editor.scrollTop <= 1 || document.body.classList.contains('focus-mode')) return show();
-    if (hasOpenHeaderPanel()) return scheduleHide();
-    header.classList.add('is-mobile-scroll-hidden');
-  }
-
-  function scheduleHide() {
-    clearHideTimer();
-    hideTimer = setTimeout(hide, 3000);
+  function setHidden(hidden) {
+    header.classList.toggle('is-mobile-scroll-hidden', hidden);
   }
 
   function onScroll() {
-    const top = Math.max(0, editor.scrollTop);
+    const { top, atTop, atBottom } = scrollState();
     const delta = top - lastTop;
     lastTop = top;
-    if (!mobile.matches || document.body.classList.contains('focus-mode') || top <= 1) {
-      clearHideTimer();
-      show();
-    } else if (delta > 0.5) {
-      hide();
-    } else if (delta < -0.5) {
-      show();
-      scheduleHide();
+    if (!mobileHeaderActive() || atTop || atBottom || delta > 0) {
+      cancelReveal();
+      setHidden(mobileHeaderActive() && !atTop);
+      return;
     }
+    if (delta >= 0 || !header.classList.contains('is-mobile-scroll-hidden')) return;
+    upwardDistance -= delta;
+    if (upwardDistance < revealDistance || revealTimer !== null) return;
+    revealTimer = setTimeout(() => {
+      cancelReveal();
+      const current = scrollState();
+      if (mobileHeaderActive() && !current.atBottom) setHidden(false);
+    }, revealDelay);
   }
 
   function sync() {
-    clearHideTimer();
-    show();
-    lastTop = Math.max(0, editor.scrollTop);
+    cancelReveal();
+    const { top, atTop } = scrollState();
+    lastTop = top;
+    setHidden(mobileHeaderActive() && !atTop);
     const compression = typeof lmEditorAdvancedNumber === 'function'
       ? lmEditorAdvancedNumber('mobileFontSizeCompress', 0) : 0;
     editor.style.setProperty('--mobile-font-size-compress', `${Math.max(0, Math.min(100, compression))}px`);
     header.style.setProperty('--mobile-info-height', `${header.offsetHeight}px`);
-    if (mobile.matches && lastTop > 1) scheduleHide();
+
   }
 
   editor.addEventListener('scroll', onScroll, { passive: true });
@@ -63,11 +66,12 @@
   new ResizeObserver(() => {
     header.style.setProperty('--mobile-info-height', `${header.offsetHeight}px`);
   }).observe(header);
+  let focused = document.body.classList.contains('focus-mode');
   new MutationObserver(() => {
-    clearHideTimer();
-    show();
-    lastTop = Math.max(0, editor.scrollTop);
-    if (mobile.matches && lastTop > 1 && !document.body.classList.contains('focus-mode')) scheduleHide();
+    const next = document.body.classList.contains('focus-mode');
+    if (next === focused) return;
+    focused = next;
+    sync();
   }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   sync();
 })();

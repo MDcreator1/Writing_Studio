@@ -1,25 +1,3 @@
-.text-import-progress {
-  position: fixed;
-  inset: 0;
-  margin: auto;
-  width: min(420px, calc(100vw - 40px));
-  max-height: calc(100dvh - 40px);
-  overflow: auto;
-  box-sizing: border-box;
-  padding: 20px;
-  border: 1px solid var(--lm-chapter-panel-shell-border, var(--border));
-  border-radius: 14px;
-  background: var(--surface, #fff);
-  color: var(--ink, #192336);
-  box-shadow: var(--lm-shadow-panel-soft), inset 0 1px 0 color-mix(in srgb, var(--surface) 70%, transparent);
-  font-family: inherit;
-}
-
-.text-import-progress::backdrop {
-  background: var(--color-backdrop);
-  backdrop-filter: blur(4px);
-}
-
 .text-import-progress-heading {
   display: flex;
   align-items: center;

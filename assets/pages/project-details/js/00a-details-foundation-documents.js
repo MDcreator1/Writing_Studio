@@ -648,7 +648,7 @@ async function projectDetailsGetStoredProjectHandle() {
     const handle = await readProjectHandle();
     if (!handle) return null;
     if (!(await verifyProjectPermission(handle, false))) return null;
-    projectDirectoryHandle = handle;
+    setActiveProjectFolder(handle);
     return handle;
   } catch (error) {
     console.warn('Project details handle restore failed:', error);

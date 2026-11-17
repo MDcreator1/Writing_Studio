@@ -330,6 +330,7 @@ function requestSidebarDraftPromote(anchor = null) {
 }
 
 function openSidebarDraftPromoteModePanel(draftIndex, anchor = null) {
+  if (window.LmDatabaseEditor?.active()) return requestPromoteDraftToChapter(draftIndex, anchor);
   const panel = document.getElementById('draftDetailsPanel');
   if (!panel || !chapterDrafts[draftIndex]) return;
   if (anchor?.closest?.('#draftDetailsPanel')) {
@@ -403,6 +404,7 @@ async function requestRawPromoteDraftToChapter(draftIndex, anchor = null) {
 }
 
 async function requestAdvancedPromoteDraftToChapter(draftIndex, anchor = null) {
+  if (window.LmDatabaseEditor?.active()) return lmRawDraftPromoteRequest(draftIndex, anchor);
   const workflowDefaults = window.LmAdvancedImportPromoteSettings?.read?.() || {};
   if (workflowDefaults.promoteAutoOpenAboveLimit !== false) {
     if (!(await ensureDraftContentLoaded(draftIndex))) {

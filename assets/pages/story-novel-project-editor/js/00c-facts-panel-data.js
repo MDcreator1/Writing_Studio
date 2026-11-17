@@ -27,6 +27,7 @@
   }
 
   async function writeProjectData(facts = storyFacts) {
+    if (window.LmDatabaseEditor?.active()) return window.LmDatabaseEditor.persistFacts(facts);
     storyFacts = normalizeStoryFacts(facts);
     localStorage.setItem(FACTS_STORAGE_KEY, JSON.stringify(storyFacts));
     if (!projectDirectoryHandle) return;

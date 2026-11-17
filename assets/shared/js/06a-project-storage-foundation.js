@@ -454,7 +454,19 @@ function splitProjectPath(path) {
     .filter(Boolean);
 }
 
+function setActiveProjectFolder(handle) {
+  window.LmDatabaseEditor?.leave({ clearRoute: Boolean(handle) });
+  projectDirectoryHandle = handle;
+  if (!handle) window.LmFolderSync?.releaseLocalEditor();
+  window.LmProjectRepository?.activateFolder(handle);
+  return handle;
+}
+
 async function getProjectFileHandle(path, options = {}) {
+  if (window.LmProjectRepository && projectDirectoryHandle) {
+    const normalizedPath = splitProjectPath(path).join('/');
+    return window.LmProjectRepository.forFolder(projectDirectoryHandle).getFileHandle(normalizedPath, options);
+  }
   const parts = splitProjectPath(path);
   const fileName = parts.pop();
   let directory = projectDirectoryHandle;
@@ -469,6 +481,10 @@ async function getProjectFileHandle(path, options = {}) {
 }
 
 async function getProjectDirectoryHandle(path, options = {}) {
+  if (window.LmProjectRepository && projectDirectoryHandle) {
+    const normalizedPath = splitProjectPath(path).join('/');
+    return window.LmProjectRepository.forFolder(projectDirectoryHandle).getDirectoryHandle(normalizedPath, options);
+  }
   const parts = splitProjectPath(path);
   let directory = projectDirectoryHandle;
   if (!directory) throw new Error(`Invalid project directory path: ${path}`);
@@ -481,10 +497,12 @@ async function getProjectDirectoryHandle(path, options = {}) {
 }
 
 async function readFileText(fileHandle) {
+  if (window.LmLocalFolderAdapter) return window.LmLocalFolderAdapter.readHandleText(fileHandle);
   return (await fileHandle.getFile()).text();
 }
 
 async function writeFileText(fileHandle, value) {
+  if (window.LmLocalFolderAdapter) return window.LmLocalFolderAdapter.writeHandleText(fileHandle, value);
   const writable = await fileHandle.createWritable();
   await writable.write(value);
   await writable.close();
@@ -494,6 +512,10 @@ async function removeProjectFileIfExists(path) {
   if (!projectDirectoryHandle || !path) return;
 
   try {
+    if (window.LmProjectRepository) {
+      await window.LmProjectRepository.forFolder(projectDirectoryHandle).removeFile(splitProjectPath(path).join('/'));
+      return;
+    }
     const parts = splitProjectPath(path);
     const fileName = parts.pop();
     let directory = projectDirectoryHandle;
@@ -846,7 +868,7 @@ async function writeNewsDeskProjectDataToDirectory(directoryHandle, state) {
 }
 
 async function activateNewsProjectHandle(newsHandle, typeFolderName, manifest) {
-  projectDirectoryHandle = newsHandle;
+  setActiveProjectFolder(newsHandle);
   setActiveProjectTypeFolderName(typeFolderName);
   projectManifest = normalizeProjectManifest(manifest);
   await saveProjectHandle(newsHandle);
@@ -855,7 +877,7 @@ async function activateNewsProjectHandle(newsHandle, typeFolderName, manifest) {
   cacheProjectManifest(projectManifest);
 }
 
-async function createNewsProjectFromInfoForm(storyTitle, typeFolderName) {
+async function createNewsProjectFromInfoForm(storyTitle, typeFolderName, {sync=false}={}) {
   const newsHandle = await createUniqueStoryDirectory(storyTitle, 'news');
   const createdAt = new Date().toISOString();
   const manifest = normalizeProjectManifest({
@@ -871,6 +893,10 @@ async function createNewsProjectFromInfoForm(storyTitle, typeFolderName) {
   const manifestHandle = await newsHandle.getFileHandle(PROJECT_MANIFEST_FILE, { create: true });
   await writeFileText(manifestHandle, JSON.stringify(manifest, null, 2));
   await writeNewsDeskProjectDataToDirectory(newsHandle, newsState);
+  if(sync){
+    try{await window.LmDatabasePanel.linkNewHomeProject(newsHandle);}
+    catch(error){showMiniReminder('Local project created. Sync: '+error.message);return;}
+  }
   await activateNewsProjectHandle(newsHandle, typeFolderName, manifest);
   const newsLocalKey = uniqueNameKey(projectWorkspacePath(newsHandle.name || '', typeFolderName));
   if (newsLocalKey) localStorage.setItem(`lm_newsdesk_state_v1:${newsLocalKey}`, JSON.stringify(newsState));
@@ -906,12 +932,14 @@ async function readNamingDataFromProject() {
   localStorage.setItem(NAMING_STORAGE_KEY, JSON.stringify(namingData));
 }
 async function writeNamingDataToProject(options = {}) {
+  if (window.LmDatabaseEditor?.active()) return window.LmDatabaseEditor.persistNaming(options);
   const targetHandle = projectDirectoryHandle;
   if (!targetHandle) return false;
   return window.LmNamingFileSafety.writeCurrentProject(targetHandle, options);
 }
 
 async function readWordEditingDataFromProject(targetDirectoryHandle = projectDirectoryHandle) {
+  if (window.LmDatabaseEditor?.active() && !targetDirectoryHandle) return window.LmDatabaseEditor.dictionaryPayload();
   if (!targetDirectoryHandle) return null;
   try {
     const fileHandle = await targetDirectoryHandle.getFileHandle(PROJECT_WORD_EDITING_FILE);
@@ -925,6 +953,7 @@ async function readWordEditingDataFromProject(targetDirectoryHandle = projectDir
   return null;
 }
 async function writeWordEditingDataToProject(payload, targetDirectoryHandle = projectDirectoryHandle) {
+  if (window.LmDatabaseEditor?.active() && !targetDirectoryHandle) { await window.LmDatabaseEditor.persistDictionary(payload); return true; }
   if (!targetDirectoryHandle || !payload) return false;
   try {
     const fileHandle = await targetDirectoryHandle.getFileHandle(PROJECT_WORD_EDITING_FILE, { create: true });
@@ -1331,6 +1360,7 @@ async function writeChapterEditDraftsToProject() {
 }
 
 function persistChapterEditDrafts() {
+  if (window.LmDatabaseEditor?.active()) return;
   chapterEditDrafts = normalizeChapterEditDrafts(chapterEditDrafts);
   localStorage.setItem(CHAPTER_EDIT_DRAFTS_STORAGE_KEY, JSON.stringify(chapterEditDrafts));
   if (projectDirectoryHandle) {
@@ -1339,6 +1369,7 @@ function persistChapterEditDrafts() {
 }
 
 function saveNamingData(options = {}) {
+  if (window.LmDatabaseEditor?.active()) return window.LmDatabaseEditor.persistNaming(options).catch(error => console.warn('Database Naming save failed:', error.message));
   // A validated single-entry edit does not require normalizing the entire novel
   // again on the Save click. Other callers retain the full normalization path.
   const { skipNormalization = false, ...writeOptions } = options;
@@ -1353,6 +1384,8 @@ function saveNamingData(options = {}) {
 }
 
 async function loadLocalProject(handle, shouldStoreHandle = true, options = {}) {
+  if (window.LmDatabaseEditor?.active()) await window.LmDatabaseEditor.prepareLeave();
+  await window.LmFolderSync?.holdLocalEditor();
   isProjectDataLoading = true;
   clearTimeout(autoSaveTimer);
   if (typeof stopTimedAutoSave === 'function') stopTimedAutoSave();
@@ -1374,7 +1407,7 @@ async function loadLocalProject(handle, shouldStoreHandle = true, options = {}) 
       localStorage.getItem(PROJECT_FOLDER_KEY) === (handle.name || '') &&
       (localStorage.getItem(PROJECT_TYPE_FOLDER_KEY) || '') === (nextTypeFolderName || '')
     );
-  projectDirectoryHandle = handle;
+  setActiveProjectFolder(handle);
   await window.LmNamingFileSafety?.recoverPromotion?.(handle);
   setActiveProjectTypeFolderName(nextTypeFolderName);
   window.LmWorkspaceSectionLoader?.reset?.();
@@ -1398,7 +1431,7 @@ async function loadLocalProject(handle, shouldStoreHandle = true, options = {}) 
       return true;
     })();
   if (!sidebarDataLoaded) {
-    projectDirectoryHandle = null;
+    setActiveProjectFolder(null);
     setActiveProjectTypeFolderName('');
     isProjectDataLoading = false;
     return false;
