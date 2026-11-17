@@ -9,7 +9,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lekhak Manch — Story/Novel Project Editor</title>
   <link rel="stylesheet" href="assets/shared/css/00-base.css?v=20260906-theme-variants">
-  <link rel="stylesheet" href="assets/shared/css/01-find-modals.css?v=20261102-local-prep">
+  <link rel="stylesheet" href="assets/shared/css/01-find-modals.css?v=20261116-project-library">
   <link rel="stylesheet"
     href="assets/pages/story-novel-project-editor/css/00-editor-layout.css?v=20261102-local-prep">
   <link rel="stylesheet"
@@ -105,10 +105,25 @@
   <div class="story-library-panel lm-id-storyLibraryPanel" id="storyLibraryPanel" hidden>
     <div class="story-library-kicker lm-id-storyLibraryTitle" id="storyLibraryTitle">Stories / Novels</div>
     <button class="story-library-action lm-id-newStoryBtn" id="newStoryBtn" type="button">New Story / Novel</button>
+    <button class="story-library-action" type="button" onclick="pickExternalWorkspaceProject()">Open Local Project</button>
+    <button class="story-library-action" type="button" onclick="showMyFolderLibrary()">My Folder Library</button>
     <button class="story-library-action lm-id-openExistingStoriesBtn" id="openExistingStoriesBtn"
       type="button">Recent Stories / Novels</button>
     <div class="story-library-list lm-id-storyLibraryList" id="storyLibraryList" hidden></div>
   </div>
+  <dialog id="myFolderLibrary" class="project-gate-card" aria-labelledby="myFolderLibraryTitle">
+    <header class="my-folder-library-header">
+      <h2 id="myFolderLibraryTitle">My Folder Library</h2>
+      <form method="dialog">
+        <button class="story-info-close" type="submit" aria-label="Close My Folder Library">
+          <span data-lm-icon="close" aria-hidden="true"></span>
+        </button>
+      </form>
+    </header>
+    <p role="alert"></p>
+    <div class="story-library-list" aria-live="polite"></div>
+  </dialog>
+
 
   <!-- Main layout -->
   <div id="main" class="lm-id-main">
@@ -1305,10 +1320,10 @@
   <script src="assets/shared/js/05aa-advanced-import-promote-settings.js?v=20261017-promote-name-prefix"></script>
   <script src="assets/shared/js/05a-editor-advanced-config.js?v=20261102-local-prep"></script>
   <script src="assets/shared/js/05b-advanced-word-editing.js?v=20261102-local-prep"></script>
-    <script src="assets/shared/js/06a-project-storage-foundation.js?v=20260904-naming-projection-race-guard"></script>
+    <script src="assets/shared/js/06a-project-storage-foundation.js?v=20261116-project-library"></script>
     <script src="assets/shared/js/06aa-naming-file-safety.js?v=20261018-promotion-progress"></script>
-  <script src="assets/shared/js/06b-workspace-restore-autosave.js?v=20261110-workspace-library"></script>
-  <script src="assets/shared/js/06c-workspace-library-settings.js?v=20261102-local-prep"></script>
+  <script src="assets/shared/js/06b-workspace-restore-autosave.js?v=20261116-project-library"></script>
+  <script src="assets/shared/js/06c-workspace-library-settings.js?v=20261116-project-library"></script>
   <script src="assets/shared/js/06d-editor-paste-settings.js?v=20261102-local-prep"></script>
   <script
     src="assets/pages/story-novel-project-editor/js/00-hindi-unicode-input.js?v=20260619-large-input-defer"></script>
@@ -1338,7 +1353,7 @@
   <script src="assets/pages/story-novel-project-editor/js/03d-naming-category-sort.js?v=20260904-draft-first-appearance-sort"></script>
   <script src="assets/pages/story-novel-project-editor/js/03aa-naming-deep-scan-source.js?v=20261102-merge-safety"></script>
   <script src="assets/pages/story-novel-project-editor/js/03e-name-detail-aliases.js?v=20260904-name-detail-aliases"></script>
-  <script src="assets/pages/story-novel-project-editor/js/03c-naming-deep-scan-facts.js?v=20260906-duplicate-removal-fix"></script>
+  <script src="assets/pages/story-novel-project-editor/js/03c-naming-deep-scan-facts.js?v=20261117-delete-confirm-position"></script>
   <script src="assets/pages/story-novel-project-editor/js/03f-naming-portable-transfer.js?v=20260906-complete-body-action"></script>
   <script src="assets/pages/story-novel-project-editor/js/03g-tablet-side-panel.js?v=20261102-local-prep"></script>
   <script src="assets/pages/story-novel-project-editor/js/03h-story-title-fit.js?v=20261102-local-prep"></script>

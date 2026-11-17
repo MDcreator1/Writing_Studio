@@ -1,4 +1,5 @@
 async function restoreProjectFromWorkspaceFolder() {
+  if (currentProjectTypeFolderName().startsWith(EXTERNAL_PROJECT_SCOPE)) return false;
   const folderName = localStorage.getItem(PROJECT_FOLDER_KEY);
   const typeFolderName = localStorage.getItem(PROJECT_TYPE_FOLDER_KEY) || '';
   if (!workspaceDirectoryHandle || !folderName) return false;
@@ -639,6 +640,10 @@ function setStorySummarySaveIndicator(state = 'idle') {
 function openStoryDeleteConfirm(event = null) {
   event?.preventDefault?.();
   event?.stopPropagation?.();
+  if (currentProjectTypeFolderName().startsWith(EXTERNAL_PROJECT_SCOPE)) {
+    showMiniReminder('Manage external project folders in File Explorer.');
+    return;
+  }
   const confirmPanel = document.getElementById('storySummaryDeleteConfirm');
   if (!confirmPanel) return;
   confirmPanel.hidden = false;
@@ -657,6 +662,10 @@ async function deleteActiveStory() {
   if (!hasActiveStory()) return;
   const folderName = projectDirectoryHandle?.name || localStorage.getItem(PROJECT_FOLDER_KEY) || '';
   const typeFolderName = currentProjectTypeFolderName();
+  if (typeFolderName.startsWith(EXTERNAL_PROJECT_SCOPE)) {
+    showMiniReminder('Manage external project folders in File Explorer.');
+    return;
+  }
   if (!workspaceDirectoryHandle || !folderName) {
     showMiniReminder(text().chooseWorkspaceFirst);
     return;
@@ -740,6 +749,9 @@ function syncSavedStoryInfoSnapshot(values, manifest) {
 
 async function saveStoryInfo() {
   if (storyInfoPanelMode === 'create') {
+    const createButton = document.getElementById('storyInfoSaveBtn');
+    if (createButton?.disabled) return;
+    if (createButton) createButton.disabled = true;
     showAppLoader(text().loading);
     try {
       await createStoryFromInfoForm();
@@ -748,8 +760,10 @@ async function saveStoryInfo() {
       const errorMessage = error?.message || text().storyCreateFailed;
       if (errorMessage === text().duplicateStoryTitle) showDuplicateReminder(errorMessage);
       setHomeMenuStatus(errorMessage);
+      showMiniReminder(errorMessage);
       setDefaultSaveStatus();
     } finally {
+      if (createButton) createButton.disabled = false;
       hideAppLoader();
     }
     return;
@@ -763,7 +777,9 @@ async function saveStoryInfo() {
   const nextType = savedValues.type || manifest.type || 'novel';
   const currentTypeFolderName = currentProjectTypeFolderName();
   const nextTypeFolderName = projectTypeFolderName(nextType);
+  const isExternalProject = currentTypeFolderName.startsWith(EXTERNAL_PROJECT_SCOPE);
   const shouldRenameStoryFolder = Boolean(
+    !isExternalProject &&
     workspaceDirectoryHandle &&
     projectDirectoryHandle &&
     (
@@ -772,6 +788,7 @@ async function saveStoryInfo() {
     )
   );
   if (
+    !isExternalProject &&
     (uniqueNameKey(nextTitle) !== uniqueNameKey(manifest.title) || currentTypeFolderName !== nextTypeFolderName) &&
     await workspaceStoryTitleExists(nextTitle, projectDirectoryHandle?.name || '', nextType, currentTypeFolderName)
   ) {
@@ -1379,7 +1396,7 @@ async function connectSelectedWorkspaceFolder(handle) {
   refreshProjectUI();
   if (isHomePage()) {
     try {
-      await renderHomeRecentProjectsList();
+      await renderHomeRecentProjectsList(true);
     } catch (error) {
       console.warn('Workspace project list failed:', error);
       closeHomeRecentProjectsPanel();
@@ -1524,6 +1541,7 @@ async function removeWorkspaceProjectDirectory(folderName, typeFolderName = '') 
 }
 
 async function renameActiveStoryFolderIfNeeded(nextTitle, nextType = projectManifest?.type || 'novel') {
+  if (currentProjectTypeFolderName().startsWith(EXTERNAL_PROJECT_SCOPE)) return projectDirectoryHandle;
   if (!workspaceDirectoryHandle || !projectDirectoryHandle) return projectDirectoryHandle;
 
   const currentFolderName = projectDirectoryHandle.name || '';

@@ -1045,7 +1045,21 @@ function openNameDeleteReminder() {
   setText('nameDeleteCancelBtn', text().cancelDeleteName);
   setText('nameDeleteConfirmBtn', text().confirmDeleteName);
   reminder.hidden = false;
-  requestAnimationFrame(() => document.getElementById('nameDeleteConfirmBtn')?.focus());
+  requestAnimationFrame(() => {
+    const panel = document.getElementById('nameDetailPanel');
+    if (!panel || panel.hidden || reminder.hidden) return;
+
+    const rect = panel.getBoundingClientRect();
+    const position = clampFloatingPanelPosition(panel, rect.left, rect.top);
+    panel.style.top = `${position.top}px`;
+
+    const confirmButton = document.getElementById('nameDeleteConfirmBtn');
+    if (!confirmButton) return;
+    const panelBottom = panel.getBoundingClientRect().top + panel.clientTop + panel.clientHeight;
+    const hiddenHeight = confirmButton.getBoundingClientRect().bottom + 8 - panelBottom;
+    if (hiddenHeight > 0) panel.scrollTop += hiddenHeight;
+    confirmButton.focus({ preventScroll: true });
+  });
 }
 
 function closeNameDeleteReminder() {

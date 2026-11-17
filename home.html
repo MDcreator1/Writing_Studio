@@ -9,7 +9,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lekhak Manch — Home</title>
   <link rel="stylesheet" href="assets/shared/css/00-base.css?v=20260906-theme-variants">
-  <link rel="stylesheet" href="assets/shared/css/01-find-modals.css?v=20260905-custom-select-option-borders">
+  <link rel="stylesheet" href="assets/shared/css/01-find-modals.css?v=20261116-project-library">
   <link rel="stylesheet" href="assets/pages/home/css/00-home-page.css?v=20260610-scenario-overview">
   <link rel="stylesheet" href="assets/shared/css/99-theme-overrides.css?v=20260906-lagoon-muted">
   <link rel="stylesheet" href="assets/pages/home/css/01-home-responsive.css?v=20261102-home-responsive">
@@ -79,10 +79,25 @@
     <div class="story-library-kicker lm-id-storyLibraryTitle" id="storyLibraryTitle">Stories</div>
     <button class="story-library-action lm-id-newStoryBtn" id="newStoryBtn" type="button"
       onclick="openNewStoryPanel('storyLibraryBtn')">New Project</button>
+    <button class="story-library-action" type="button" onclick="pickExternalWorkspaceProject()">Open Local Project</button>
+    <button class="story-library-action" type="button" onclick="showMyFolderLibrary()">My Folder Library</button>
     <button class="story-library-action lm-id-openExistingStoriesBtn" id="openExistingStoriesBtn" type="button"
       onclick="renderHomeRecentProjectsList()">Recent Project</button>
     <div class="story-library-list lm-id-homeStoryList" id="homeStoryList" hidden></div>
   </div>
+  <dialog id="myFolderLibrary" class="project-gate-card" aria-labelledby="myFolderLibraryTitle">
+    <header class="my-folder-library-header">
+      <h2 id="myFolderLibraryTitle">My Folder Library</h2>
+      <form method="dialog">
+        <button class="story-info-close" type="submit" aria-label="Close My Folder Library">
+          <span data-lm-icon="close" aria-hidden="true"></span>
+        </button>
+      </form>
+    </header>
+    <p role="alert"></p>
+    <div class="story-library-list" aria-live="polite"></div>
+  </dialog>
+
 
   <main id="home-main" class="home-page lm-id-home-main" aria-label="Lekhak Manch home">
     <aside class="home-menu-panel">
@@ -230,10 +245,10 @@
   <script src="assets/shared/js/04a-state-defaults-normalization.js?v=20260905-null-source-orphan"></script>
   <script src="assets/shared/js/04b-editor-document-state.js?v=20260903-js-module-split"></script>
   <script src="assets/shared/js/05-floating-panel-positions.js?v=20260610-ai-connection-floating"></script>
-  <script src="assets/shared/js/06a-project-storage-foundation.js?v=20260904-naming-data-safety"></script>
+  <script src="assets/shared/js/06a-project-storage-foundation.js?v=20261116-project-library"></script>
   <script src="assets/shared/js/06aa-naming-file-safety.js?v=20260905-authoritative-import"></script>
-  <script src="assets/shared/js/06b-workspace-restore-autosave.js?v=20261110-workspace-library"></script>
-  <script src="assets/shared/js/06c-workspace-library-settings.js?v=20260903-js-module-split"></script>
+  <script src="assets/shared/js/06b-workspace-restore-autosave.js?v=20261116-project-library"></script>
+  <script src="assets/shared/js/06c-workspace-library-settings.js?v=20261116-project-library"></script>
   <script src="assets/shared/js/06d-editor-paste-settings.js?v=20260905-portable-naming-selects"></script>
   <script src="assets/pages/home/js/overview/00-home-overview-utils.js?v=20260610-scenario-overview"></script>
   <script src="assets/pages/home/js/overview/01-story-writing-overview.js?v=20260610-scenario-overview"></script>
