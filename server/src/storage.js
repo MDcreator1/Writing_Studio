@@ -52,7 +52,7 @@ export function storage(database) {
     },
     async listProjects(actor, after, limit) {
       return database.withClient(async client => {
-        const result = await client.query('SELECT p.id,p.title,p.type,p.language,p.revision,p.workspace_id FROM projects p JOIN workspaces w ON w.id=p.workspace_id WHERE w.owner_id=$1 AND NOT (p.metadata ? \'deletedAt\') AND ($2::uuid IS NULL OR p.id>$2) ORDER BY p.id LIMIT $3', [actor,after || null,limit]);
+        const result = await client.query('SELECT p.id,p.title,p.type,p.language,p.revision,p.workspace_id FROM projects p JOIN workspaces w ON w.id=p.workspace_id WHERE w.owner_id=$1 AND NOT p.admin_blocked AND NOT (p.metadata ? \'deletedAt\') AND ($2::uuid IS NULL OR p.id>$2) ORDER BY p.id LIMIT $3', [actor,after || null,limit]);
         return result.rows;
       });
     },

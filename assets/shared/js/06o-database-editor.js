@@ -627,7 +627,7 @@
     if(current!==captured)throw new Error('Project changed during scan.');
     return paragraphs.length?root.LmParagraphModel.toText(paragraphs):'';
   }
-  const allowed=new Set(['openChapterDetailsPanel','closeChapterDetailsPanel','moveChapterToDraft','openChapterRecentToDraftPanel','convertRecentChaptersToDraftFromPanel','adjustChapterToDraftCount','deletePartIfEmpty','deletePartKeepingChapters','applyEditorAutoScrollPanelSettingsToAllDocuments','toggleEditorAutoScrollClickReposition',
+  const allowed=new Set(['pickExternalWorkspaceProject','showMyFolderLibrary','openChapterDetailsPanel','closeChapterDetailsPanel','moveChapterToDraft','openChapterRecentToDraftPanel','convertRecentChaptersToDraftFromPanel','adjustChapterToDraftCount','deletePartIfEmpty','deletePartKeepingChapters','applyEditorAutoScrollPanelSettingsToAllDocuments','toggleEditorAutoScrollClickReposition',
     'findTag','toggleToolDock','toggleDockSelect','toggleDockSelectFromTrigger','selectDockOption','toggleFontTools',
     'openWordEditingCollectSettings','openWordEditingTemporaryNames','adjustWordEditingCollectMinimum','openCategoryManagerPanel',
     'nextMatch','prevMatch','toggleReplacePanel','replaceOne','replaceAll','doSmartCopy','runAdvancedGlobalStyleApply',

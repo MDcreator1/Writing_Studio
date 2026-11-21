@@ -39,7 +39,7 @@
     }
     async function connect(expected = {}) {
       const [capabilities, account] = await Promise.all([request('/capabilities'), request('/me')]);
-      if (capabilities.protocolVersion !== 1 || ![1,2,3,4,5,6].includes(capabilities.schemaVersion) || !Array.isArray(capabilities.features) || !capabilities.features.includes('operation-receipts')) throw new RemoteError('Server protocol is incompatible.', 'protocol_mismatch');
+      if (capabilities.protocolVersion !== 1 || ![1,2,3,4,5,6,7,8].includes(capabilities.schemaVersion) || !Array.isArray(capabilities.features) || !capabilities.features.includes('operation-receipts')) throw new RemoteError('Server protocol is incompatible.', 'protocol_mismatch');
       if (expected.instanceId && capabilities.instanceId !== expected.instanceId) throw new RemoteError('This profile points to a different server instance.', 'identity_mismatch');
       if (expected.userId && account.userId !== expected.userId) throw new RemoteError('This profile belongs to a different account.', 'identity_mismatch');
       if (typeof account.userId !== 'string' || typeof capabilities.instanceId !== 'string') throw new RemoteError('Server identity is missing.', 'invalid_response');

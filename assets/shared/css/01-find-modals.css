@@ -27,7 +27,7 @@
 
 .project-gate-card {
   width: min(440px, 100%);
-  padding: 28px;
+  padding: 14px 18px;
   border: var(--border-width) solid var(--lm-border-cloud-panel-color);
   border-radius: var(--radius-modal);
   background-color: var(--surface-raised);
@@ -976,3 +976,61 @@ select.lm-native-select:not(.dock-native-select) {
   display: none;
 }
 
+
+#myFolderLibrary {
+  margin: auto;
+  box-sizing: border-box;
+  max-width: calc(100% - 32px);
+  max-height: 80vh;
+  max-height: 80dvh;
+  color: var(--ink);
+  overflow: hidden;
+}
+
+#myFolderLibrary[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+#myFolderLibrary .my-folder-library-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+}
+
+#myFolderLibrary .my-folder-library-header h2 {
+  margin: 0;
+  text-align: start;
+}
+
+#myFolderLibrary::backdrop {
+  background: var(--color-backdrop);
+}
+
+#myFolderLibrary .story-library-list {
+  min-height: 0;
+  text-align: start;
+  margin-block: 12px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+#myFolderLibrary .story-library-list::-webkit-scrollbar {
+  display: none;
+}
+
+#myFolderLibrary [role="alert"]:empty {
+  display: none;
+}
+
+#myFolderLibrary .folder-library-tabs:not([hidden]) { display: flex; gap: 8px; margin-top: 12px; }
+#myFolderLibrary .folder-library-tabs button {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+#myFolderLibrary .folder-library-tabs button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }

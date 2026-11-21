@@ -1,3 +1,4 @@
+import { cloudAdministration } from './cloud-administration.js';
 import { createServer } from 'node:http';
 import { createHash, randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto';
 import { ApiError, check, uuid, integer } from './validation.js';
@@ -8,10 +9,11 @@ import { staging } from './staging.js';
 
 export function tokenDigest(token) { return createHash('sha256').update(token).digest('hex'); }
 
-export function createApi({ database, tokens, instanceId, allowedOrigins = [], maxBytes = 2 * 1024 * 1024, rateLimit = 300, scanRateLimit = 1800, accounts = [] }) {
+export function createApi({ database, tokens, instanceId, allowedOrigins = [], maxBytes = 2 * 1024 * 1024, rateLimit = 300, scanRateLimit = 1800, accounts = [], adminEnvKey = null }) {
   uuid(instanceId);
   check(tokens instanceof Map && (tokens.size > 0 || accounts.length > 0), 'At least one configured account token is required.');
   for (const [digest, userId] of tokens) { check(/^[a-f0-9]{64}$/.test(digest), 'Token configuration must contain SHA-256 digests.'); uuid(userId); }
+  const admin = cloudAdministration(database, accounts, { envKey: adminEnvKey });
   const service = storage(database);
   const uploads = staging(database,service);
   const rates = new Map();
@@ -84,7 +86,7 @@ export function createApi({ database, tokens, instanceId, allowedOrigins = [], m
         if(registering){
           check(/^[a-z0-9][a-z0-9._-]{2,31}$/.test(username),'User ID must be 3–32 letters, numbers, dots, hyphens or underscores.');
           check(body.password.length>=12,'Use a password with at least 12 characters.');
-          check(!accountByName.has(username),'User ID is already in use.',409,'username_taken');
+          check(!(await admin.configuredAccounts()).some(user => user.username.toLowerCase() === username),'User ID is already in use.',409,'username_taken');
           const salt=randomBytes(16);
           const hash=await derive(body.password,salt,64);
           const result=await database.withClient(client=>client.query(
@@ -95,8 +97,8 @@ export function createApi({ database, tokens, instanceId, allowedOrigins = [], m
           sessions.set(tokenDigest(token),{account:{username,userId:result.rows[0].user_id,role:'user'},expires:now+8*60*60*1000});
           return send(201,{token});
         }
-        const account=accountByName.get(username)||await database.withClient(async client=>(await client.query(
-          'SELECT username,user_id AS "userId",password_hash AS "passwordHash" FROM cloud_accounts WHERE username=$1',[username])).rows[0]);
+        const account=(await admin.configuredAccounts()).find(user=>user.username.toLowerCase()===username)||await database.withClient(async client=>(await client.query(
+          "SELECT username,user_id AS \"userId\",password_hash AS \"passwordHash\" FROM cloud_accounts WHERE username=$1 AND status='active'",[username])).rows[0]);
         const [salt,digest]=(account?.passwordHash||'0'.repeat(32)+':'+ '0'.repeat(128)).split(':');
         const hash=await derive(body.password,Buffer.from(salt,'hex'),64);
         check(account && timingSafeEqual(hash,Buffer.from(digest,'hex')),'Invalid credentials.',401,'unauthenticated');
@@ -110,8 +112,12 @@ export function createApi({ database, tokens, instanceId, allowedOrigins = [], m
       const session=sessions.get(digest);
       if(session?.expires<=Date.now())sessions.delete(digest);
       const account=sessions.get(digest)?.account;
-      const actor = account?.userId || tokens.get(digest);
+      let actor = account?.userId || tokens.get(digest);
       check(actor, 'Invalid credentials.', 401, 'unauthenticated');
+      if (account && account.role !== 'admin' && !accounts.some(user => user.userId === actor)) {
+        const state = await database.withClient(client => client.query('SELECT status FROM cloud_accounts WHERE user_id=$1',[actor]));
+        check(!state.rows.length || state.rows[0].status === 'active','Account access is disabled.',403,'forbidden');
+      }
       const minute = Math.floor(Date.now()/60000);
       const scan = request.method === 'GET' && segments.length === 5 &&
         segments[2] === 'documents' && segments[4] === 'paragraphs' && url.searchParams.get('scan') === '1';
@@ -128,22 +134,52 @@ export function createApi({ database, tokens, instanceId, allowedOrigins = [], m
         sessions.delete(digest);
         return send(200,{ok:true});
       }
-      if(request.method==='GET'&&url.pathname==='/api/v1/admin/users'){
-        check(account?.role==='admin','Administrator access required.',403,'forbidden');
-        const users=await database.withClient(client=>client.query(
-          'SELECT w.owner_id AS "userId", p.id, p.title, p.type, p.language, p.updated_at FROM workspaces w JOIN projects p ON p.workspace_id=w.id WHERE NOT (p.metadata ? $1) ORDER BY p.updated_at DESC',['deletedAt']));
-        const registered=await database.withClient(client=>client.query('SELECT username,user_id AS "userId" FROM cloud_accounts ORDER BY username'));
-        return send(200,{accounts:[...accounts,...registered.rows].map(user=>({userId:user.userId,username:user.username,role:user.role==='admin'?'admin':'user'})),projects:users.rows});
+      if (segments[2] === 'admin') {
+        check(account?.role === 'admin','Administrator access required.',403,'forbidden');
+        if (request.method === 'GET' && url.pathname === '/api/v1/admin/users') return send(200,await admin.users());
+        if (request.method === 'POST' && url.pathname === '/api/v1/admin/credentials') {
+          const result = await admin.credentials(account,await jsonBody(request));
+          for (const [key,value] of sessions) if (value.account.userId === actor) sessions.delete(key);
+          return send(200,result);
+        }
+        if (request.method === 'POST' && segments.length === 5) {
+          const id = uuid(segments[4]);
+          if (segments[3] === 'users') {
+            const body = await jsonBody(request);
+            const result = await admin.user(id,body);
+            for (const [key,value] of sessions) if (value.account.userId === id) sessions.delete(key);
+            return send(200,result);
+          }
+          if (segments[3] === 'projects') return send(200,await admin.project(id,await jsonBody(request)));
+        }
       }
-      if(request.method==='GET'&&segments.length===5&&segments[2]==='admin'&&segments[3]==='projects'){
-        check(account?.role==='admin','Administrator access required.',403,'forbidden');
-        const id=uuid(segments[4]);
-        const owner=await database.withClient(async client=>(await client.query(
-          'SELECT w.owner_id FROM projects p JOIN workspaces w ON w.id=p.workspace_id WHERE p.id=$1',[id])).rows[0]?.owner_id);
-        check(owner,'Project not found.',404,'not_found');
-        return send(200,await service.manifest(owner,id));
+      if (segments.length > 4 && ['projects','documents'].includes(segments[2])) {
+        const id = uuid(segments[3]);
+        const projects = await database.withClient(client => client.query(segments[2] === 'projects'
+          ? 'SELECT p.id,p.admin_blocked,w.owner_id FROM projects p LEFT JOIN workspaces w ON w.id=p.workspace_id WHERE p.id=$1'
+          : 'SELECT p.id,p.admin_blocked,w.owner_id FROM documents d JOIN projects p ON p.id=d.project_id LEFT JOIN workspaces w ON w.id=p.workspace_id WHERE d.id=$1',[id]));
+        const project = projects.rows[0];
+        if (project && account?.role === 'admin') {
+          if (!project.owner_id) await admin.ensureOwner(project.id);
+          actor = project.owner_id || admin.orphanOwner;
+        } else if (project?.admin_blocked) {
+          check(false,'Project not found.',404,'not_found');
+        }
       }
       if (request.method === 'GET' && segments.length === 3 && segments[2] === 'me') return send(200, account?{userId:actor,role:account.role==='admin'?'admin':'user'}:{userId:actor});
+      if(url.pathname==='/api/v1/workspace/external-projects'&&['GET','POST'].includes(request.method)){
+        await service.workspace(actor);
+        const rows=await database.withClient(async client=>{
+          if(request.method==='POST'){
+            const {id,folderName,title}=await jsonBody(request);
+            uuid(id);
+            check([folderName,title].every(value=>typeof value==='string'&&value.length>0&&value.length<=300),'Invalid external project reference.');
+            await client.query('INSERT INTO external_project_refs(owner_id,id,folder_label,title) VALUES($1,$2,$3,$4) ON CONFLICT(owner_id,id) DO UPDATE SET folder_label=$3,title=$4,opened_at=now()',[actor,id,folderName,title]);
+          }
+          return (await client.query('SELECT id,folder_label AS "folderName",title FROM external_project_refs WHERE owner_id=$1 ORDER BY opened_at DESC,id LIMIT 7',[actor])).rows;
+        });
+        return send(200,{projects:rows});
+      }
       if(url.pathname==='/api/v1/workspace/folder'){
         await service.workspace(actor);
         if(request.method==='POST'){

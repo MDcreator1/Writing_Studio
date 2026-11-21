@@ -52,6 +52,11 @@ function buildDraftMerge(drafts, indexes, copy, contentPath) {
 }
 
 async function confirmDraftMerge(copy = false) {
+  const execute = () => confirmDraftMergeWithProgress(copy);
+  return window.LmDraftProgress ? window.LmDraftProgress.run(copy ? 'Copying and merging drafts' : 'Merging drafts', pendingDraftMerge?.sources.length || 0, execute) : execute();
+}
+
+async function confirmDraftMergeWithProgress(copy = false) {
   if (activeDraftDetailsIndex !== 'merge:selected' || !pendingDraftMerge) return;
   const request = pendingDraftMerge;
   if(window.LmDatabaseEditor?.active() || request.database){
@@ -59,6 +64,7 @@ async function confirmDraftMerge(copy = false) {
     if(!target || target.projectId!==request.database?.projectId || target.profileId!==request.database?.profileId){showMiniReminder('Project बदल गया है। Drafts फिर चुनें।');return;}
     showAppLoader('Merging drafts…');
     try{
+      await window.LmDraftProgress?.step('Saving merged drafts to the database…');
       await window.LmDatabaseEditor.mergeDrafts(request.sources.map(source=>source.documentId),{copy});
       pendingDraftMerge=null;closeDraftActionsPanel();showMiniReminder(copy?'Copied and merged drafts.':'Drafts merged.');
     }catch(error){showMiniReminder(error.message);}
@@ -82,12 +88,16 @@ async function confirmDraftMerge(copy = false) {
       const indexes = request.sources.map(source => chapterDrafts.findIndex((draft, index) =>
         sourcesIdentifySameDocument(source, createNamingSource(draft, 'draft', index))));
       if (indexes.some(index => index < 0)) throw new Error('Selected drafts changed. Select them again.');
+      let loadedCount = 0;
       for (const index of indexes) {
+        await window.LmDraftProgress?.step('Reading selected drafts…', loadedCount, indexes.length);
         if (!(await ensureDraftContentLoaded(index))) throw new Error('Draft content could not be loaded.');
+        loadedCount += 1;
       }
       await window.LmInitialRendering?.ensureFullNamingData?.();
       if (request.project !== projectDirectoryHandle) return;
       snapshot = captureNamingPromotionState();
+      await window.LmDraftProgress?.step('Combining text and naming data…');
       const result = buildDraftMerge(chapterDrafts, indexes, copy, nextDraftFilePath());
       chapterDrafts = result.drafts;
       if (!copy) {
@@ -97,12 +107,14 @@ async function confirmDraftMerge(copy = false) {
           }
         }
       }
+      await window.LmDraftProgress?.step('Saving merged draft and project details…');
       await window.LmNamingFileSafety.commitPromotion(projectDirectoryHandle, {
         promotionId: result.merged.id,
         documents: [{ path: result.merged.contentPath, text: result.mergedText }],
         removePaths: copy ? [] : result.sources.map(draft => draft.contentPath).filter(Boolean)
       });
       committed = true;
+      await window.LmDraftProgress?.step('Updating the editor…');
       if (request.project !== projectDirectoryHandle) return;
       clearSidebarSelections(false);
       activeEditorMode = 'draft';
@@ -181,6 +193,11 @@ async function requestPromoteSelectedDrafts(anchor = null) {
 }
 
 async function promoteSelectedDraftsToChapters(destination = 'part') {
+  const execute = () => promoteSelectedDraftsToChaptersWithProgress(destination);
+  return window.LmDraftProgress ? window.LmDraftProgress.run('Promoting drafts', selectedDraftIndexes.size, execute) : execute();
+}
+
+async function promoteSelectedDraftsToChaptersWithProgress(destination = 'part') {
   ensureChapters();
   chapterDrafts = normalizeDrafts(chapterDrafts);
   normalizeDraftSelection();
@@ -211,8 +228,11 @@ async function promoteSelectedDraftsToChapters(destination = 'part') {
       draft.createdAt === selectedDraft.createdAt
     );
     if (currentIndex < 0) continue;
+    await window.LmDraftProgress?.step(`Promoting draft ${promotedCount + 1} of ${selectedDrafts.length}…`, promotedCount, selectedDrafts.length);
     await promoteDraftToChapter(currentIndex, destination);
+    if (chapterDrafts.some(draft => draft.id === selectedDraft.id && draft.contentPath === selectedDraft.contentPath)) break;
     promotedCount += 1;
+    await window.LmDraftProgress?.step('Chapters saved', promotedCount, selectedDrafts.length);
   }
   if (promotedCount > 1) {
     showMiniReminder(text().selectedDraftsPromoted.replace('{count}', promotedCount));
@@ -700,6 +720,11 @@ function applyDraftNamingCleanupDecision(entries = [], action = 'keep', deletedA
 }
 
 async function deleteDraftsByIndexes(indexes = [], loaderLabel = text().deleteDrafts, options = {}) {
+  const execute = () => deleteDraftsByIndexesWithProgress(indexes, loaderLabel, options);
+  return window.LmDraftProgress ? window.LmDraftProgress.run(loaderLabel, indexes.length, execute) : execute();
+}
+
+async function deleteDraftsByIndexesWithProgress(indexes = [], loaderLabel = text().deleteDrafts, options = {}) {
   chapterDrafts = normalizeDrafts(chapterDrafts);
   chapterTrashDrafts = normalizeTrashDrafts(chapterTrashDrafts);
   const hadDraftsBeforeDelete = chapterDrafts.length > 0;
@@ -709,7 +734,11 @@ async function deleteDraftsByIndexes(indexes = [], loaderLabel = text().deleteDr
     showDraftDeleteBlockedReminder();
     return;
   }
-  const loadedDrafts = await Promise.all(deleteIndexes.map(index => ensureDraftContentLoaded(index)));
+  const loadedDrafts = [];
+  for (const index of deleteIndexes) {
+    await window.LmDraftProgress?.step('Reading drafts before deletion…', loadedDrafts.length, deleteIndexes.length);
+    loadedDrafts.push(await ensureDraftContentLoaded(index));
+  }
   if (loadedDrafts.some(loaded => !loaded)) {
     showMiniReminder('कुछ drafts load नहीं हुए; delete रोक दिया गया।');
     return;
@@ -736,6 +765,7 @@ async function deleteDraftsByIndexes(indexes = [], loaderLabel = text().deleteDr
     }
   }
 
+  await window.LmDraftProgress?.step('Preparing trash and naming changes…');
   showAppLoader(loaderLabel);
   const deleteSet = new Set(deleteIndexes);
   const activeDraftDeleted = isDraftActive() && deleteSet.has(curDraft);
@@ -830,17 +860,22 @@ async function deleteDraftsByIndexes(indexes = [], loaderLabel = text().deleteDr
   try {
     if (projectDirectoryHandle) {
       await getProjectDirectoryHandle(PROJECT_TRASH_DIR, { create: true });
+      let savedTrash = 0;
       for (const payload of trashPayloads) {
+        await window.LmDraftProgress?.step('Saving drafts in Trash…', savedTrash, trashPayloads.length);
         const trashHandle = await getProjectFileHandle(payload.trashDraft.contentPath, { create: true });
         payload.trashDraft.contentHandle = trashHandle;
         await writeFileText(trashHandle, payload.draftText);
+        savedTrash += 1;
       }
+      await window.LmDraftProgress?.step('Removing original draft files…');
       for (const payload of trashPayloads) {
         if (payload.originalPath) await removeProjectFileIfExists(payload.originalPath);
       }
       for (const draftPath of permanentlyDeletedPaths) {
         await removeProjectFileIfExists(draftPath);
       }
+      await window.LmDraftProgress?.step('Saving draft lists and project details…');
       await writeDraftsDataToProject();
       await writeTrashDraftsDataToProject();
       if (namingCleanupChanged) await writeNamingDataToProject();

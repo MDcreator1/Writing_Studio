@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import pg from 'pg';
 
-const migrationFiles = ['001_storage.sql', '002_staged_batches.sql', '003_owner_workspaces.sql', '004_render_summaries.sql', '005_cloud_accounts.sql', '006_workspace_folder.sql'];
+const migrationFiles = ['001_storage.sql', '002_staged_batches.sql', '003_owner_workspaces.sql', '004_render_summaries.sql', '005_cloud_accounts.sql', '006_workspace_folder.sql', '007_external_projects.sql', '008_cloud_administration.sql'];
 export const schemaVersion = migrationFiles.length;
 
 export function postgres(connectionString) {

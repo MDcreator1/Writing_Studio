@@ -9,12 +9,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lekhak Manch — Home</title>
   <link rel="stylesheet" href="assets/shared/css/00-base.css?v=20260906-theme-variants">
-  <link rel="stylesheet" href="assets/shared/css/01-find-modals.css?v=20261110-workspace-merge-1">
+  <link rel="stylesheet" href="assets/shared/css/01-find-modals.css?v=20261117-project-library">
   <link rel="stylesheet" href="assets/pages/home/css/00-home-page.css?v=20260610-scenario-overview">
   <link rel="stylesheet" href="assets/shared/css/99-theme-overrides.css?v=20260906-lagoon-muted">
   <link rel="stylesheet" href="assets/pages/home/css/01-home-responsive.css?v=20261102-home-responsive">
 <style>#storyLibraryBtn[hidden], #projectBtn[hidden], #homeRecentStorageTabs[hidden] { display: none !important; }</style>
-  <link rel="stylesheet" href="assets/shared/css/cloud-login.css?v=20261113-login-card-size">
+  <link rel="stylesheet" href="assets/shared/css/cloud-login.css?v=storage-settings-layout">
 </head>
 
 <body data-page="home">
@@ -82,10 +82,25 @@
     <div class="story-library-kicker lm-id-storyLibraryTitle" id="storyLibraryTitle">Stories</div>
     <button class="story-library-action lm-id-newStoryBtn" id="newStoryBtn" type="button"
       onclick="openNewStoryPanel('storyLibraryBtn')">New Project</button>
+    <button class="story-library-action" type="button" onclick="pickExternalWorkspaceProject()">Open Local Project</button>
+    <button class="story-library-action" type="button" onclick="showMyFolderLibrary()">My Folder Library</button>
     <button class="story-library-action lm-id-openExistingStoriesBtn" id="openExistingStoriesBtn" type="button"
       onclick="renderHomeRecentProjectsList()">Recent Project</button>
     <div class="story-library-list lm-id-homeStoryList" id="homeStoryList" hidden></div>
   </div>
+  <dialog id="myFolderLibrary" class="project-gate-card" data-database-ui="true" aria-labelledby="myFolderLibraryTitle">
+    <header class="my-folder-library-header">
+      <h2 id="myFolderLibraryTitle">My Folder Library</h2>
+      <form method="dialog">
+        <button class="story-info-close" type="submit" aria-label="Close My Folder Library">
+          <span data-lm-icon="close" aria-hidden="true"></span>
+        </button>
+      </form>
+    </header>
+    <p role="alert"></p>
+    <div class="story-library-list" aria-live="polite"></div>
+  </dialog>
+
 
   <main id="home-main" class="home-page lm-id-home-main" aria-label="Lekhak Manch home">
     <aside class="home-menu-panel">
@@ -239,16 +254,16 @@
   <script src="assets/shared/js/06i-working-store.js?v=20261111-folder-sync"></script>
   <script src="assets/shared/js/06j-editor-working-copy.js?v=20261110-cache-v4"></script>
   <script src="assets/shared/js/06k-sync-identity.js?v=20261110-cache-v4"></script>
-  <script src="assets/shared/js/06l-remote-adapter.js?v=20261113-folder-restore"></script>
+  <script src="assets/shared/js/06l-remote-adapter.js?v=cloud-admin-8"></script>
   <script src="assets/shared/js/06m-database-profiles.js?v=20261113-cloud-login"></script>
   <script src="assets/shared/js/06n-remote-workspace.js?v=20261112-advanced-db"></script>
-  <script src="assets/shared/js/06o-database-editor.js?v=20261112-advanced-db"></script>
+  <script src="assets/shared/js/06o-database-editor.js?v=20261117-project-library"></script>
   <script src="assets/shared/js/06q-folder-sync.js?v=20261113-folder-recovery"></script>
-  <script src="assets/shared/js/06p-database-panel.js?v=20261113-login-placeholders"></script>
-  <script src="assets/shared/js/06a-project-storage-foundation.js?v=20261113-home-storage"></script>
+  <script src="assets/shared/js/06p-database-panel.js?v=admin-delete-confirm"></script>
+  <script src="assets/shared/js/06a-project-storage-foundation.js?v=20261117-project-library"></script>
   <script src="assets/shared/js/06aa-naming-file-safety.js?v=20260905-authoritative-import"></script>
-  <script src="assets/shared/js/06b-workspace-restore-autosave.js?v=20261113-local-status"></script>
-  <script src="assets/shared/js/06c-workspace-library-settings.js?v=20261113-app-panels"></script>
+  <script src="assets/shared/js/06b-workspace-restore-autosave.js?v=20261117-project-library"></script>
+  <script src="assets/shared/js/06c-workspace-library-settings.js?v=20261117-project-library"></script>
   <script src="assets/shared/js/06d-editor-paste-settings.js?v=20261112-advanced-db"></script>
   <script src="assets/pages/home/js/overview/00-home-overview-utils.js?v=20260610-scenario-overview"></script>
   <script src="assets/pages/home/js/overview/01-story-writing-overview.js?v=20260610-scenario-overview"></script>

@@ -131,20 +131,6 @@
   color: white;
   font-weight: 650;
 }
-.cloud-admin-panel details {
-  margin-block: 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow-wrap: anywhere;
-}
-.cloud-admin-panel summary { cursor: pointer; font-weight: 650; }
-.cloud-admin-panel pre {
-  padding: 8px;
-  background: var(--surface-raised);
-  max-height: 32dvh;
-  overflow: auto;
-}
 @media (max-width: 480px) {
   .folder-upload-actions > button { flex: 1 1 100%; }
   .lm-app-panel { max-height: 78dvh; }

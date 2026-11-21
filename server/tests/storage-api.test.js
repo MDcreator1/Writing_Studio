@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID, createHash } from 'node:crypto';
+import { randomUUID, createHash, scryptSync } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
 import pg from 'pg';
 import { readFile } from 'node:fs/promises';
@@ -23,6 +23,10 @@ const database = { async withClient(action) {
   const task = queue.then(() => action(client)); queue = task.catch(() => {}); return task;
 }};
 const token = 'test-owner-token-only';
+const adminId = randomUUID();
+const adminPassword = 'test-admin-credential';
+const adminSalt = Buffer.alloc(16, 9);
+const adminHash = adminSalt.toString('hex') + ':' + scryptSync(adminPassword,adminSalt,64).toString('hex');
 async function request(route, { method='GET', body, auth=token, origin } = {}) {
   const response = await fetch(base+route, { method,
     headers: { ...(auth?{Authorization:'Bearer '+auth}:{}), ...(body===undefined?{}:{'Content-Type':'application/json'}), ...(origin?{Origin:origin}:{}) },
@@ -50,8 +54,8 @@ before(async () => {
   assert.equal(Number(stats.paragraph_count),1);
   assert.equal((await db.query('SELECT text FROM paragraphs WHERE id=$1',[oldParagraph])).rows[0].text,'पहले से सुरक्षित पाठ');
   assert.equal((await db.query('SELECT workspace_id FROM projects WHERE id=$1',[oldProject])).rows[0].workspace_id,oldOwner);
-  assert.deepEqual((await db.query('SELECT version FROM schema_migrations ORDER BY version')).rows.map(row=>row.version),[1,2,3,4,5,6]);
-  server = createApi({ database, instanceId:randomUUID(), allowedOrigins:['http://localhost:8000'],
+  assert.deepEqual((await db.query('SELECT version FROM schema_migrations ORDER BY version')).rows.map(row=>row.version),[1,2,3,4,5,6,7,8]);
+  server = createApi({ database, accounts:[{userId:adminId,username:'test-admin',role:'admin',passwordHash:adminHash}], instanceId:randomUUID(), allowedOrigins:['http://localhost:8000'],
     tokens:new Map([[tokenDigest(token),owner],[tokenDigest('outsider-token'),outsider],[tokenDigest('viewer-token'),viewer]]) });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   base='http://127.0.0.1:'+server.address().port+'/api/v1';
@@ -63,7 +67,7 @@ after(async () => {
 });
 
 test('authentication, CORS and schema capabilities', async () => {
-  assert.equal((await request('/capabilities',{auth:null})).data.schemaVersion,6);
+  assert.equal((await request('/capabilities',{auth:null})).data.schemaVersion,8);
   assert.equal((await request('/workspace',{auth:null})).status,401);
   assert.equal((await request('/me',{auth:null})).status,401);
   assert.equal((await request('/me',{auth:'bad'})).status,401);
@@ -244,4 +248,44 @@ test('embedded database backup restores paragraphs, tombstones and receipts toge
     const project=await restored.query('SELECT revision FROM projects WHERE id=$1',[projectId]);
     assert.equal(project.rows[0].revision,5);
   } finally { await restored.close(); }
+});
+
+
+test('admin opens and edits another user project, moderates accounts and transfers retained projects', async () => {
+  const signIn = (username,password) => request('/login',{method:'POST',auth:null,body:{username,password}});
+  const administrator = await signIn('test-admin',adminPassword);
+  assert.equal(administrator.status,200);
+  const auth = administrator.data.token;
+  const post = (path,body,session=auth) => request(path,{method:'POST',auth:session,body});
+  const writer = await post('/register',{username:'moderation-writer',password:'test-writer-credential'},null);
+  assert.equal(writer.status,201);
+  const writerToken = writer.data.token;
+  const writerId = (await request('/me',{auth:writerToken})).data.userId;
+  const id = randomUUID();
+  assert.equal((await post('/projects',{id,title:'Moderation example',type:'story',language:'en'},writerToken)).status,201);
+  assert.equal((await request('/admin/users',{auth:writerToken})).status,403);
+  assert.equal((await request('/projects/'+id+'/manifest',{auth})).status,200);
+  assert.equal((await post('/projects/'+id+'/operations',batch([{type:'project.update',title:'Admin edit',baseRevision:0}]))).status,200);
+  assert.equal((await post('/admin/projects/'+id,{action:'block'})).status,200);
+  assert.equal((await request('/projects/'+id+'/manifest',{auth:writerToken})).status,404);
+  assert.equal((await post('/admin/users/'+writerId,{status:'deleted',projects:'keep'})).status,200);
+  assert.equal((await request('/me',{auth:writerToken})).status,401);
+  assert.equal((await request('/admin/users',{auth})).data.projects.find(project=>project.id===id).orphan,true);
+  assert.equal((await post('/admin/projects/'+id,{action:'transfer',userId:adminId})).status,200);
+  assert.equal((await request('/admin/users',{auth})).data.projects.find(project=>project.id===id).orphan,false);
+  assert.equal((await post('/admin/projects/'+id,{action:'delete'})).status,200);
+  assert.equal((await request('/admin/users',{auth})).data.projects.some(project=>project.id===id),false);
+  const secondWriter = await post('/register',{username:'deletion-writer',password:'test-writer-credential'},null);
+  assert.equal(secondWriter.status,201);
+  const secondToken = secondWriter.data.token;
+  const secondId = (await request('/me',{auth:secondToken})).data.userId;
+  const linkedId = randomUUID();
+  assert.equal((await post('/projects',{id:linkedId,title:'Linked story',type:'story',language:'en'},secondToken)).status,201);
+  assert.equal((await post('/admin/users/'+secondId,{status:'deleted',projects:'delete'})).status,200);
+  const updated = (await request('/admin/users',{auth})).data;
+  assert.equal(updated.accounts.find(user=>user.userId===secondId).status,'deleted');
+  assert.equal(updated.projects.some(project=>project.id===linkedId),false);
+  assert.equal((await post('/admin/credentials',{username:'test-admin-renamed',currentPassword:adminPassword,password:'new-test-admin-credential'})).status,200);
+  assert.equal((await request('/me',{auth})).status,401);
+  assert.equal((await signIn('test-admin-renamed','new-test-admin-credential')).status,200);
 });

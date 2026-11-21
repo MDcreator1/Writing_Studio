@@ -898,6 +898,7 @@ async function createNewsProjectFromInfoForm(storyTitle, typeFolderName, {sync=f
     catch(error){showMiniReminder('Local project created. Sync: '+error.message);return;}
   }
   await activateNewsProjectHandle(newsHandle, typeFolderName, manifest);
+  await finishProjectLibraryOpen({ handle: newsHandle, typeFolderName }, manifest);
   const newsLocalKey = uniqueNameKey(projectWorkspacePath(newsHandle.name || '', typeFolderName));
   if (newsLocalKey) localStorage.setItem(`lm_newsdesk_state_v1:${newsLocalKey}`, JSON.stringify(newsState));
   localStorage.setItem(WORKSPACE_FOLDER_KEY, workspaceDirectoryHandle?.name || '');
@@ -1401,13 +1402,19 @@ async function loadLocalProject(handle, shouldStoreHandle = true, options = {}) 
   ) {
     saveActiveEditorStateForStory(projectDirectoryHandle.name || '', currentProjectTypeFolderName());
   }
-  const savedEditorTarget = readActiveEditorStateForStory(handle.name || '', nextTypeFolderName);
-  const shouldRestoreSavedTarget = Boolean(savedEditorTarget) ||
+  const savedEditorTarget = options.freshProject ? null : readActiveEditorStateForStory(handle.name || '', nextTypeFolderName);
+  const shouldRestoreSavedTarget = !options.freshProject && (Boolean(savedEditorTarget) ||
     (
       localStorage.getItem(PROJECT_FOLDER_KEY) === (handle.name || '') &&
       (localStorage.getItem(PROJECT_TYPE_FOLDER_KEY) || '') === (nextTypeFolderName || '')
-    );
-  setActiveProjectFolder(handle);
+    ));
+  if (options.freshProject) {
+    deleteActiveEditorStateForStory(handle.name || '', nextTypeFolderName);
+    chapterEditDrafts = normalizeChapterEditDrafts([]);
+    activeChapterEditKey = null;
+    isChapterEditUnlocked = false;
+  }
+  projectDirectoryHandle = handle;
   await window.LmNamingFileSafety?.recoverPromotion?.(handle);
   setActiveProjectTypeFolderName(nextTypeFolderName);
   window.LmWorkspaceSectionLoader?.reset?.();

@@ -790,6 +790,7 @@ function hideProjectGate() {
 let appLoaderSafetyTimer = null;
 
 function showAppLoader(message = text().loading) {
+  if (window.LmDraftProgress?.active()) return;
   const loader = document.getElementById('appLoader');
   if (!loader) return;
 

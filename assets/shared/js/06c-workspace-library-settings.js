@@ -197,7 +197,7 @@ async function listWorkspaceRecentProjects() {
 
 function recentProjectButtonHtml(project, dataAttribute = 'data-story-folder', includeMeta = true) {
   return `
-    <button class="story-library-story-btn" type="button" ${dataAttribute}="${escapeHtml(project.projectPath || project.folderName)}">
+    <button class="story-library-story-btn" type="button" ${dataAttribute}="${escapeHtml(dataAttribute === 'data-recent-project' ? project.id : project.projectPath || project.folderName)}">
       <span>${escapeHtml(project.title)}</span>
       ${includeMeta ? `<small>${escapeHtml(recentProjectMetaText(project))}</small>` : ''}
     </button>`;
@@ -208,19 +208,13 @@ async function renderRecentProjectsList() {
   const list = document.getElementById('storyLibraryList');
   if (!list) return;
   list.hidden = false;
-  if (!workspaceDirectoryHandle) {
-    list.innerHTML = `<div class="story-library-empty">${escapeHtml(text().chooseWorkspaceFirst)}</div>`;
-    return;
-  }
-
-  list.innerHTML = `<div class="story-library-empty">${escapeHtml(text().loading)}</div>`;
-  const stories = await listWorkspaceRecentProjects();
+  const stories = await pruneMissingRecentProjects();
   if (!stories.length) {
     list.innerHTML = `<div class="story-library-empty">${escapeHtml(libraryCopy.noExistingStoriesFound)}</div>`;
   } else {
     list.innerHTML = `
       <div class="story-library-kicker">${escapeHtml(libraryCopy.existingStoriesTitle)}</div>
-      ${stories.map(story => recentProjectButtonHtml(story, 'data-story-folder', false)).join('')}`;
+      ${stories.map(story => recentProjectButtonHtml(story, 'data-recent-project', false)).join('')}`;
   }
   positionStoryLibraryPanel();
 }
@@ -403,7 +397,8 @@ function homeProjectDeleteButton(local,project){
 }
 
 async function renderHomeRecentProjectsPanel(storage = homeRecentStorage) {
-  if(!window.LmDatabasePanel?.homeSynced())storage=window.LmDatabasePanel?.homeConnection()?'cloud':'local';
+  if(!window.LmDatabasePanel?.homeSynced()&&!window.LmDatabasePanel?.homeConnection())storage='local';
+  if(window.LmDatabasePanel?.homeConnection()&&!window.LmDatabasePanel.homeSynced()&&arguments.length===0)storage='cloud';
   window.LmDatabasePanel?.updateHomeStorage();
   homeRecentStorage=storage;
   const request=++homeRecentRequest;
@@ -451,31 +446,23 @@ async function renderHomeRecentProjectsPanel(storage = homeRecentStorage) {
     positionHomeRecentProjectsPanel();
     return true;
   }
-  if (!workspaceDirectoryHandle) {
-    if (count) count.textContent = text().chooseWorkspaceFirst;
-    list.innerHTML = homeRecentProjectsEmptyHtml(
-      text().chooseWorkspaceFirst,
-      'Choose a workspace folder first, then recent projects will appear here.',
-      `<button type="button" onclick="selectLocalProjectFolder()">${escapeHtml(text().projectSelect || 'Choose Folder')}</button>`
-    );
-    setHomeMenuStatus(text().chooseWorkspaceFirst);
-    positionHomeRecentProjectsPanel();
-    return true;
-  }
-
-  const stories = await listWorkspaceRecentProjects();
+  const connection=window.LmDatabasePanel?.homeConnection();
+  const stories = connection ? (await pruneMissingRecentProjects()).filter(item=>!item.typeFolderName?.startsWith(EXTERNAL_PROJECT_SCOPE)) : await pruneMissingRecentProjects();
   if(request!==homeRecentRequest)return true;
   if (count) count.textContent = stories.length ? `${stories.length} project${stories.length === 1 ? '' : 's'}` : text().noExistingStoriesFound;
   list.innerHTML = stories.length
     ? `<div class="story-library-kicker">${escapeHtml(text().existingStoriesTitle)}</div>
-      ${stories.map(story => recentProjectButtonHtml(story, 'data-home-recent-story-folder')).join('')}`
-    : homeRecentProjectsEmptyHtml(text().noExistingStoriesFound, 'No project has been created in this workspace yet.');
-  const connection=window.LmDatabasePanel?.homeConnection();
+      ${stories.map(story => recentProjectButtonHtml(story, 'data-recent-project')).join('')}`
+    : homeRecentProjectsEmptyHtml(text().noExistingStoriesFound, 'Opened projects will appear here.');
+  try { await appendExternalProjects(list,connection); }
+  catch (error) { if (request===homeRecentRequest) showMiniReminder(error.message); }
   const linked=await linkedHomeProjects(connection);
   if(request!==homeRecentRequest)return true;
   const byReference=new Map([...linked].map(([id,local])=>[local.reference,{id,local}]));
-  for(const button of list.querySelectorAll('[data-home-recent-story-folder]')){
-    const reference=button.dataset.homeRecentStoryFolder;
+  for(const button of list.querySelectorAll('[data-recent-project]')){
+    const entry=stories.find(item=>item.id===button.dataset.recentProject);
+    if(!entry||entry.typeFolderName?.startsWith(EXTERNAL_PROJECT_SCOPE))continue;
+    const reference=projectWorkspacePath(entry.folderName,entry.typeFolderName);
     const match=byReference.get(reference);
     const row=document.createElement('div');
     button.before(row);row.append(button);
@@ -492,9 +479,10 @@ async function renderHomeRecentProjectsPanel(storage = homeRecentStorage) {
   return true;
 }
 
-async function renderHomeRecentProjectsList() {
+async function renderHomeRecentProjectsList(showWorkspaceLibrary = false) {
   if (document.getElementById('homeRecentProjectsModal')) {
-    await renderHomeRecentProjectsPanel();
+    if(showWorkspaceLibrary)await showMyFolderLibrary();
+    else await renderHomeRecentProjectsPanel();
     return;
   }
 
@@ -575,20 +563,361 @@ async function resolveWorkspaceStoryHandle(storyReference) {
   throw new DOMException(text().noExistingStoriesFound, 'NotFoundError');
 }
 
+const OPENED_PROJECT_HISTORY_KEY = 'opened-project-history';
+const EXTERNAL_PROJECT_SCOPE = '@external-';
+let visibleRecentProjects = [];
+
+async function readOpenedProjectHistory() {
+  try {
+    visibleRecentProjects = (await readStoredDirectoryHandle(OPENED_PROJECT_HISTORY_KEY)) || [];
+  } catch (error) {
+    console.warn('Could not read recent projects:', error);
+  }
+  return visibleRecentProjects;
+}
+
+function withProjectHistoryLock(update) {
+  return globalThis.navigator?.locks
+    ? navigator.locks.request(OPENED_PROJECT_HISTORY_KEY, update)
+    : update();
+}
+
+async function recentProjectFolderExists({ handle }) {
+  try {
+    // Reading one directory entry checks the folder itself, even if it is empty.
+    for await (const entry of handle.values()) break;
+    return true;
+  } catch (error) {
+    return error?.name !== 'NotFoundError';
+  }
+}
+
+async function pruneMissingRecentProjects() {
+  try {
+    return await withProjectHistoryLock(async () => {
+      const projects = (await readStoredDirectoryHandle(OPENED_PROJECT_HISTORY_KEY)) || [];
+      const exists = await Promise.all(projects.map(recentProjectFolderExists));
+      const remaining = projects.filter((_, index) => exists[index]);
+      visibleRecentProjects = remaining;
+      if (remaining.length !== projects.length) {
+        await saveStoredDirectoryHandle(remaining, OPENED_PROJECT_HISTORY_KEY);
+      }
+      return remaining;
+    });
+  } catch (error) {
+    console.warn('Could not check recent project folders:', error);
+    return visibleRecentProjects;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.getElementById('storyLibraryPanel') && supportsLocalProjectFolders()) {
+    void pruneMissingRecentProjects();
+  }
+});
+
+async function findOpenedProject(handle, projects) {
+  for (const project of projects) {
+    if (await handle.isSameEntry(project.handle)) return project;
+  }
+  return null;
+}
+
+async function finishProjectLibraryOpen(project, manifest) {
+  document.getElementById('myFolderLibrary')?.close();
+  try {
+    const storeOpen = async () => {
+      const projects = await readOpenedProjectHistory();
+      const previous = await findOpenedProject(project.handle, projects);
+      const entry = {
+        id: previous?.id || crypto.randomUUID(),
+        handle: project.handle,
+        typeFolderName: project.typeFolderName,
+        folderName: project.handle.name,
+        title: manifest.title || project.handle.name,
+        type: manifest.type,
+        author: manifest.author
+      };
+      const recent = [entry, ...projects.filter(item => item !== previous)].slice(0, 7);
+      await saveStoredDirectoryHandle(recent, OPENED_PROJECT_HISTORY_KEY);
+      visibleRecentProjects = recent;
+    };
+    await withProjectHistoryLock(storeOpen);
+  } catch (error) {
+    console.warn('Could not save recent projects:', error);
+  }
+}
+
+function externalProjectScope(previous) {
+  if (previous?.typeFolderName?.startsWith(EXTERNAL_PROJECT_SCOPE)) return previous.typeFolderName;
+  return EXTERNAL_PROJECT_SCOPE + (previous?.id || crypto.randomUUID());
+}
+
+async function validateExternalProjectFiles(handle) {
+  try {
+    const file = await handle.getFileHandle(PROJECT_MANIFEST_FILE);
+    const manifest = JSON.parse(await readFileText(file));
+    const isRecord = value => value && typeof value === 'object' && !Array.isArray(value);
+    const validList = value => Array.isArray(value) && value.every(isRecord);
+    if (!isRecord(manifest) || typeof manifest.title !== 'string' || !manifest.title.trim()) throw new Error();
+    if (isNewsProjectType(manifest.type)) {
+      const news = await handle.getFileHandle(NEWS_PROJECT_DATA_FILE);
+      if (!isRecord(JSON.parse(await readFileText(news)))) throw new Error();
+    } else if (
+      (manifest.type && !['story', 'novel'].includes(manifest.type)) ||
+      (!validList(manifest.parts) && !validList(manifest.chapters)) ||
+      (manifest.parts !== undefined && !validList(manifest.parts)) ||
+      (manifest.chapters !== undefined && !validList(manifest.chapters))
+    ) {
+      throw new Error();
+    }
+    if (!isNewsProjectType(manifest.type)) {
+      const chapters = [...(manifest.chapters || [])];
+      for (const part of manifest.parts || []) {
+        if (part.chapters === undefined) continue;
+        if (!validList(part.chapters)) throw new Error();
+        chapters.push(...part.chapters);
+      }
+      for (const chapter of chapters) {
+        const path = chapter.contentPath ?? chapter.content_path;
+        if (path === undefined || path === '') continue;
+        if (typeof path !== 'string') throw new Error();
+        const segments = path.split(/[\\/]/);
+        if (segments.some(segment => !segment || segment === '.' || segment === '..')) throw new Error();
+        let directory = handle;
+        const fileName = segments.pop();
+        for (const segment of segments) directory = await directory.getDirectoryHandle(segment);
+        await directory.getFileHandle(fileName);
+      }
+    }
+  } catch (error) {
+    if (error.name === 'NotAllowedError') throw error;
+    throw new Error('This folder is missing valid Lekhak Manch project files. Choose the project folder containing Chapters_info.json.');
+  }
+}
+
+async function projectLibraryConnection() {
+  const panel=window.LmDatabasePanel;
+  const active=panel?.homeConnection();
+  if(active)return active;
+  const profileId=window.LmDatabaseEditor?.current()?.profileId || new URLSearchParams(location.search).get('databaseProfile');
+  return profileId ? window.LmDatabaseProfiles.resume(profileId) : window.LmDatabaseProfiles.currentSession();
+}
+
+async function accountExternalProjects(connection, entry) {
+  const key='external-projects:'+JSON.stringify([connection.profile.instanceId,connection.profile.userId]);
+  const path='.lekhak-sync/external-projects.json';
+  const workspace=workspaceDirectoryHandle;
+  const remembered=await readStoredDirectoryHandle('lekhak-linked-folder:'+JSON.stringify([connection.profile.instanceId,connection.profile.userId])+':workspace');
+  const synced=workspace&&remembered&&await workspace.isSameEntry(remembered);
+  let projects;
+  if(synced){
+    const adapter=window.LmLocalFolderAdapter.create(workspace);
+    let data;
+    try{data=await adapter.readJson(path);}
+    catch(error){if(error.name!=='NotFoundError')throw error;}
+    projects=Array.isArray(data?.[key])?data[key]:[];
+    if(entry){
+      projects=[entry,...projects.filter(item=>item.id!==entry.id)].slice(0,7);
+      await adapter.writeJson(path,{...data,[key]:projects});
+    }
+  }else{
+    const response=await connection.adapter.request('/workspace/external-projects',entry?{method:'POST',body:entry}:undefined);
+    projects=response.projects;
+  }
+  return projects;
+}
+
+async function pickExternalWorkspaceProject() {
+  await openProjectFromLibrary(async () => {
+    if (!supportsLocalProjectFolders()) throw new Error(text().projectUnsupported);
+    const handle = await window.showDirectoryPicker({ id: 'lekhak-manch-local-project', mode: 'readwrite' });
+    if (workspaceDirectoryHandle) {
+      const relativePath = await workspaceDirectoryHandle.resolve(handle);
+      if (relativePath) throw new Error('Choose a folder outside your workspace. Use My Folder Library for projects inside it.');
+    }
+
+    const previous = await findOpenedProject(handle, await readOpenedProjectHistory());
+    return { handle, typeFolderName: externalProjectScope(previous), askCloudUpload: true };
+  });
+}
+
+async function appendExternalProjects(list,connection){
+  if(!connection)return;
+  const projects=await accountExternalProjects(connection);
+  const account=JSON.stringify([connection.profile.instanceId,connection.profile.userId]);
+  for(const project of projects){
+    const button=document.createElement('button');
+    button.type='button';button.className='story-library-story-btn';
+    const title=document.createElement('span');title.textContent=project.title;
+    const detail=document.createElement('small');detail.textContent='External project · '+project.folderName;
+    button.append(title,detail);
+    const key='external-project:'+account+':'+project.id;
+    const remembered=await readStoredDirectoryHandle(key);
+    button.onclick=()=>openProjectFromLibrary(async()=>{
+      const handle=remembered||await window.showDirectoryPicker({id:'lekhak-manch-local-project',mode:'readwrite'});
+      if(await handle.requestPermission({mode:'readwrite'})!=='granted')throw new Error(text().projectPermissionNeeded);
+      await validateExternalProjectFiles(handle);
+      if(handle.name!==project.folderName)throw new Error('Choose the saved external folder: '+project.folderName);
+      if(!remembered)await saveStoredDirectoryHandle(handle,key);
+      return {handle,typeFolderName:EXTERNAL_PROJECT_SCOPE+project.id};
+    });
+    list.append(button);
+  }
+}
+
+async function showMyFolderLibrary() {
+  const panel = document.getElementById('myFolderLibrary');
+  if (!panel || panel.open) return;
+  const list = panel.querySelector('.story-library-list');
+  const alert = panel.querySelector('[role="alert"]');
+  closeStoryLibraryPanel();
+  closeHomeRecentProjectsPanel();
+  panel.showModal();
+  panel.addEventListener('close', () => document.getElementById('storyLibraryBtn')?.focus(), { once: true });
+  alert.textContent = '';
+  list.textContent = text().loading;
+  const connection=await projectLibraryConnection().catch(()=>null);
+  let request=0;
+  async function render(mode){
+    const version=++request;
+    list.textContent=text().loading;
+    alert.textContent='';
+    tabs.querySelectorAll('button').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.mode===mode)));
+    try{
+      const content=document.createElement('div');
+      if(mode==='cloud'){
+        let after;
+        do{
+          const page=await connection.adapter.listProjects(after);
+          for(const project of page.projects){
+            const button=document.createElement('button');
+            button.type='button';button.className='story-library-story-btn';button.textContent=project.title;
+            button.onclick=()=>window.LmDatabasePanel.openHomeProject(project.id,project.type,connection).catch(error=>{alert.textContent=error.message;});
+            content.append(button);
+          }
+          after=page.projects.length===50?page.projects.at(-1).id:null;
+        }while(after);
+      }else{
+        const projects=await listWorkspaceStories();
+        content.innerHTML=projects.map(project=>recentProjectButtonHtml(project,'data-folder-library-project')).join('');
+        await appendExternalProjects(content,connection);
+      }
+      if(panel.open&&request===version)list.replaceChildren(...(content.childNodes.length?[...content.childNodes]:[text().noExistingStoriesFound]));
+    }catch(error){
+      if(panel.open&&request===version){list.textContent='';alert.textContent=error.message;}
+    }
+  }
+  let tabs=panel.querySelector('.folder-library-tabs');
+  if(!tabs){
+    tabs=document.createElement('div');tabs.className='folder-library-tabs';list.before(tabs);
+  }
+  tabs.replaceChildren();
+  tabs.hidden=!connection;
+  if(connection)for(const mode of ['local','cloud']){
+    const button=document.createElement('button');
+    button.type='button';button.dataset.mode=mode;button.textContent=mode==='local'?'Local':'Cloud';
+    button.onclick=()=>void render(mode);tabs.append(button);
+  }
+  await render(connection&&!workspaceDirectoryHandle?'cloud':'local');
+}
+
+document.addEventListener('click', event => {
+  const libraryButton = event.target.closest('[data-folder-library-project]');
+  if (libraryButton) {
+    openWorkspaceStory(libraryButton.dataset.folderLibraryProject);
+    return;
+  }
+  const recentButton = event.target.closest('[data-recent-project]');
+  if (!recentButton) return;
+  const project = visibleRecentProjects.find(item => item.id === recentButton.dataset.recentProject);
+  if (!project) return;
+  openProjectFromLibrary(async () => {
+    // Request from the click before any asynchronous work consumes activation.
+    if (await project.handle.requestPermission({ mode: 'readwrite' }) !== 'granted') {
+      throw new Error(text().projectPermissionNeeded);
+    }
+    const relativePath = await workspaceDirectoryHandle?.resolve(project.handle);
+    if (relativePath?.length) {
+      return { ...project, typeFolderName: relativePath.slice(0, -1).join('/') };
+    }
+    return { ...project, typeFolderName: externalProjectScope(project) };
+  });
+});
+
 async function openWorkspaceStory(folderName) {
   if (!workspaceDirectoryHandle) return;
+  await openProjectFromLibrary(async () => {
+    const resolved = await resolveWorkspaceStoryHandle(folderName);
+    return { handle: resolved?.handle || resolved, typeFolderName: resolved?.typeFolderName || '' };
+  });
+}
+
+let projectOpenPending = false;
+
+async function openProjectFromLibrary(resolveProject) {
+  if (projectOpenPending) return;
+  projectOpenPending = true;
   showAppLoader(text().loadingProject);
   try {
-    const resolvedStory = await resolveWorkspaceStoryHandle(folderName);
-    const storyHandle = resolvedStory?.handle || resolvedStory;
-    const typeFolderName = resolvedStory?.typeFolderName || '';
+    const project = await resolveProject();
+    if (!project) return;
+    const { handle: storyHandle, typeFolderName } = project;
+    const libraryAlert = document.querySelector('#myFolderLibrary[open] [role=alert]');
+    if (libraryAlert) libraryAlert.textContent = '';
     if (!(await verifyProjectPermission(storyHandle, true))) {
-      showProjectGate(text().projectPermissionNeeded);
-      return;
+      throw new Error(text().projectPermissionNeeded);
     }
+    if (typeFolderName.startsWith(EXTERNAL_PROJECT_SCOPE)) await validateExternalProjectFiles(storyHandle);
     const manifest = await readProjectManifestFromDirectory(storyHandle);
+    if(project.askCloudUpload){
+      const connection=await projectLibraryConnection();
+      if(connection){
+        hideAppLoader();
+        const choice=await new Promise(resolve=>{
+          const panel=window.LmAppPanel.create('Open external project');
+          panel.classList.add('project-gate-card');
+          const title=document.createElement('h2');title.textContent='Upload this project to Cloud?';
+          panel.append(title);
+          let answer;
+          for(const [value,label] of [['upload','Upload to Cloud'],['local','Open locally'],['cancel','Cancel']]){
+            const button=document.createElement('button');
+            button.type='button';button.textContent=label;
+            button.onclick=()=>{answer=value;panel.close();};panel.append(button);
+          }
+          panel.addEventListener('close',()=>resolve(answer),{once:true});
+          document.body.append(panel);panel.focus();
+        });
+        if(!choice||choice==='cancel')return;
+        showAppLoader(text().loadingProject);
+        if(choice==='upload'){
+          await window.LmDatabaseEditor?.prepareLeave();
+          const result=await window.LmDatabasePanel.linkNewHomeProject(storyHandle,connection);
+          if(result.conflicts.length)throw new Error('Review the folder sync conflicts before opening the cloud project.');
+          await window.LmDatabasePanel.openHomeProject(result.projectId,manifest.type,connection);
+          return;
+        }
+        const account=JSON.stringify([connection.profile.instanceId,connection.profile.userId]);
+        const id=project.typeFolderName.slice(EXTERNAL_PROJECT_SCOPE.length);
+        await saveStoredDirectoryHandle(storyHandle,'external-project:'+account+':'+id);
+        await accountExternalProjects(connection,{id,folderName:storyHandle.name,title:manifest.title||storyHandle.name});
+      }
+    }
+    const databaseActive=window.LmDatabaseEditor?.active();
+    if(databaseActive)await window.LmDatabaseEditor.prepareLeave();
+    const saveButton = document.getElementById('saveBtn');
+    if (saveButton && projectDirectoryHandle && hasActiveStory()) {
+      if (isAutoSaveRunning || isProjectDataLoading || document.getElementById('save-status')?.classList.contains('is-busy')) {
+        throw new Error('A save or project load is in progress. Try opening the project again when it finishes.');
+      }
+      if (saveButton.dataset.saveState === 'unsaved' && (isDraftActive() || isChapterEditUnlocked || isChapterEditDraftActive())) {
+        await saveCurrentProject();
+      }
+    }
     if (isNewsProjectType(manifest.type)) {
+      if(databaseActive)window.LmDatabaseEditor.leave({clearRoute:true});
       await activateNewsProjectHandle(storyHandle, typeFolderName, manifest);
+      await finishProjectLibraryOpen(project, manifest);
       closeStoryLibraryPanel();
       if (typeof closeHomeRecentProjectsPanel === 'function') closeHomeRecentProjectsPanel();
       resetHomeStoryList();
@@ -599,10 +928,9 @@ async function openWorkspaceStory(folderName) {
       return;
     }
     const loaded = await loadLocalProject(storyHandle, true, { typeFolderName });
-    if (!loaded) {
-      setSaveStatusDot('idle', text().noExistingStoriesFound);
-      return;
-    }
+    if(loaded&&databaseActive)window.LmDatabaseEditor.leave({clearRoute:true});
+    if (!loaded) throw new Error(text().noExistingStoriesFound);
+    await finishProjectLibraryOpen(project, manifest);
     closeStoryLibraryPanel();
     if (typeof closeHomeRecentProjectsPanel === 'function') closeHomeRecentProjectsPanel();
     resetHomeStoryList();
@@ -615,14 +943,17 @@ async function openWorkspaceStory(folderName) {
     }
     refreshProjectUI();
   } catch (error) {
+    if (error?.name === 'AbortError') return;
     console.warn('Story open failed:', error);
     const message = error?.name === 'NotFoundError'
       ? text().noExistingStoriesFound
       : error?.message || text().projectPermissionNeeded;
     setHomeMenuStatus(message);
-    showMiniReminder(message);
-    setDefaultSaveStatus();
+    const alert = document.querySelector('#myFolderLibrary[open] [role="alert"]');
+    if (alert) alert.textContent = message;
+    else showMiniReminder(message);
   } finally {
+    projectOpenPending = false;
     hideAppLoader();
   }
 }
@@ -669,66 +1000,52 @@ async function createStoryFromInfoForm() {
     setHomeMenuStatus(text().duplicateStoryTitle);
     return;
   }
+  const saveButton = document.getElementById('saveBtn');
+  if (saveButton && projectDirectoryHandle && hasActiveStory()) {
+    if (isAutoSaveRunning || isProjectDataLoading || document.getElementById('save-status')?.classList.contains('is-busy')) {
+      throw new Error('A save or project load is in progress. Try again when it finishes.');
+    }
+    if (saveButton.dataset.saveState === 'unsaved' && (isDraftActive() || isChapterEditUnlocked || isChapterEditDraftActive())) {
+      await saveCurrentProject();
+    }
+  }
   if (isNewsProjectType(storyType)) {
     await createNewsProjectFromInfoForm(storyTitle, typeFolderName, {sync:storage==='synced'});
     return;
   }
+
+  const manifest = projectManifestForStorage(normalizeProjectManifest({
+    ...createProjectManifest(storyTitle),
+    type: storyType,
+    author: document.getElementById('storyAuthorInp').value.trim(),
+    language: document.getElementById('storyLanguageInp').value === 'hi' ? 'hi' : 'en',
+    synopsis: document.getElementById('storySynopsisInp').value.trim()
+  }));
+  const firstDraft = { ...createDefaultDraft(0), title: text().defaultChapterTitle };
+  delete firstDraft._contentLoadState;
+  delete firstDraft._contentPresented;
+
+  // Seed through the new folder handle while the current editor still owns its project.
   const storyHandle = await createUniqueStoryDirectory(storyTitle, storyType);
-  setActiveProjectFolder(storyHandle);
-  setActiveProjectTypeFolderName(typeFolderName);
-  projectManifest = createProjectManifest(storyTitle);
-  projectManifest.type = storyType;
-  projectManifest.author = document.getElementById('storyAuthorInp').value.trim();
-  projectManifest.language = document.getElementById('storyLanguageInp').value === 'hi' ? 'hi' : 'en';
-  projectManifest.synopsis = document.getElementById('storySynopsisInp').value.trim();
-  projectManifest = normalizeProjectManifest(projectManifest);
+  await storyHandle.getDirectoryHandle('Chapters', { create: true });
+  await storyHandle.getDirectoryHandle(PROJECT_CHAPTER_EDIT_DRAFTS_DIR, { create: true });
+  const draftsDirectory = await storyHandle.getDirectoryHandle('Drafts', { create: true });
+  const trashDirectory = await storyHandle.getDirectoryHandle(PROJECT_TRASH_DIR, { create: true });
+  const writeSeed = async (directory, name, value) => {
+    const file = await directory.getFileHandle(name, { create: true });
+    await writeFileText(file, value);
+    if (await readFileText(file) !== value) throw new Error('Could not verify ' + name + '.');
+  };
+  await writeSeed(draftsDirectory, firstDraft.contentPath.split('/').pop(), '');
+  await writeSeed(storyHandle, PROJECT_DRAFTS_FILE, JSON.stringify({ drafts: [firstDraft] }, null, 2));
+  await writeSeed(storyHandle, PROJECT_NAMING_FILE, JSON.stringify(normalizeNamingData(), null, 2));
+  await writeSeed(trashDirectory, PROJECT_TRASH_DRAFTS_FILE.split('/').pop(), JSON.stringify({ drafts: [] }, null, 2));
+  await writeSeed(storyHandle, PROJECT_MANIFEST_FILE, JSON.stringify(manifest, null, 2));
 
-  chapters = chaptersFromManifest(projectManifest);
-  chapterDrafts = [normalizeDraft({
-    ...createDefaultDraft(0),
-    title: text().defaultChapterTitle,
-    contentPath: draftFilePath(0)
-  }, 0)];
-  chapterTrashDrafts = [];
-  chapterEditDrafts = [];
-  namingData = normalizeNamingData();
-  storyFacts = [];
-  curChap = 0;
-  curPart = -1;
-  curDraft = 0;
-  curTrashDraft = -1;
-  expandedPartIndex = -1;
-  activeEditorMode = 'draft';
-  isDraftTrashMode = false;
-  trashReturnEditorState = null;
-  selectedTrashDraftIndexes.clear();
-  lastSelectedTrashDraftIndex = null;
-
-  await saveProjectHandle(storyHandle);
-  localStorage.setItem(PROJECT_MODE_KEY, 'local');
-  localStorage.setItem(PROJECT_FOLDER_KEY, storyHandle.name || '');
-  setActiveProjectTypeFolderName(typeFolderName);
-  await getProjectDirectoryHandle('Chapters', { create: true });
-  await getProjectDirectoryHandle('Drafts', { create: true });
-  await getProjectDirectoryHandle(PROJECT_TRASH_DIR, { create: true });
-  await getProjectDirectoryHandle(PROJECT_CHAPTER_EDIT_DRAFTS_DIR, { create: true });
-  await writeProjectManifest(projectManifest, { touchUpdated: false });
-  const draftHandle = await getProjectFileHandle(chapterDrafts[0].contentPath, { create: true });
-  chapterDrafts[0].contentHandle = draftHandle;
-  await writeFileText(draftHandle, '');
-  await writeNamingDataToProject();
-  await writeDraftsDataToProject();
-  await writeTrashDraftsDataToProject();
-  await writeChapterEditDraftsToProject();
-  if (window.lmAdvancedWordEditing && typeof window.lmAdvancedWordEditing.loadDictionaryPayload === 'function') {
-    window.lmAdvancedWordEditing.loadDictionaryPayload(null, { projectHandle: storyHandle });
-    if (typeof window.lmAdvancedWordEditing.flush === 'function') await window.lmAdvancedWordEditing.flush();
-  }
-
-  if(storage==='synced'){
-    try{await window.LmDatabasePanel.linkNewHomeProject(storyHandle);}
-    catch(error){showMiniReminder('Local project created. Sync: '+error.message);return;}
-  }
+  if(storage==='synced'&&typeof window!=='undefined')await window.LmDatabasePanel.linkNewHomeProject(storyHandle);
+  const loaded = await loadLocalProject(storyHandle, true, { typeFolderName, freshProject: true });
+  if (!loaded) throw new Error(text().storyCreateFailed);
+  await finishProjectLibraryOpen({ handle: storyHandle, typeFolderName }, projectManifest);
   closeStoryInfoModal();
   hideProjectGate();
   if (typeof saveToStorage === 'function') saveToStorage(false);

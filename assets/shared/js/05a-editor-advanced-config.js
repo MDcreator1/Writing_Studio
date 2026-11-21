@@ -433,6 +433,7 @@ function selectAdvancedEditorSettingsCategory(index, options = {}) {
   });
   document.querySelectorAll('[data-advanced-developer-section]').forEach(section => {
     section.hidden = Number(section.dataset.advancedDeveloperSection) !== nextIndex;
+    if (!section.hidden) window.LmDatabasePanel?.loadAdminSettings(section.querySelector('[data-cloud-admin-settings]'));
   });
   if (options.keepScroll !== true) {
     const content = document.querySelector('.advanced-editor-settings-content');
@@ -846,6 +847,9 @@ function renderAdvancedEditorSettings() {
   </section>`;
   attachAdvancedRuntimeQuickPin('findMode', 'find', 'Find settings');
   attachAdvancedRuntimeQuickPin('replaceScope', 'replace', 'Replace settings');
+  window.LmDatabasePanel?.loadAdminSettings(
+    modal.querySelector('[data-advanced-developer-section]:not([hidden]) [data-cloud-admin-settings]')
+  );
   syncAdvancedSmartCopyConditionalControls();
   decorateAdvancedEditorSettingsIcons();
   window.lmAdvancedWordEditing?.mount?.(modal);

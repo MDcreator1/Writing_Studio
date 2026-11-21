@@ -121,15 +121,15 @@
     }while(after);
     return rows;
   }
-  async function openHomeProject(id,type){
-    if(!homeConnection)throw new Error('पहले Database connection खोलें।');
+  async function openHomeProject(id,type,connection=homeConnection){
+    if(!connection)throw new Error('पहले Database connection खोलें।');
     const store=await root.LmWorkingStore.open();
     try{
-      const workspace=root.LmRemoteWorkspace.create({connection:homeConnection,store});
+      const workspace=root.LmRemoteWorkspace.create({connection,store});
       if(type==='news')await workspace.openProject(id,{refresh:true,lazy:true});
-      else await root.LmDatabaseEditor.prepareNavigation(workspace,homeConnection.profile.id,id);
+      else await root.LmDatabaseEditor.prepareNavigation(workspace,connection.profile.id,id);
       location.href=(type==='news'?'news-article-editor.html':'story-novel-project-editor.html')+'?'+
-        new URLSearchParams({databaseProfile:homeConnection.profile.id,databaseProject:id});
+        new URLSearchParams({databaseProfile:connection.profile.id,databaseProject:id});
     }finally{store.close();}
   }
   function open(prefill){
@@ -558,7 +558,12 @@
       }
     }
   }
-  function settingsHtml(index,active){return '<section class="advanced-developer-settings-section" data-advanced-developer-section="'+index+'" '+(active?'':'hidden')+'><h4>Cloud administration</h4><button type="button" onclick="openCloudAdmin()">View users and projects</button></section>';}
+  function settingsHtml(index,active){
+    return `<section class="advanced-developer-settings-section" data-advanced-developer-section="${index}" ${active?'':'hidden'}>
+      <div class="advanced-developer-settings-copy"><h4>Storage &amp; Database</h4></div>
+      <div class="advanced-editor-settings-list" data-cloud-admin-settings></div>
+    </section>`;
+  }
   async function restoreCloudFolder(connection,container){
     if(!isHomePage())return false;
     if(homeSynced){container?.remove();return true;}
@@ -903,45 +908,158 @@
       finally{submit.disabled=false;switchMode.disabled=false;submit.textContent=registering?'Create account':'Sign in';}
     };
   }
-  async function openCloudAdmin(){
-    const connection=await root.LmDatabaseProfiles.currentSession();
-    if(connection?.role!=='admin')return;
-    const data=await connection.adapter.request('/admin/users');
-    const panel=createAppPanel('Cloud administration');
-    panel.dataset.databaseUi='admin';
-    panel.classList.add('cloud-admin-panel');
-    panel.append(element('h2','Cloud users and projects'));
-    for(const account of data.accounts){
-      const section=element('details');
-      section.append(element('summary',account.username+' · '+account.role));
-      for(const project of data.projects.filter(item=>item.userId===account.userId)){
-        const row=element('details');
-        row.append(element('summary',project.title+' · '+project.type));
-        row.addEventListener('toggle',async()=>{
-          if(!row.open||row.querySelector('pre'))return;
-          const output=element('pre','Loading…');
-          output.style.whiteSpace='pre-wrap';
-          row.append(output);
-          try{
-            const data=await connection.adapter.request('/admin/projects/'+encodeURIComponent(project.id));
-            output.textContent=JSON.stringify(data,null,2);
-          }catch(error){output.textContent=error.message;}
-        });
-        section.append(row);
-      }
-      panel.append(section);
+  async function loadAdminSettings(container, refresh=false){
+    if(!container || (!refresh && container.dataset.loaded) || container.dataset.loading)return;
+    container.dataset.loading='true';
+    if(!refresh)container.textContent='Loading…';
+    try{
+      const connection=await root.LmDatabaseProfiles.currentSession();
+      if(connection?.role!=='admin')throw new Error('Sign in as an administrator to manage storage.');
+      const data=await connection.adapter.request('/admin/users');
+      if(!container.isConnected)return;
+      renderAdminSettings(container,connection,data);
+      container.dataset.loaded='true';
+    }catch(error){
+      if(refresh)throw error;
+      container.textContent=error.message;
+      const retry=element('button','Retry',{type:'button'});
+      retry.onclick=()=>loadAdminSettings(container);
+      container.append(retry);
+    }finally{
+      delete container.dataset.loading;
     }
-    const close=element('button','Close',{type:'button'});
-    close.onclick=()=>panel.close();
-    panel.append(close);
-    panel.addEventListener('close',()=>panel.remove(),{once:true});
-    document.body.append(panel);
-    panel.focus();
+  }
+
+  function renderAdminSettings(panel,connection,data){
+    panel.replaceChildren();
+    const status=element('p','',{role:'status','aria-live':'polite'});
+    panel.append(status);
+    const admin=data.accounts.find(user=>user.userId===connection.profile.userId);
+    const group=(title,count)=>{
+      const section=element('section');
+      const heading=element('h5',title,{class:'advanced-developer-subhead'});
+      if(count!==undefined)heading.append(element('small',String(count)));
+      section.append(heading);
+      panel.append(section);
+      return section;
+    };
+    const entry=(section,title,description)=>{
+      const row=element('details');
+      const summary=element('summary');
+      summary.append(element('strong',title),element('small',description));
+      const controls=element('div','',{class:'advanced-editor-setting-control cloud-admin-controls'});
+      row.append(summary,controls);
+      section.append(row);
+      return controls;
+    };
+    const choose=(label,options)=>{
+      const select=element('select','',{'aria-label':label});
+      for(const [value,name] of options)select.append(element('option',name,{value}));
+      return select;
+    };
+    const action=(parent,label,handler)=>{
+      const button=element('button',label,{type:'button'});
+      if(label==='Delete project'||label==='Confirm deletion')button.classList.add('cloud-admin-danger');
+      parent.append(button);
+      button.onclick=async()=>{
+        button.disabled=true;
+        status.textContent='';
+        try{await handler();}
+        catch(error){status.textContent=error.message;}
+        finally{if(!button.dataset.completed)button.disabled=false;}
+      };
+    };
+    const confirmDeletion=(row,message,handler)=>{
+      row.querySelector('[data-admin-delete-confirm]')?.remove();
+      const confirmation=element('div','',{'data-admin-delete-confirm':'',role:'group','aria-label':message});
+      const cancel=element('button','Cancel',{type:'button'});
+      const opener=document.activeElement;
+      cancel.onclick=()=>{confirmation.remove();opener?.focus();};
+      confirmation.append(element('p',message),cancel);
+      action(confirmation,'Confirm deletion',handler);
+      row.append(confirmation);
+      cancel.focus();
+    };
+    const post=(path,body)=>connection.adapter.request('/admin/'+path,{method:'POST',body});
+    const refresh=()=>loadAdminSettings(panel,true);
+    const credentials=group('Administrator');
+    const fields=element('div','',{class:'advanced-editor-setting-control cloud-admin-controls'});
+    const username=element('input','',{'aria-label':'Administrator username',autocomplete:'username',value:admin?.username||''});
+    const current=element('input','',{type:'password','aria-label':'Current password',placeholder:'Current password',autocomplete:'current-password'});
+    const password=element('input','',{type:'password','aria-label':'New password',placeholder:'New password',autocomplete:'new-password'});
+    for(const [label,input] of [['Username',username],['Current password',current],['New password',password]]){
+      const field=element('label',label);
+      field.append(input);
+      fields.append(field);
+    }
+    credentials.append(fields);
+    action(fields,'Update credentials',async()=>{
+      await post('credentials',{username:username.value,currentPassword:current.value,password:password.value});
+      current.value=password.value='';
+      status.textContent='Credentials updated. Sign in again with your new credentials.';
+      credentials.querySelectorAll('input,button').forEach(control=>{control.disabled=true;control.dataset.completed='true';});
+      await disconnectHome();
+    });
+    const projects=group('Stories in Database',data.projects.length);
+    const owners=new Map(data.accounts.map(user=>[user.userId,user.username]));
+    for(const project of data.projects){
+      const row=entry(projects,project.title,
+        [project.type,project.orphan?'Unassigned project':owners.get(project.userId),project.blocked?'Blocked':''].filter(Boolean).join(' · '));
+      action(row,'Open in editor',()=>openHomeProject(project.id,project.type,connection));
+      action(row,project.blocked?'Unblock project':'Block project',async()=>{
+        await post('projects/'+project.id,{action:project.blocked?'unblock':'block'});
+        await refresh();
+      });
+      const target=choose('Assign project to',[['','Choose active account'],...data.accounts
+        .filter(user=>user.status==='active'&&user.userId!==project.userId)
+        .map(user=>[user.userId,user.username])]);
+      row.append(target);
+      action(row,'Assign project',async()=>{
+        if(!target.value)throw new Error('Choose an active account.');
+        await post('projects/'+project.id,{action:'transfer',userId:target.value});
+        await refresh();
+      });
+      action(row,'Delete project',async()=>{
+        confirmDeletion(row,'Delete '+project.title+'?',async()=>{
+          await post('projects/'+project.id,{action:'delete'});
+          await refresh();
+        });
+      });
+    }
+    if(!data.projects.length)projects.append(element('p','No projects in the database.'));
+    const registeredUsers=data.accounts.filter(user=>user.status!=='deleted');
+    const users=group('Registered Users',registeredUsers.length);
+    for(const user of registeredUsers){
+      if(!user.managed){
+        const row=element('div','',{class:'cloud-admin-user-summary'});
+        row.append(element('strong',user.username),element('small',user.role+' · '+user.status));
+        users.append(row);
+        continue;
+      }
+      const row=entry(users,user.username,user.role+' · '+user.status);
+      {
+        const accountAction=choose('Account action',[['','Choose action'],['active','Restore access'],['blocked','Block'],['banned','Ban'],['deleted','Delete']]);
+        const projectAction=choose('Linked projects',[['keep','Keep projects'],['block','Block projects'],['delete','Delete projects']]);
+        row.append(accountAction,projectAction);
+        action(row,'Apply',async()=>{
+          if(!accountAction.value)throw new Error('Choose an account action.');
+          const body={status:accountAction.value,projects:projectAction.value};
+          const apply=async()=>{
+            await post('users/'+user.userId,body);
+            await refresh();
+          };
+          if(body.status==='deleted'||body.projects==='delete'){
+            confirmDeletion(row,'Apply deletion for '+user.username+'?',apply);
+          }else{
+            await apply();
+          }
+        });
+      }
+    }
   }
   root.openCloudLogin=openCloudLogin;
-  root.openCloudAdmin=()=>openCloudAdmin().catch(error=>showMiniReminder(error.message));
   root.openDatabaseConnectionPanel=openCloudLogin;
-  root.LmDatabasePanel=Object.freeze({open,settingsHtml,homeProjects,openHomeProject,
+  root.LmDatabasePanel=Object.freeze({open,settingsHtml,loadAdminSettings,homeProjects,openHomeProject,
     homeConnection:()=>homeConnection,homeSynced:()=>homeSynced,updateHomeStorage,disconnectHome,openHomeProfile,openHomeFolder,
     async restoreHomeCloud(){
       homeConnection=await root.LmDatabaseProfiles.currentSession();
@@ -990,10 +1108,10 @@
         await openHomeProject(result.projectId,details.type);
       }finally{store.close();}
     },
-    async linkNewHomeProject(handle){
-      if(!homeConnection)throw new Error('पहले Database connection खोलें।');
-      const result=await root.LmFolderSync.create(handle,homeConnection).sync({linkNew:true});
-      const key=folderKey(homeConnection.profile);
+    async linkNewHomeProject(handle,connection=homeConnection){
+      if(!connection)throw new Error('पहले Database connection खोलें।');
+      const result=await root.LmFolderSync.create(handle,connection).sync({linkNew:true});
+      const key=folderKey(connection.profile);
       const id=key+':'+result.projectId;
       await saveStoredDirectoryHandle(handle,id);
       const ids=JSON.parse(localStorage.getItem(key+':projects')||'[]');

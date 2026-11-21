@@ -1,3 +1,22 @@
+dialog.draft-operation-progress {
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  box-sizing: border-box;
+  overflow: auto;
+  margin: auto;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-modal, 18px);
+  background: var(--surface-raised, #fff);
+  color: var(--ink);
+  box-shadow: 0 16px 64px #0004;
+}
+
+dialog.draft-operation-progress::backdrop {
+  background: var(--color-backdrop, #0006);
+  backdrop-filter: blur(4px);
+}
+
 .text-import-progress-heading {
   display: flex;
   align-items: center;
